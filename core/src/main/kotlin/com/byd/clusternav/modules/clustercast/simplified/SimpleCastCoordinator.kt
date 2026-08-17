@@ -16,6 +16,10 @@ class SimpleCastCoordinator(
     private val displayId: Int,
     private val castTimeoutMs: Long = 15_000L,
     private val stopTimeoutMs: Long = 5_000L,
+    // This app's own installed package, injected from :app (BuildConfig.APPLICATION_ID). Default keeps the
+    // legacy value for JVM tests; production passes com.byd.clusternav2 so cast self-exclusion + the black
+    // placeholder launch target the correct isolated app.
+    private val selfPackage: String = "com.byd.clusternav",
 ) {
     private val executor = BoundedCastExecutor(
         castTimeoutMs = castTimeoutMs,
@@ -106,13 +110,19 @@ class SimpleCastCoordinator(
             val ok = projection.open(displayId)
             if (!ok) { setError("Projection open failed"); return@submit }
 
-            // Launch + resize black placeholder to keep projection alive
+            // Launch + resize black placeholder to keep projection alive.
+            // Component MUST be <installed applicationId>/<full class FQN>. The class FQN keeps the code
+            // namespace (com.byd.clusternav.*), which now DIFFERS from the applicationId (com.byd.clusternav2).
+            // A leading-dot class ('.modules...') would be resolved by am/ComponentName against the PACKAGE part
+            // (selfPackage) → 'com.byd.clusternav2.modules...ClusterBlackActivity', a class that does NOT exist
+            // (the registered component is 'com.byd.clusternav2/com.byd.clusternav.modules...ClusterBlackActivity').
+            // So spell the class in full — never relative — for correct launch under the isolated app.
             shell.execute("am start --display $displayId --windowingMode 5" +
-                " -n 'com.byd.clusternav/.modules.clustercast.ClusterBlackActivity'")
+                " -n '$selfPackage/com.byd.clusternav.modules.clustercast.ClusterBlackActivity'")
             Thread.sleep(1000)
             val stackResult = shell.execute("am stack list")
             if (stackResult.success) {
-                val taskId = CastStackParser.findTaskId(stackResult.stdout, "com.byd.clusternav", displayId)
+                val taskId = CastStackParser.findTaskId(stackResult.stdout, selfPackage, displayId)
                     ?: CastStackParser.findTaskId(stackResult.stdout, "ClusterBlackActivity", displayId)
                 if (taskId != null) shell.execute("am task resize $taskId 0 0 1920 720")
             }
@@ -124,7 +134,7 @@ class SimpleCastCoordinator(
                 val tasks = CastStackParser.parseTasks(adoptResult.stdout)
                 val ext = tasks.firstOrNull { t ->
                     t.displayId == displayId && t.visible &&
-                        t.pkg != "com.byd.clusternav" && !t.pkg.startsWith("com.android.")
+                        t.pkg != selfPackage && !t.pkg.startsWith("com.android.")
                 }
                 if (ext != null) {
                     val appType = AppMover.classifyApp(ext.pkg)
@@ -374,7 +384,7 @@ class SimpleCastCoordinator(
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
     private fun returnApp(pkg: String, appType: AppType, taskId: Int? = null) {
-        if (pkg == "com.byd.clusternav") return
+        if (pkg == selfPackage) return
         log("returnApp: pkg=$pkg, appType=$appType, taskId=$taskId")
         mover.returnToMain(pkg = pkg, activity = null, appType = appType, taskId = taskId, clusterDisplayId = displayId)
     }
@@ -583,7 +593,7 @@ class SimpleCastCoordinator(
         if (expected.isEmpty()) return
         val now = System.currentTimeMillis()
         for ((pkg, side) in expected) {
-            if (pkg == "com.byd.clusternav") continue
+            if (pkg == selfPackage) continue
             if (geometry.isAppOnDisplay(pkg, displayId)) { repinMissStreak.remove(pkg); continue }
             // Debounce: require MISSING on two consecutive probes (ignore transient parse gaps and the
             // split-second while Kiki's own launch is in flight).

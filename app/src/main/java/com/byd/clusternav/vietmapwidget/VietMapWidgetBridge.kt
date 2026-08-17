@@ -158,7 +158,7 @@ class VietMapWidgetBridge private constructor(context: Context) {
             return VietMapWidgetBindResult.Failed(
                 slot, VietMapWidgetUnavailableReason.BIND_UI_UNAVAILABLE,
                 "Không có màn xác nhận bind widget. Chạy lệnh sau khi đỗ xe:\n" +
-                    "adb shell appwidget grantbind --package com.byd.clusternav --user 0\n" +
+                    "adb shell appwidget grantbind --package ${com.byd.clusternav.BuildConfig.APPLICATION_ID} --user 0\n" +
                     "rồi thử lại.",
             )
         }

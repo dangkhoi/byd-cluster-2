@@ -44,14 +44,14 @@ object AccessibilityRebind {
      * output never contains a dangling/leading/trailing/double colon, and OEM services keep their exact
      * original strings and relative order. Values are quoted so an empty remove-list is written as `""`.
      */
-    fun accessibilityRebindWrites(current: String?, boundContainsClusterNav: Boolean): List<String> {
+    fun accessibilityRebindWrites(current: String?, boundContainsClusterNav: Boolean, component: String = ACC_COMP): List<String> {
         if (boundContainsClusterNav) return emptyList()
         val entries = (current ?: "")
             .split(':')
             .map { it.trim() }
             .filter { it.isNotEmpty() && it != "null" }
-        val without = entries.filter { it != ACC_COMP }
-        val readd = without + ACC_COMP
+        val without = entries.filter { it != component }
+        val readd = without + component
         return listOf(
             "settings put secure $KEY \"${without.joinToString(":")}\"",
             "settings put secure $KEY \"${readd.joinToString(":")}\"",

@@ -43,7 +43,7 @@ class WazeHudSource(private val shell: (command: String) -> String?) {
         private const val DUMP_CMD = "logcat -d -v raw -s $LOGCAT_TAG:V -t $TAIL_LINES"
         // Belt-and-suspenders: also grant READ_LOGS so any in-app log read works too. Idempotent;
         // uid-2000 shell may grant it (READ_LOGS has the `development` protection flag). Harmless if it fails.
-        private const val GRANT_CMD = "pm grant com.byd.clusternav android.permission.READ_LOGS"
+        private val GRANT_CMD = "pm grant ${com.byd.clusternav.BuildConfig.APPLICATION_ID} android.permission.READ_LOGS"
 
         /**
          * Map HLP/1 turn enum -> [Maneuver] TRUNG LẬP, đi THẲNG tới enum (KHÔNG qua magic-int).

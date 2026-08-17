@@ -118,7 +118,7 @@ internal class BubbleActionDispatcher(
      * `?: return`.
      */
     private fun detectForeground(coordinator: SimpleCastCoordinator): String? {
-        val excluded = homePackages() + setOf(context.packageName, "com.byd.clusternav")
+        val excluded = homePackages() + setOf(context.packageName)
         val foreground = runCatching { coordinator.foregroundPackage(HOME_DISPLAY_ID, excluded) }.getOrNull()
         if (foreground == null || foreground in excluded || AppMover.isLauncher(foreground)) {
             handler.post { toast(Lang.t("Không cast màn hình chính", "Won't cast the launcher/home screen")) }

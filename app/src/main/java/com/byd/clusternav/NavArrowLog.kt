@@ -29,7 +29,7 @@ import java.util.concurrent.Executors
  *
  * Mở lazy, flush mỗi dòng — mirror [NavDistanceLog]. PNG chỉ ghi khi NỘI DUNG ảnh đổi (nhịp tim gửi lại
  * y nguyên NavState mỗi ~0.4s sẽ không tạo hàng trăm file trùng nhau).
- * Pull: adb pull /sdcard/Android/data/com.byd.clusternav/files/ (lấy cả nav_arrow_log_<stamp>.csv và
+ * Pull: adb pull /sdcard/Android/data/com.byd.clusternav2/files/ (lấy cả nav_arrow_log_<stamp>.csv và
  * thư mục nav_arrow_pngs_<stamp> cùng lúc).
  */
 object NavArrowLog {

@@ -12,7 +12,7 @@ import android.widget.TextView
 
 /**
  * Card dẫn đường vẽ lên cụm (display 1920×720). Launch:
- *   am start --display <clusterId> -n com.byd.clusternav/.ClusterNavActivity
+ *   am start --display <clusterId> -n com.byd.clusternav2/.ClusterNavActivity
  * Thêm extra demo=true để chạy dữ liệu giả (test trên emulator).
  */
 class ClusterNavActivity : Activity() {

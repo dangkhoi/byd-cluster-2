@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
 /**
  * Log cự ly nav ra CSV (pull về phân tích vụ "nhảy 120→20m"): mỗi frame ghi cự ly THÔ GMaps gửi,
  * cự ly đã nội suy (project), cự ly hiển thị (quantize), tốc độ + closingRate, đường + key maneuver.
- * Pull: adb pull /sdcard/Android/data/com.byd.clusternav/files/nav_log_*.csv
+ * Pull: adb pull /sdcard/Android/data/com.byd.clusternav2/files/nav_log_*.csv
  *
  * D3 (closeout 1.28): (a) GATED behind [NavLog.verbose] (MẶC ĐỊNH TẮT — tuning xong) và (b) mở file + ghi +
  * flush chạy trên một single-thread daemon Executor, KHÔNG trên main thread (record được gọi từ

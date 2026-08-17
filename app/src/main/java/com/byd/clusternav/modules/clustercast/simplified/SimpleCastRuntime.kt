@@ -50,7 +50,7 @@ object SimpleCastRuntime {
         val displayId = savedDisplayId ?: 1
         val displaySource = if (savedDisplayId != null) "saved" else "measured default"
         android.util.Log.i("SimpleCast", "Cluster display = $displayId (source=$displaySource)")
-        return SimpleCastCoordinator(projection, configurator, mover, prefs, shell, displayId)
+        return SimpleCastCoordinator(projection, configurator, mover, prefs, shell, displayId, selfPackage = com.byd.clusternav.BuildConfig.APPLICATION_ID)
     }
 
     /** Shutdown the coordinator. Call from Application.onTerminate or process exit. */

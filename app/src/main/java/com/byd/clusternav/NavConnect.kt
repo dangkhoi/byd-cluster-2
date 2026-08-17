@@ -22,7 +22,11 @@ import android.util.Log
  */
 object NavConnect {
     private const val TAG = "NavConnect"
-    private const val COMP = "com.byd.clusternav/com.byd.clusternav.NavNotificationListener"
+    // This app's own installed package = BuildConfig.APPLICATION_ID (com.byd.clusternav2). Class FQNs keep the
+    // internal namespace com.byd.clusternav.* (unchanged) → component = "<appId>/com.byd.clusternav.<Class>".
+    // Fully isolated from the legacy com.byd.clusternav app.
+    private val COMP = "${BuildConfig.APPLICATION_ID}/com.byd.clusternav.NavNotificationListener"
+    private val ACC_COMP = "${BuildConfig.APPLICATION_ID}/com.byd.clusternav.modules.navaccess.NavAccessibilityService"
     private val reconnecting = java.util.concurrent.atomic.AtomicBoolean(false)   // single-flight: tap dồn dập / ensure trùng → 1 chu kỳ disallow→allow
     private val grantingAcc = java.util.concurrent.atomic.AtomicBoolean(false)    // single-flight cho grantAccessibility (dadb read-modify-write)
 
@@ -144,9 +148,9 @@ object NavConnect {
                 val keyPair = AdbKeys.ensure(app)
                 LocalDeviceShell.session(keyPair) { sh ->
                     val cur = sh("settings get secure enabled_accessibility_services").output.trim()
-                    val has = cur.split(':').any { it.trim() == AccessibilityRebind.ACC_COMP }
+                    val has = cur.split(':').any { it.trim() == ACC_COMP }
                     if (!has) {
-                        val next = if (cur.isBlank() || cur == "null") AccessibilityRebind.ACC_COMP else "$cur:${AccessibilityRebind.ACC_COMP}"
+                        val next = if (cur.isBlank() || cur == "null") ACC_COMP else "$cur:$ACC_COMP"
                         sh("settings put secure enabled_accessibility_services $next")
                     }
                     sh("settings put secure accessibility_enabled 1")
@@ -180,7 +184,7 @@ object NavConnect {
         runCatching { Thread.sleep(REBIND_SETTLE_MS) }.onFailure { Thread.currentThread().interrupt(); return }
         val current = sh("settings get secure enabled_accessibility_services").output.trim()
         val bound = AccessibilityRebind.isClusterNavBound(sh("dumpsys accessibility").output)
-        val writes = AccessibilityRebind.accessibilityRebindWrites(current, bound)
+        val writes = AccessibilityRebind.accessibilityRebindWrites(current, bound, ACC_COMP)
         if (writes.isEmpty()) { Log.i(TAG, "accessibility đã BOUND — không toggle (tránh flicker)"); return }
 
         val remove = writes.first()

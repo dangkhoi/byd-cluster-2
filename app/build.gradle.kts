@@ -38,11 +38,18 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.byd.clusternav"
+        applicationId = "com.byd.clusternav2"
         minSdk = 29
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+    }
+
+    buildFeatures {
+        // BuildConfig.APPLICATION_ID is the single source of truth for this app's own package at runtime
+        // (self-grants, self-component names, cast self-exclusion). Enables true app isolation from the
+        // legacy com.byd.clusternav app while keeping the internal code namespace unchanged.
+        buildConfig = true
     }
 
     signingConfigs {

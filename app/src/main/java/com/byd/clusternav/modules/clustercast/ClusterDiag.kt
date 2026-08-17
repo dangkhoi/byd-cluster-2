@@ -13,13 +13,15 @@ import com.byd.clusternav.AdbKeys
  * ⇒ App tự chụp được mọi thứ adb chụp, không cần mạng.
  *
  * Ghi ra `getExternalFilesDir()/diag/` — mở bằng app Quản lý tệp trên xe, hoặc kéo về sau bằng
- * `adb pull /sdcard/Android/data/com.byd.clusternav/files/diag/` khi có WiFi lại.
+ * `adb pull /sdcard/Android/data/com.byd.clusternav2/files/diag/` khi có WiFi lại.
  */
 object ClusterDiag {
 
     /** Lệnh chụp + nhãn. Giữ GỌN: mỗi lệnh là một round-trip shell, chụp lúc đang lái phải nhanh. */
     private fun commands(pkg: String, vd: Int): List<Pair<String, String>> = listOf(
-        "PHIÊN BẢN" to "dumpsys package com.byd.clusternav | grep -E 'versionName|versionCode'",
+        // Self-version: query THIS app's INSTALLED package (BuildConfig.APPLICATION_ID = com.byd.clusternav2),
+        // NOT the code namespace / legacy package — otherwise the diag reports the wrong (or missing) version.
+        "PHIÊN BẢN" to "dumpsys package ${com.byd.clusternav.BuildConfig.APPLICATION_ID} | grep -E 'versionName|versionCode'",
         "DISPLAY (size/density/overscan)" to "dumpsys window displays",
         // ★ v0.51: PHẢI lưu. Đây đúng là dump mà DisplayParse.clusterDisplayId/realSize ăn vào — thiếu nó thì
         //   nhìn log KHÔNG xác minh được việc dò cụm chạy đúng hay sai (đúng lỗ hổng của bộ log 22/07).
