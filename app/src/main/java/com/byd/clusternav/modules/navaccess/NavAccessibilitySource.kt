@@ -10,6 +10,7 @@ object NavAccessibilitySource {
     @Volatile var lastReadAt = 0L         // lần cuối ĐỌC ĐƯỢC cự ly tới rẽ hợp lệ
     @Volatile var turnMeters = -1         // cự ly tới rẽ đọc trên màn (m)
     @Volatile var road = ""               // tên đường/lệnh kế đọc trên màn
+    @Volatile var maneuverHint = ""       // T3: gợi ý hướng rẽ/mũi tên đọc từ contentDescription (chẩn đoán)
     @Volatile var bottomInfo = ""         // dòng đáy thô (giờ tới · còn lại · phút) — debug, chưa đẩy cụm
     @Volatile var refines = 0L            // số lần đã tinh chỉnh interpolator (đếm để biết booster có tác dụng)
 

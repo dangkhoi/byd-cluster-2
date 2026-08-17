@@ -4,6 +4,7 @@ import com.byd.clusternav.navigation.ManeuverHold
 import com.byd.clusternav.navigation.NavArrivalGuard
 import com.byd.clusternav.navigation.NavFormat
 import com.byd.clusternav.navigation.NavParse
+import com.byd.clusternav.navigation.SegmentShotDecision
 import com.byd.clusternav.navigation.SourceArbiter
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
 import android.app.Notification
@@ -327,6 +328,9 @@ class NavNotificationListener : NotificationListenerService() {
             ?: com.byd.clusternav.navigation.ArrowClassifier.classify(arrow?.asPixelFrame())
         // Chống nháy HUD: frame lỗi đọc → GIỮ hướng rẽ trước (không rớt -1 → straight); fresh hợp lệ → cập nhật mốc.
         val classifiedIcon = ManeuverHold.resolve(freshIcon, lastManeuverIcon)
+        // T4 (telemetry): snapshot the maneuver icon BEFORE the in-place hold update so the segment-change
+        // decision at the end of handle() can still see an icon change.
+        val prevManeuverIcon = lastManeuverIcon
         if (classifiedIcon in 0..28) lastManeuverIcon = classifiedIcon
 
         // TASK 1 (closeout 1.28): mang MANEUVER CÓ HƯỚNG cho họ vòng xuyến sang NavState.maneuver. Bottleneck cũ:
@@ -341,6 +345,16 @@ class NavNotificationListener : NotificationListenerService() {
 
         val state = (NotificationParser.parse(sbn.packageName, title, text, sub, big, arrow, classifiedIcon) ?: return)
             .copy(maneuver = maneuver)
+
+        // T2 (telemetry): persist the RAW notification + the parsed NavState to a pullable CSV so a drive's
+        // per-turn data can be pulled and used to improve arrow/road/distance accuracy. verbose-gated (default
+        // OFF) + off-main (NavNotifLog writes on its own daemon Executor) + degrade-safe (never affects nav).
+        if (NavLog.verbose) runCatching {
+            NavNotifLog.record(
+                applicationContext, sbn.packageName, title, text, sub, big, n.getLargeIcon() != null,
+                state.maneuverIcon, state.distance, state.road, state.eta,
+            )
+        }
 
         // R7/#2: route complete (route-remaining collapsed to ~0) → clear cụm thay vì heart-beat frame cũ.
         val routeRemainMeters = NavParse.parseEta(state.eta).first
@@ -368,9 +382,18 @@ class NavNotificationListener : NotificationListenerService() {
         // D4 (closeout 1.28): log-on-change — only Log.i when dist|road|eta changes from the previous emission
         // (kills per-notification spam; W/E + state-change logs above stay unconditional).
         val navKey = "${state.distance}|${state.road}|${state.eta}"
+        val prevNavKey = lastNavLogKey
         if (navKey != lastNavLogKey) {
             lastNavLogKey = navKey
             Log.i(TAG, "nav dist='${state.distance}' road='${state.road}' eta='${state.eta}'")
+        }
+        // T4 (telemetry): on a real segment/maneuver change (NOT the ~4 Hz heartbeat), trigger a debounced
+        // (~3 s) screenshot of BOTH displays over the dadb loopback — verbose-gated, OFF-main, degrade-safe.
+        // The seg-<n>-<ts>-*.png files correlate with the CSV rows above by timestamp; a screenshot failure
+        // never touches nav (SegmentShotCapturer wraps every shell in runCatching).
+        if (NavLog.verbose &&
+            SegmentShotDecision.segmentChanged(prevNavKey, navKey, prevManeuverIcon, classifiedIcon)) {
+            runCatching { SegmentShotCapturer.get(applicationContext).onSegmentChange() }
         }
     }
 

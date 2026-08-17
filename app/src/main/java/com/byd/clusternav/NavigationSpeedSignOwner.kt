@@ -4,10 +4,12 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import com.byd.clusternav.contracts.SpeedLimitSource
+import com.byd.clusternav.contracts.SpeedSignType
 import com.byd.clusternav.navigation.SpeedSignLifecycleCoordinator
 import com.byd.clusternav.navigation.SpeedSignOutput
 import com.byd.clusternav.speedbadge.ClusterSpeedBadgePort
 import com.byd.clusternav.speedbadge.HalSpeedSignPort
+import com.byd.clusternav.speedbadge.SpeedBadgeOverlay
 
 /**
  * Android lifecycle facade for the typed speed-sign coordinator.
@@ -55,6 +57,25 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
 
     fun onSourceStopped(source: SpeedLimitSource) {
         coordinator.onSourceStopped(source)
+    }
+
+    // ─── T5 (telemetry): force-show badge ────────────────────────────────────
+    // Isolates the OVERLAY-RENDER question ("does the badge draw over cast GMaps at all?") from the
+    // VietMap-DATA question. Uses an INDEPENDENT overlay on display 1, NOT the coordinator's port, so the real
+    // speed-sign pipeline (its ports, generation fencing, lifecycle) is never touched. Lazily created — no cost
+    // unless the driver actually taps the debug button.
+    private val debugBadgeOverlay by lazy { SpeedBadgeOverlay(appContext) }
+
+    /** Debug-only: force a fixed badge (e.g. 50) on the cluster (display 1). Does not affect the live pipeline. */
+    fun debugForceBadge(valueKph: Int) {
+        runCatching { debugBadgeOverlay.show(valueKph, SpeedSignType.REGULATORY) }
+            .onFailure { Log.w(TAG, "debugForceBadge failed", it) }
+    }
+
+    /** Debug-only: hide the forced badge. */
+    fun debugHideBadge() {
+        runCatching { debugBadgeOverlay.hide() }
+            .onFailure { Log.w(TAG, "debugHideBadge failed", it) }
     }
 
     override fun close() {

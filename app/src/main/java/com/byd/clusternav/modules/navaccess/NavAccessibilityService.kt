@@ -4,6 +4,7 @@ import com.byd.clusternav.navigation.ScreenTextItem
 import com.byd.clusternav.navigation.NavScreenReading
 import com.byd.clusternav.navigation.NavScreenScan
 import com.byd.clusternav.navigation.NavParse
+import com.byd.clusternav.navigation.NavAccessHint
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
@@ -12,6 +13,8 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.byd.clusternav.NavAccessLog
+import com.byd.clusternav.NavLog
 import com.byd.clusternav.Prefs
 import com.byd.clusternav.modules.voicekey.AssistantLauncher
 import com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus
@@ -112,8 +115,12 @@ class NavAccessibilityService : AccessibilityService() {
      */
     private fun scan(root: AccessibilityNodeInfo, now: Long) {
         val items = ArrayList<Triple<String, Int, Int>>(64)
+        // T3 (telemetry): also gather content descriptions (the arrow/maneuver hint GMaps hides there), but
+        // ONLY when verbose and into a SEPARATE list that is NEVER fed to NavScreenScan — so refine() below is
+        // completely unchanged.
+        val descs = if (NavLog.verbose) ArrayList<String>(32) else null
         val screen = Rect(); root.getBoundsInScreen(screen)
-        collect(root, items, 0)
+        collect(root, items, descs, 0)
         if (items.isEmpty()) return
 
         val reading = NavScreenScan.scan(
@@ -131,9 +138,22 @@ class NavAccessibilityService : AccessibilityService() {
             TurnDistanceInterpolator.refine(reading.turnMeters, now)
             NavAccessibilitySource.refines++
         }
+
+        // T3 (telemetry): log screen-read metres + road + best-effort maneuver hint (verbose-gated; NavAccessLog
+        // writes off-main). ADD-ONLY diagnostics — the refine() decision above is untouched.
+        if (descs != null) {
+            val hint = NavAccessHint.maneuverHint(descs, items.map { it.first })
+            NavAccessibilitySource.maneuverHint = hint
+            NavAccessLog.record(applicationContext, reading.turnMeters, reading.road, hint)
+        }
     }
 
-    private fun collect(node: AccessibilityNodeInfo?, out: ArrayList<Triple<String, Int, Int>>, depth: Int) {
+    private fun collect(
+        node: AccessibilityNodeInfo?,
+        out: ArrayList<Triple<String, Int, Int>>,
+        descOut: ArrayList<String>?,
+        depth: Int,
+    ) {
         node ?: return
         if (out.size >= MAX_NODES || depth > MAX_DEPTH) return
         val t = node.text?.toString()?.trim()
@@ -141,9 +161,14 @@ class NavAccessibilityService : AccessibilityService() {
             val r = Rect(); node.getBoundsInScreen(r)
             out.add(Triple(t, r.top, r.left))
         }
+        // T3 (telemetry, verbose only): the directional cue usually lives on a contentDescription, not text.
+        if (descOut != null && descOut.size < MAX_NODES) {
+            val d = node.contentDescription?.toString()?.trim()
+            if (!d.isNullOrEmpty() && d.length <= 120) descOut.add(d)
+        }
         for (i in 0 until node.childCount) {
             val c = node.getChild(i) ?: continue
-            collect(c, out, depth + 1)
+            collect(c, out, descOut, depth + 1)
             runCatching { c.recycle() }
         }
     }

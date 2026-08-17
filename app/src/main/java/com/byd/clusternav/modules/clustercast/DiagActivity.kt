@@ -55,6 +55,28 @@ class DiagActivity : Activity() {
             minimumHeight = dp(48)
             setOnClickListener { com.byd.clusternav.UpdateFlow.start(this@DiagActivity) { t, warn -> setStatus(t, warn) } }
         })
+        // T5 (telemetry): force-render the speed-limit badge on the cluster (display 1) with a fixed 50 so the
+        // driver can confirm ON-CAR whether the overlay draws over cast GMaps at all — without needing any
+        // VietMap/Waze speed data. Uses NavigationSpeedSignOwner's independent debug overlay (the real
+        // coordinator pipeline is untouched). A second button clears it.
+        root.addView(Button(this).apply {
+            text = Lang.t("Thử badge 50", "TEST BADGE 50")
+            isAllCaps = false
+            minimumHeight = dp(48)
+            setOnClickListener {
+                com.byd.clusternav.NavigationSpeedSignOwner.get(applicationContext).debugForceBadge(50)
+                setStatus(Lang.t("Đã buộc badge 50 trên cụm (display 1)", "Forced badge 50 on cluster (display 1)"))
+            }
+        })
+        root.addView(Button(this).apply {
+            text = Lang.t("Ẩn badge", "HIDE badge")
+            isAllCaps = false
+            minimumHeight = dp(48)
+            setOnClickListener {
+                com.byd.clusternav.NavigationSpeedSignOwner.get(applicationContext).debugHideBadge()
+                setStatus(Lang.t("Đã ẩn badge", "Badge hidden"))
+            }
+        })
         status = TextView(this).apply {
             textSize = 13f
             setTextColor(Color.rgb(0, 105, 92))
