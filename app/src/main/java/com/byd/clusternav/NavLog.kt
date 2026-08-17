@@ -20,6 +20,9 @@ object NavLog {
 
     /** Refresh the in-memory gate from the persisted flag. Call at entry points that always run. */
     fun init(ctx: Context) {
-        verbose = Prefs.navVerboseLog(ctx)
+        // DEBUG builds are always verbose so an on-car test drive captures the nav CSV/PNG + per-frame logs
+        // without the hidden long-press. RELEASE is unchanged (BuildConfig.DEBUG=false) → still the persisted
+        // runtime flag only. BuildConfig resolves bare here (same package com.byd.clusternav, cf. NavConnect).
+        verbose = Prefs.navVerboseLog(ctx) || BuildConfig.DEBUG
     }
 }

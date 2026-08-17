@@ -78,6 +78,17 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
             .onFailure { Log.w(TAG, "debugHideBadge failed", it) }
     }
 
+    /**
+     * Debug-only: re-apply the badge layout (corner / size / nudge from Prefs) to the force-shown badge
+     * LIVE, so the driver moving the sliders in DiagActivity sees it move on the cluster immediately.
+     * Degrade-safe. The REAL pipeline badge (ClusterSpeedBadgePort → SpeedBadgeOverlay) reads the same
+     * Prefs on its next show(), so both the forced and the real badge honor the new position/size.
+     */
+    fun debugRefreshBadgeLayout() {
+        runCatching { debugBadgeOverlay.refreshLayout() }
+            .onFailure { Log.w(TAG, "debugRefreshBadgeLayout failed", it) }
+    }
+
     override fun close() {
         coordinator.close()
     }

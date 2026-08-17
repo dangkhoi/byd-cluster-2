@@ -175,6 +175,38 @@ object Prefs {
     fun disclaimerShown(ctx: Context): Boolean = sp(ctx).getBoolean(K_DISCLAIMER_SHOWN, false)
     fun setDisclaimerShown(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_DISCLAIMER_SHOWN, v).apply()
 
+    // ─── Cluster speed-limit badge overlay: POSITION + SIZE (persisted, live-adjustable) ────────
+    // The badge (SpeedBadgeOverlay, TYPE_APPLICATION_OVERLAY on display 1) used to be hard-coded at
+    // TOP|END / x=24 / y=24 / 120dp — a corner the cast app kept covering. These make it driver-adjustable
+    // from DiagActivity (save → SpeedBadgeOverlay.refreshLayout() applies it LIVE). Corner ids match
+    // BadgeLayout.CORNER_* in :core (0=TL,1=TR,2=BL,3=BR); size clamps to 60..240 dp on BOTH read & write
+    // via the tested BadgeLayout.clampSizeDp so a bad stored value can never blow the overlay up or shrink
+    // it to nothing. Dx/Dy are the dp nudge inward from the chosen corner.
+    private const val K_BADGE_CORNER = "badge_corner"
+    private const val K_BADGE_SIZE_DP = "badge_size_dp"
+    private const val K_BADGE_DX = "badge_dx"
+    private const val K_BADGE_DY = "badge_dy"
+
+    fun badgeCorner(ctx: Context): Int =
+        com.byd.clusternav.speedbadge.BadgeLayout.clampCorner(
+            sp(ctx).getInt(K_BADGE_CORNER, com.byd.clusternav.speedbadge.BadgeLayout.CORNER_DEFAULT),
+        )
+    fun setBadgeCorner(ctx: Context, v: Int) =
+        sp(ctx).edit().putInt(K_BADGE_CORNER, com.byd.clusternav.speedbadge.BadgeLayout.clampCorner(v)).apply()
+
+    fun badgeSizeDp(ctx: Context): Int =
+        com.byd.clusternav.speedbadge.BadgeLayout.clampSizeDp(
+            sp(ctx).getInt(K_BADGE_SIZE_DP, com.byd.clusternav.speedbadge.BadgeLayout.SIZE_DEFAULT_DP),
+        )
+    fun setBadgeSizeDp(ctx: Context, v: Int) =
+        sp(ctx).edit().putInt(K_BADGE_SIZE_DP, com.byd.clusternav.speedbadge.BadgeLayout.clampSizeDp(v)).apply()
+
+    fun badgeDx(ctx: Context): Int = sp(ctx).getInt(K_BADGE_DX, 24)
+    fun setBadgeDx(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_DX, v).apply()
+
+    fun badgeDy(ctx: Context): Int = sp(ctx).getInt(K_BADGE_DY, 24)
+    fun setBadgeDy(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_DY, v).apply()
+
     // Toggle theo module (key namespaced "mod_" — không thể đụng các key lõi ở trên). Mặc định TẮT
     // (experiment phải bật tay). Key mồ côi sau khi xoá module = dead data vô hại, không cần dọn.
     fun moduleEnabled(ctx: Context, title: String): Boolean =
