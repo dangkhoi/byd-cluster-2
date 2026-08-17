@@ -23,7 +23,7 @@ import java.net.URL
  */
 object UpdateChecker {
 
-    private const val REPO = "dangkhoi/byd-cluster"
+    private const val REPO = "dangkhoi/byd-cluster-2"
     /** Nhánh chứa APK phát hành. Để trống = nhánh mặc định của repo (main). */
     private const val BRANCH = "main"
     private val RE_APK = Regex("""ClusterNav-([0-9]+(?:\.[0-9]+)*)-release\.apk""")
