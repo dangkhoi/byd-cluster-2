@@ -1,8 +1,8 @@
 package com.byd.clusternav.modules.clustercast
 
-import com.byd.clusternav.modules.clustercast.v2.CastPolicy
-import com.byd.clusternav.modules.clustercast.v2.TargetClass
-import com.byd.clusternav.modules.clustercast.v2.TargetEvidence
+import com.byd.clusternav.modules.clustercast.model.CastPolicy
+import com.byd.clusternav.modules.clustercast.model.TargetClass
+import com.byd.clusternav.modules.clustercast.model.TargetEvidence
 import com.byd.clusternav.testsupport.SourceRoots
 
 import org.junit.jupiter.api.Assertions.assertEquals

@@ -1,7 +1,7 @@
 package com.byd.clusternav.cast.platform
 
 import com.byd.clusternav.modules.clustercast.AppScale
-import com.byd.clusternav.modules.clustercast.v2.*
+import com.byd.clusternav.modules.clustercast.model.*
 
 import android.content.Context
 import android.content.Intent

@@ -2,7 +2,6 @@ package com.byd.clusternav.modules.clustercast
 
 import com.byd.clusternav.testsupport.SourceRoots
 
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -11,19 +10,14 @@ import org.junit.jupiter.api.Test
  * (SharedPreferences), and this project has no Robolectric — so, exactly like
  * `CastFavoriteProtectToggleTest`, this reads the real source instead of instantiating the class.
  *
- * This is the cast-time density path (`preferredDensityDpi` passed into `CastFacade.runManualIntent`,
- * dispatched through `CommandKind.FIT_CLUSTER_COMPOSITE`'s inline "wm density" prefix in
- * `CastPlacementCommands.kt`) — a SEPARATE input from `CastRowActions.applyGeometry`'s
- * `CastAppCatalog.scaleOf(pkg).dpi` (gated instead by `CastGeometry.validate`, see `CastGeometryTest`'s
- * "density outside 72 to 640" case). What this locks down:
+ * This is the cast-time cluster-density store (`CastAppCatalog.setClusterDensityDpi` /
+ * `clusterDensityDpi`). The old cast-v2 shell-encoding cross-check (`CastPlacementCommands.kt`'s
+ * `FIT_CLUSTER_COMPOSITE` guard) was removed with the v2 stack; this now locks the storage-level gate
+ * that still lives in the kept `CastAppCatalog`. What this locks down:
  *
  * (a) `setClusterDensityDpi` rejects an out-of-range value via `require(...)` BEFORE any prefs write —
- *     an invalid DPI is never even durably stored, so it can never later be read by `clusterDensityDpi`
- *     and handed to `runManualIntent` as `preferredDensityDpi` in the first place.
- * (b) The stored range is exactly `80..640` — the SAME literal `CastPlacementCommands.kt`'s
- *     `FIT_CLUSTER_COMPOSITE` branch uses for its own `takeIf { it in 80..640 }` guard on
- *     `request.geometry?.densityDpi`, so the storage-level gate and the shell-encoding-level
- *     defense-in-depth gate agree.
+ *     an invalid DPI is never even durably stored, so it can never later be read by `clusterDensityDpi`.
+ * (b) The stored range is exactly `80..640`.
  * (c) `clusterDensityDpi`'s getter re-validates with the same `80..640` `takeIf`, so even a value that
  *     reached the store some other way (direct prefs edit, migration, corruption) is filtered before it
  *     is ever returned to a caller.
@@ -31,9 +25,6 @@ import org.junit.jupiter.api.Test
 class CastAppCatalogDensityDpiTest {
 
     private val catalogSource = SourceRoots.text("src/main/java/com/byd/clusternav/cast/platform/CastAppCatalog.kt")
-    private val placementSource = SourceRoots.text(
-        "src/main/kotlin/com/byd/clusternav/cast/transport/CastPlacementCommands.kt",
-    )
 
     /** Extracts one top-level function's `{ ... }` body by brace-matching from its exact signature. */
     private fun functionBody(source: String, signature: String): String {
@@ -71,7 +62,7 @@ class CastAppCatalogDensityDpiTest {
     }
 
     @Test
-    fun `stored and read-back density ranges agree with CastPlacementCommands' shell-encoding guard`() {
+    fun `stored and read-back density ranges use the same 80 to 640 bounds`() {
         val setterBody = functionBody(catalogSource, "fun setClusterDensityDpi(packageName: String, densityDpi: Int?) {")
 
         // clusterDensityDpi is expression-bodied (`fun clusterDensityDpi(...): Int? = prefs.getInt(...)`),
@@ -84,22 +75,13 @@ class CastAppCatalogDensityDpiTest {
 
         assertTrue(setterBody.contains("80..640"), "setter's stored range must be 80..640, found: $setterBody")
         assertTrue(getterBody.contains("80..640"), "getter's defensive filter must also be 80..640, found: $getterBody")
-
-        // The FIT_CLUSTER_COMPOSITE branch is where CastAppCatalog.clusterDensityDpi's value is actually
-        // turned into a "wm density" shell fragment (via preferredDensityDpi -> CastMutationRequest.geometry).
-        val placementGuard = "val density = request.geometry?.densityDpi?.takeIf { it in 80..640 }"
-        assertTrue(
-            placementSource.contains(placementGuard),
-            "CastPlacementCommands' FIT_CLUSTER_COMPOSITE density guard changed or moved -- " +
-                "re-verify it still agrees with CastAppCatalog's 80..640",
-        )
     }
 
     @Test
-    fun `density literal appears exactly once as a range in setter, getter and placement guard`() {
-        // Guards against a silent drift where only one of the three sites gets bumped (e.g. someone widens
-        // the setter to 60..640 for a new vehicle profile but forgets the shell-encoding guard, leaving a
-        // value that is stored and read back fine but silently dropped -- not rejected -- at dispatch time).
+    fun `density literal appears as a range in both the setter and the getter`() {
+        // Guards against a silent drift where only one of the two storage sites gets bumped (e.g. someone
+        // widens the setter to 60..640 for a new vehicle profile but forgets the getter's defensive
+        // filter, leaving a value that is stored fine but silently dropped -- not rejected -- on read).
         val ranges = listOf(
             "prefs.getInt(\"dpi:\$packageName\", 0).takeIf { it in 80..640 }",
             "require(densityDpi == null || densityDpi in 80..640)",
@@ -107,10 +89,5 @@ class CastAppCatalogDensityDpiTest {
         ranges.forEach {
             assertTrue(catalogSource.contains(it), "expected CastAppCatalog to still contain: $it")
         }
-        assertEquals(
-            1,
-            Regex("takeIf \\{ it in 80\\.\\.640 \\}").findAll(placementSource).count(),
-            "expected exactly one 80..640 density guard in CastPlacementCommands' FIT_CLUSTER_COMPOSITE branch",
-        )
     }
 }

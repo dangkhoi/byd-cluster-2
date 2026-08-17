@@ -95,14 +95,15 @@ class LayeringRulesTest {
      * file đã về đúng chuồng: `WmParse`, `StackParse`, `DisplayParse` (comment của chính chúng ghi "PURE
      * (không đụng Android)" — parser thuộc `:core` theo bảng xếp chỗ) và `AppScale` (dữ liệu cấu hình).
      *
-     * Hai file còn lại ở `:app` là **có chủ ý**, không phải nợ:
-     * - `CastActivityRefresh` — điều phối làm mới của Activity, nó là UI dù không import Android.
-     * - `CastOperationStatus` — theo dõi trạng thái thao tác cho màn hình, thuộc vòng đời UI.
+     * Sau khi gỡ cast v2 (2026-08-17) không còn file thuần nào ở `:app`: `CastActivityRefresh` và
+     * `CastOperationStatus` — hai file thuần cuối cùng — đã bị xoá cùng stack v2 (cả hai import gói v2
+     * cũ). Parser thuần (`WmParse`/`StackParse`/`DisplayParse`) và dữ liệu (`AppScale`) đã về `:core`
+     * từ trước.
      *
      * `LocalProcessShellGateway` đã bị xoá (dead code, 2026-08-02).
      * `ModuleRegistry` đã bị xoá hoặc di chuyển trước đó.
      */
-    private val pureFilesStillInApp = 2
+    private val pureFilesStillInApp = 0
 
     @Test
     fun `so file thuan con nam trong app chi duoc giam`() {

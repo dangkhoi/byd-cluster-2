@@ -19,7 +19,7 @@ class CarExecCliTest {
     fun `help chay duoc ma khong can thiet bi`() {
         val out = capture { CarExecCli.main(arrayOf("--help")) }
         assertTrue(out.contains("không cần APK"), out)
-        assertTrue(out.contains("observe"), out)
+        assertTrue(out.contains("steps"), out)
     }
 
     @Test
@@ -31,7 +31,7 @@ class CarExecCliTest {
     @Test
     fun `thieu khoa adb thi noi ro thay vi nem stack trace`() {
         val empty = Files.createTempDirectory("carexec-keys").toString()
-        val out = capture { CarExecCli.main(arrayOf("observe", "--keys", empty)) }
+        val out = capture { CarExecCli.main(arrayOf("run", "cast-app", "--keys", empty)) }
         assertTrue(out.contains("không thấy cặp khoá adb"), out)
     }
 

@@ -1,11 +1,6 @@
 package com.byd.clusternav.carexec
 
-import com.byd.clusternav.modules.clustercast.v2.DumpObservedStateParser
-import com.byd.clusternav.cast.transport.CastAdbGateway
-import com.byd.clusternav.modules.clustercast.v2.ObservationValue
-import com.byd.clusternav.modules.clustercast.v2.ObservedStateReader
 import dadb.AdbKeyPair
-import java.io.File
 
 /**
  * Runner headless để đánh giá capability trên xe **không cần APK**.
@@ -14,10 +9,11 @@ import java.io.File
  * từ laptop qua adb. Nhờ vậy không cần bản chép thứ hai bằng shell script — thứ mà ngày 27/7 đã cho thấy
  * tác hại: logic đặt/tháo cụm tồn tại ở hai nơi và không ai biết bản nào đúng.
  *
- * Chỉ đọc. Không lệnh nào ở đây làm biến đổi trạng thái xe. Các capability gây biến đổi chỉ được thêm
- * sau khi có observable phân biệt "cụm đang hiện app" với "cụm đang hiện đồng hồ" (Q1 trong spec).
+ * Chỉ đọc/điều khiển theo catalog step + scenario đã khai báo. Đường quan sát cụm (`observe`) từng sống
+ * ở đây đã bị gỡ cùng cast v2 — capability gây biến đổi chỉ được thêm lại khi có observable phân biệt
+ * "cụm đang hiện app" với "cụm đang hiện đồng hồ" (Q1 trong spec).
  *
- * Dùng: ./gradlew :car-integration:run --args="observe --host <ip-head-unit>"
+ * Dùng: ./gradlew :car-integration:run --args="steps"
  */
 object CarExecCli {
 
@@ -36,7 +32,6 @@ object CarExecCli {
 
         val ledgerPath = args.value("--ledger") ?: CarExecCommands.DEFAULT_LEDGER
         when (command) {
-            "observe" -> if (args.contains("--recorded")) observeRecorded() else observe(host, port, keyDir)
             "steps" -> println(CarExecCommands.steps())
             "run" -> run(args, host, port, keyDir)
             "verdict" -> verdict(args, ledgerPath, "$host:$port")
@@ -61,7 +56,7 @@ object CarExecCli {
             println("cần tên candidate. Xem 'steps'.")
             return
         }
-        val keys = CarExecShell.keysFrom(keyDir) ?: run {
+        val keys: AdbKeyPair = CarExecShell.keysFrom(keyDir) ?: run {
             println("""{"error":"không thấy cặp khoá adb tại $keyDir"}""")
             return
         }
@@ -89,7 +84,7 @@ object CarExecCli {
             println("cần tên kịch bản. Xem 'scenarios'.")
             return
         }
-        val keys = CarExecShell.keysFrom(keyDir) ?: run {
+        val keys: AdbKeyPair = CarExecShell.keysFrom(keyDir) ?: run {
             println("""{"error":"không thấy cặp khoá adb tại $keyDir"}""")
             return
         }
@@ -128,63 +123,6 @@ object CarExecCli {
         )
     }
 
-    /**
-     * Quan sát off-car bằng output đã ghi của xe thật.
-     *
-     * Có mặt để kiểm cả chuỗi quan sát mà không cần xe: cùng parser, cùng reader, chỉ khác transport.
-     * Nếu đường này sai thì trên xe cũng sai, và biết trước thì rẻ hơn nhiều.
-     */
-    private fun observeRecorded() {
-        val roots = listOf("docs/refactor-car-execution/fixtures", "../docs/refactor-car-execution/fixtures")
-        val root = roots.map(::File).firstOrNull { it.isDirectory }
-        if (root == null) {
-            println("""{"error":"không thấy thư mục fixture"}""")
-            return
-        }
-        val device = RecordedDevice.fromFixtures { name ->
-            File(root, name).takeIf { it.isFile }?.readText()
-        }
-        val reader = ObservedStateReader(device, DumpObservedStateParser.withFallback { null })
-        val observation = reader.read()
-        val ok = observation is ObservationValue.Known
-        println(
-            """{"capability":"observe","source":"recorded-fixtures","ok":$ok,""" +
-                """"observation":"${observation.toString().replace("\"", "'")}"}""",
-        )
-    }
-
-    private fun observe(host: String, port: Int, keyDir: String) {
-        val keys = loadKeys(keyDir) ?: return
-        // Ngoài thiết bị không có DisplayManager, nên bản đo dự phòng trả null: runner chỉ dựa vào dumpsys.
-        val gateway = CastAdbGateway(keys = { keys }, measureCluster = { null }, host = host, port = port)
-        val reader = ObservedStateReader(gateway, DumpObservedStateParser.withFallback { null })
-        val started = System.currentTimeMillis()
-        val observation = runCatching { reader.read() }.getOrElse {
-            println("""{"capability":"observe","ok":false,"error":"${it.javaClass.simpleName}: ${it.message}"}""")
-            return
-        }
-        val elapsed = System.currentTimeMillis() - started
-        val ok = observation is ObservationValue.Known
-        println(
-            """{"capability":"observe","ok":$ok,"elapsedMs":$elapsed,"endpoint":"$host:$port",""" +
-                """"observation":"${observation.toString().replace("\"", "'")}"}""",
-        )
-        runCatching { gateway.close() }
-    }
-
-    private fun loadKeys(keyDir: String): AdbKeyPair? {
-        val priv = File(keyDir, "adbkey")
-        val pub = File(keyDir, "adbkey.pub")
-        if (!priv.exists() || !pub.exists()) {
-            println("""{"error":"không thấy cặp khoá adb tại $keyDir (cần adbkey và adbkey.pub)"}""")
-            return null
-        }
-        return runCatching { AdbKeyPair.read(priv, pub) }.getOrElse {
-            println("""{"error":"đọc khoá adb thất bại: ${it.message}"}""")
-            null
-        }
-    }
-
     private fun Array<String>.value(flag: String): String? {
         val index = indexOf(flag)
         return if (index >= 0 && index + 1 < size) this[index + 1] else null
@@ -203,8 +141,6 @@ object CarExecCli {
               plan <id>                               in chuỗi lệnh sẽ gửi, KHÔNG chạy — duyệt trước khi lên xe
               scenario <id> --run [--from N]           chạy tuần tự, dừng ở mốc cần nhìn cụm
               e2e                                     chuỗi E2E ghép từ các step đã OK
-              observe [--host H] [--port P] [--keys DIR]
-              observe --recorded                      quan sát off-car trên fixture đã ghi
               run <candidate> --dry-run               in lệnh sẽ gửi, không gửi
 
             Mặc định: host=localhost port=$DEFAULT_PORT keys=~/.android

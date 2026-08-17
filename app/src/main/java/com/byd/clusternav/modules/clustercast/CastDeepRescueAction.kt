@@ -25,7 +25,7 @@ import com.byd.clusternav.modules.clustercast.simplified.SimpleCastIntent
  *
  * Best-effort + trung thực: chạy nền, không ném, nói rõ đã force-stop app nào, và **không hứa cứu được
  * mọi ca** — ca kẹt sâu ở OEM/MCU vẫn có thể phải flash. Thông điệp cuối luôn nhắc GỠ DashCast +
- * power-cycle. Ở riêng file (như [CastClearClusterAction]) để `MainActivityCastController` không vượt
+ * power-cycle. Ở riêng file để `MainActivityCastController` không vượt
  * ngưỡng 500 dòng.
  */
 internal class CastDeepRescueAction(

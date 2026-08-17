@@ -1,4 +1,4 @@
-package com.byd.clusternav.modules.clustercast.v2
+package com.byd.clusternav.modules.clustercast.model
 
 data class TargetEvidence(
     val projectionComponent: Boolean?,
