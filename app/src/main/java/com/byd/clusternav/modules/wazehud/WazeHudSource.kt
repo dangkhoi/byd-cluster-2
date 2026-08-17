@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Reads WazeMod HLP/1 JSON (logcat tag "WazeHUD") and converts to NavState.
+ * Reads WazeMod HLP/1 JSON (logcat tags "WazeHudLink" + "WazeHudLink-BLE") and converts to NavState.
  *
  * WazeMod's HudLink producer streams a FULL-snapshot JSON line per frame to logcat when
  * `hud_link_log=true` (default) in SharedPreferences `waze_hud_gw`. Protocol HLP/1 verified
@@ -18,12 +18,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * envelope `{"v":1,"t":"s",...}`; fields nav/spd/lim/over/trn/trn2/dst/exit/st/st2/eta/rmin/rkm/
  * avg/alr/alrD/alrV/ts.
  *
+ * LOGCAT TAG (corrected 2026-08-17 for WazeMod 5.20.90.901): HudLink emits the HLP payload under tag
+ * `WazeHudLink` (and `WazeHudLink-BLE` for the BLE transport) — per the official doc's
+ * `adb logcat -s WazeHudLink WazeHudLink-BLE`. The old `WazeHUD` tag this source filtered on was
+ * STALE, so the `-s` filter never matched and Waze was dead on the car. We now read BOTH tags.
+ *
  * TRANSPORT (fixed 2026-08-05): logcat is read through the privileged dadb shell (uid 2000), NOT an
  * in-process `logcat` subprocess. On Android 7+ an app-uid `logcat` only sees its OWN logs unless it
  * holds READ_LOGS; WazeMod logs from a different process, so in-process reading returned nothing on
  * the vehicle (root cause of "Waze nav+speed dead on car"). The shell (uid 2000) has full log access,
- * so we POLL `logcat -d -v raw -s WazeHUD:V -t N` through it and de-duplicate by the monotonic `ts`.
- * Level is `:V` (all) — the producer's LogSink is a debug stream and `:I` dropped debug/verbose lines.
+ * so we POLL `logcat -d -v raw -s WazeHudLink:V WazeHudLink-BLE:V -t N` through it and de-duplicate by
+ * the monotonic `ts`. Level is `:V` (all) — the producer's LogSink is a debug stream and `:I` dropped
+ * debug/verbose lines.
+ *
+ * NOT SUFFICIENT ALONE (honest note): this tag correction is necessary but not enough by itself.
+ * WazeMod's HudLink only EMITS HLP frames while a BT/BLE HUD peer is connected — per the doc, "log
+ * không tạo transport giả, không thể phát stream nếu chưa kết nối thiết bị" (the log does not fake a
+ * transport; it cannot emit the stream until a device is connected). A single device has no BT
+ * self-loopback, so validating this path still requires a real peer (ESP32 / a 2nd device) or an
+ * on-car BLE-loopback test. This source only READS logcat; it does NOT (and must not) implement a
+ * BLE receiver.
  *
  * @param shell runs a shell command via the privileged transport; returns stdout, or null on failure.
  */
@@ -37,10 +51,11 @@ class WazeHudSource(private val shell: (command: String) -> String?) {
 
     companion object {
         private const val TAG = "WazeHudSource"
-        private const val LOGCAT_TAG = "WazeHUD"
+        private const val LOGCAT_TAG = "WazeHudLink"
+        private const val LOGCAT_TAG_BLE = "WazeHudLink-BLE"
         private const val POLL_MS = 900L
         private const val TAIL_LINES = 60
-        private const val DUMP_CMD = "logcat -d -v raw -s $LOGCAT_TAG:V -t $TAIL_LINES"
+        private const val DUMP_CMD = "logcat -d -v raw -s $LOGCAT_TAG:V $LOGCAT_TAG_BLE:V -t $TAIL_LINES"
         // Belt-and-suspenders: also grant READ_LOGS so any in-app log read works too. Idempotent;
         // uid-2000 shell may grant it (READ_LOGS has the `development` protection flag). Harmless if it fails.
         private val GRANT_CMD = "pm grant ${com.byd.clusternav.BuildConfig.APPLICATION_ID} android.permission.READ_LOGS"

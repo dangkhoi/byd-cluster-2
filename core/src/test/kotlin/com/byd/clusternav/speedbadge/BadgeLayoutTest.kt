@@ -1,59 +1,19 @@
 package com.byd.clusternav.speedbadge
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Pins the badge placement math so the on-car corner/size UI can't silently drift.
+ * Pins the badge placement math so the on-car placement UI can't silently drift.
  *
- * The four gravity values are the exact Android bitmasks the overlay assigns to `lp.gravity`
- * (android.view.Gravity: TOP=0x30, BOTTOM=0x50, LEFT=0x03, RIGHT=0x05). If someone renumbers a corner id
- * or breaks the OR, a driver's "move the badge" tap would send it to the wrong edge — caught here off-car.
+ * The badge is positioned by its CENTRE in cluster px; the overlay clamps that centre on-screen and converts
+ * it to a TOP|LEFT `x`/`y`. If clampCenter or topLeftFromCenter regresses, a driver's dragged badge could land
+ * partly (or fully) off the cluster — caught here off-car. Default cluster used in tests = 1920×720 (Seal).
  */
 class BadgeLayoutTest {
 
-    @Test
-    fun `top-left corner maps to TOP or LEFT`() {
-        assertEquals(0x30 or 0x03, BadgeLayout.gravityForCorner(BadgeLayout.CORNER_TOP_LEFT))
-        assertEquals(0x33, BadgeLayout.gravityForCorner(0))
-    }
-
-    @Test
-    fun `top-right corner maps to TOP or RIGHT`() {
-        assertEquals(0x30 or 0x05, BadgeLayout.gravityForCorner(BadgeLayout.CORNER_TOP_RIGHT))
-        assertEquals(0x35, BadgeLayout.gravityForCorner(1))
-    }
-
-    @Test
-    fun `bottom-left corner maps to BOTTOM or LEFT`() {
-        assertEquals(0x50 or 0x03, BadgeLayout.gravityForCorner(BadgeLayout.CORNER_BOTTOM_LEFT))
-        assertEquals(0x53, BadgeLayout.gravityForCorner(2))
-    }
-
-    @Test
-    fun `bottom-right corner maps to BOTTOM or RIGHT`() {
-        assertEquals(0x50 or 0x05, BadgeLayout.gravityForCorner(BadgeLayout.CORNER_BOTTOM_RIGHT))
-        assertEquals(0x55, BadgeLayout.gravityForCorner(3))
-    }
-
-    @Test
-    fun `out-of-range corner degrades to the default TOP-RIGHT`() {
-        val defaultGravity = BadgeLayout.gravityForCorner(BadgeLayout.CORNER_DEFAULT)
-        assertEquals(defaultGravity, BadgeLayout.gravityForCorner(-1))
-        assertEquals(defaultGravity, BadgeLayout.gravityForCorner(99))
-        assertEquals(0x35, defaultGravity)
-    }
-
-    @Test
-    fun `clampCorner keeps valid ids and snaps invalid ones to default`() {
-        assertEquals(0, BadgeLayout.clampCorner(0))
-        assertEquals(1, BadgeLayout.clampCorner(1))
-        assertEquals(2, BadgeLayout.clampCorner(2))
-        assertEquals(3, BadgeLayout.clampCorner(3))
-        assertEquals(BadgeLayout.CORNER_DEFAULT, BadgeLayout.clampCorner(-5))
-        assertEquals(BadgeLayout.CORNER_DEFAULT, BadgeLayout.clampCorner(4))
-    }
-
+    // ─── Size clamp (unchanged behaviour, still applied on Prefs read+write) ─────────────────────
     @Test
     fun `clampSizeDp clamps below, within, and above the bounds`() {
         assertEquals(60, BadgeLayout.clampSizeDp(10))     // below min → min
@@ -68,5 +28,57 @@ class BadgeLayoutTest {
         assertEquals(60, BadgeLayout.SIZE_MIN_DP)
         assertEquals(240, BadgeLayout.SIZE_MAX_DP)
         assertEquals(120, BadgeLayout.SIZE_DEFAULT_DP)
+    }
+
+    // ─── clampCenter ─────────────────────────────────────────────────────────────────────────────
+    @Test
+    fun `clampCenter leaves a centre that already fits untouched`() {
+        assertEquals(960 to 360, BadgeLayout.clampCenter(960, 360, 120, 1920, 720))
+    }
+
+    @Test
+    fun `clampCenter pushes the top-left corner overrun inward`() {
+        // centre (0,0), size 120 → smallest valid centre is (half, half) = (60, 60)
+        assertEquals(60 to 60, BadgeLayout.clampCenter(0, 0, 120, 1920, 720))
+        assertEquals(60 to 60, BadgeLayout.clampCenter(-500, -500, 120, 1920, 720))
+    }
+
+    @Test
+    fun `clampCenter pushes the bottom-right corner overrun inward`() {
+        // centre (W,H), size 120 → largest valid centre is (W-half, H-half) = (1860, 660)
+        assertEquals(1860 to 660, BadgeLayout.clampCenter(1920, 720, 120, 1920, 720))
+        assertEquals(1860 to 660, BadgeLayout.clampCenter(9999, 9999, 120, 1920, 720))
+    }
+
+    @Test
+    fun `clampCenter clamps each of the four edges independently`() {
+        assertEquals(60 to 360, BadgeLayout.clampCenter(-100, 360, 120, 1920, 720))   // left edge
+        assertEquals(1860 to 360, BadgeLayout.clampCenter(5000, 360, 120, 1920, 720)) // right edge
+        assertEquals(960 to 60, BadgeLayout.clampCenter(960, -50, 120, 1920, 720))    // top edge
+        assertEquals(960 to 660, BadgeLayout.clampCenter(960, 9999, 120, 1920, 720))  // bottom edge
+    }
+
+    @Test
+    fun `clampCenter centres a badge larger than the cluster instead of throwing`() {
+        // size 800 on a 720-tall cluster: y cannot fit → centred at H/2; x still clamps normally.
+        assertEquals(400 to 360, BadgeLayout.clampCenter(0, 0, 800, 1920, 720))
+    }
+
+    // ─── topLeftFromCenter ─────────────────────────────────────────────────────────────────────
+    @Test
+    fun `topLeftFromCenter subtracts half the size on each axis`() {
+        assertEquals(900 to 300, BadgeLayout.topLeftFromCenter(960, 360, 120))
+        assertEquals(0 to 0, BadgeLayout.topLeftFromCenter(60, 60, 120))
+    }
+
+    @Test
+    fun `clampCenter then topLeftFromCenter always lands fully on-screen`() {
+        val size = 120
+        for (probe in listOf(-9999 to -9999, 0 to 0, 960 to 360, 5000 to 5000, 1920 to 720)) {
+            val (cx, cy) = BadgeLayout.clampCenter(probe.first, probe.second, size, 1920, 720)
+            val (left, top) = BadgeLayout.topLeftFromCenter(cx, cy, size)
+            assertTrue(left in 0..(1920 - size), "left $left off-screen for probe $probe")
+            assertTrue(top in 0..(720 - size), "top $top off-screen for probe $probe")
+        }
     }
 }

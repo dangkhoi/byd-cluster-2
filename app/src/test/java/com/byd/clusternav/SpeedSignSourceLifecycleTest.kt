@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.testsupport.SourceRoots
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -72,11 +73,21 @@ class SpeedSignSourceLifecycleTest {
 
     @Test
     fun `runtime ports are ClusterSpeedBadge and HalSpeedSign with no old ADAS encoding`() {
-        assertTrue(owner.contains("ClusterSpeedBadgePort(appContext)"))
+        assertTrue(owner.contains("ClusterSpeedBadgePort(badgeOverlay)"))
         assertTrue(owner.contains("HalSpeedSignPort(appContext)"))
         assertFalse(owner.contains("distanceMeters"))
         assertFalse(owner.contains("writeSpeedLimit"))
         assertFalse(owner.contains("clearSpeedLimit"))
+    }
+
+    @Test
+    fun `BUG-1 exactly one SpeedBadgeOverlay is constructed and shared with the debug force-show`() {
+        // The real cluster port and the debug force-show must share ONE overlay window — so there is exactly
+        // one `SpeedBadgeOverlay(` construction in the owner and the old separate debugBadgeOverlay is gone.
+        val constructions = Regex("SpeedBadgeOverlay\\(").findAll(owner).count()
+        assertEquals(1, constructions, "expected exactly one SpeedBadgeOverlay( construction in the owner")
+        assertTrue(owner.contains("badgeOverlay"), "shared overlay field must exist")
+        assertFalse(owner.contains("debugBadgeOverlay"), "the separate debug overlay must be removed (BUG-1)")
     }
 
     @Test

@@ -3,57 +3,49 @@ package com.byd.clusternav.speedbadge
 /**
  * PURE placement math for the cluster speed-limit badge overlay.
  *
- * Lives in :core (JVM-only, no Android) so the corner→gravity mapping and the size clamp are unit-testable
- * off-device. The Android `WindowManager.LayoutParams.gravity` field is just an `Int` bitmask, and
- * `android.view.Gravity`'s edge bits are frozen platform constants (they are persisted / serialized, so they
- * can never change): TOP=0x30, BOTTOM=0x50, LEFT=0x03, RIGHT=0x05. Mirroring those four values here lets
- * [gravityForCorner] return a value that [com.byd.clusternav.speedbadge.SpeedBadgeOverlay] can assign
- * straight to `lp.gravity` — with zero Android import in :core (enforced by LayeringRulesTest).
+ * Lives in :core (JVM-only, no Android — enforced by LayeringRulesTest) so the absolute-position clamp and
+ * the size clamp are unit-testable off-device.
+ *
+ * The badge is a `sizePx × sizePx` square positioned by its **CENTRE** in cluster pixel coordinates
+ * (`0..clusterW`, `0..clusterH`). The Android overlay uses `gravity = TOP|LEFT` and assigns `x`/`y` to the
+ * top-left corner, which is [topLeftFromCenter] of the clamped centre. Storing the centre (not a corner id)
+ * lets the driver drag the badge anywhere on the cluster — the old 4-corner model was replaced 2026-08-17
+ * (spec: speed-badge-placement-vietmap-logging §4.3, Part B).
  */
 object BadgeLayout {
-
-    // ─── Corner ids (persisted in Prefs.badgeCorner — STABLE, do not renumber) ───────────────────
-    const val CORNER_TOP_LEFT = 0
-    const val CORNER_TOP_RIGHT = 1
-    const val CORNER_BOTTOM_LEFT = 2
-    const val CORNER_BOTTOM_RIGHT = 3
-
-    /** Default corner = TOP-RIGHT (matches the original hard-coded gravity TOP|END and Prefs default). */
-    const val CORNER_DEFAULT = CORNER_TOP_RIGHT
-
-    // ─── android.view.Gravity edge bits (frozen platform values, mirrored so :core stays Android-free) ──
-    const val GRAVITY_TOP = 0x30
-    const val GRAVITY_BOTTOM = 0x50
-    const val GRAVITY_LEFT = 0x03
-    const val GRAVITY_RIGHT = 0x05
 
     // ─── Badge size bounds (dp) ──────────────────────────────────────────────────────────────────
     const val SIZE_MIN_DP = 60
     const val SIZE_MAX_DP = 240
     const val SIZE_DEFAULT_DP = 120
 
-    /** True for the two bottom corners. Unknown ids fall through to top (the safe default edge). */
-    fun isBottom(corner: Int): Boolean = corner == CORNER_BOTTOM_LEFT || corner == CORNER_BOTTOM_RIGHT
-
-    /** True for the two left corners. Unknown ids fall through to right (the safe default edge). */
-    fun isLeft(corner: Int): Boolean = corner == CORNER_TOP_LEFT || corner == CORNER_BOTTOM_LEFT
-
-    /**
-     * Map a corner id (0..3) to the combined Android gravity bitmask usable as `lp.gravity`.
-     *
-     * Any out-of-range id degrades to TOP-RIGHT (the default corner) rather than throwing, so a corrupt
-     * stored pref can never crash the overlay — it just lands in the default corner.
-     */
-    fun gravityForCorner(corner: Int): Int {
-        val vertical = if (isBottom(corner)) GRAVITY_BOTTOM else GRAVITY_TOP
-        val horizontal = if (isLeft(corner)) GRAVITY_LEFT else GRAVITY_RIGHT
-        return vertical or horizontal
-    }
-
-    /** Clamp a corner id into 0..3, falling back to the default corner for anything out of range. */
-    fun clampCorner(corner: Int): Int =
-        if (corner in CORNER_TOP_LEFT..CORNER_BOTTOM_RIGHT) corner else CORNER_DEFAULT
-
     /** Clamp a badge size (dp) into [SIZE_MIN_DP]..[SIZE_MAX_DP]. Applied on both read and write in Prefs. */
     fun clampSizeDp(sizeDp: Int): Int = sizeDp.coerceIn(SIZE_MIN_DP, SIZE_MAX_DP)
+
+    /**
+     * Clamp a badge **centre** `(cx, cy)` so the `sizePx × sizePx` square stays fully inside
+     * `[0, clusterW] × [0, clusterH]`. Each axis is clamped independently.
+     *
+     * Defensive: if the badge is larger than the cluster on an axis (should not happen after [clampSizeDp],
+     * but a corrupt pref or tiny display could), the badge is centred on that axis rather than throwing.
+     *
+     * @return the clamped centre `(cx, cy)`.
+     */
+    fun clampCenter(cx: Int, cy: Int, sizePx: Int, clusterW: Int, clusterH: Int): Pair<Int, Int> {
+        val half = sizePx / 2
+        return clampAxis(cx, half, clusterW) to clampAxis(cy, half, clusterH)
+    }
+
+    /** Keep a centre value so `[center - half, center + half]` stays within `[0, extent]`. */
+    private fun clampAxis(center: Int, half: Int, extent: Int): Int {
+        val min = half
+        val max = extent - half
+        return if (min > max) extent / 2 else center.coerceIn(min, max)
+    }
+
+    /** Top-left px `(left, top)` of the `sizePx × sizePx` badge whose **centre** is `(cx, cy)`. */
+    fun topLeftFromCenter(cx: Int, cy: Int, sizePx: Int): Pair<Int, Int> {
+        val half = sizePx / 2
+        return (cx - half) to (cy - half)
+    }
 }

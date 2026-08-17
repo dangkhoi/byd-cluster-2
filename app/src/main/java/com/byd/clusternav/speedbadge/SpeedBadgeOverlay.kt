@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.WindowManager
 import com.byd.clusternav.Prefs
 import com.byd.clusternav.contracts.SpeedSignType
@@ -26,6 +27,10 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     private var badgeView: SpeedBadgeView? = null
     private var attached = false
     private var degraded = false
+    // Real display-1 size in px for on-screen clamping (BadgeLayout.clampCenter). Falls back to the Seal
+    // cluster 1920×720 when the real size can't be read, so placement math never divides by a bogus extent.
+    private var clusterW = 1920
+    private var clusterH = 720
 
     init {
         handler.post { initOverlay() }
@@ -39,6 +44,12 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
             degraded = true
             return
         }
+        val size = android.graphics.Point()
+        @Suppress("DEPRECATION") display.getRealSize(size)
+        if (size.x > 0 && size.y > 0) {
+            clusterW = size.x
+            clusterH = size.y
+        }
         val clusterCtx = appContext.createDisplayContext(display)
         clusterWm = clusterCtx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         if (clusterWm == null) {
@@ -47,7 +58,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
             return
         }
         badgeView = SpeedBadgeView(clusterCtx)
-        Log.i(TAG, "overlay initialized for display $CLUSTER_DISPLAY_ID")
+        Log.i(TAG, "overlay initialized for display $CLUSTER_DISPLAY_ID (${clusterW}x$clusterH)")
     }
 
     fun show(speedKph: Int, signType: SpeedSignType?) {
@@ -77,16 +88,20 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     }
 
     /**
-     * Build the overlay LayoutParams from the persisted badge prefs (corner / size / nudge). Read on the
+     * Build the overlay LayoutParams from the persisted badge prefs (absolute centre + size). Read on the
      * main handler (doShow / doRefreshLayout both run there); SharedPreferences is memory-cached so this is
-     * cheap and never hits the notification thread. The corner→gravity map is the tested pure
-     * [com.byd.clusternav.speedbadge.BadgeLayout] in :core; size clamps to 60..240 dp inside [Prefs].
+     * cheap and never hits the notification thread. Uses `gravity = TOP|LEFT` and sets `x`/`y` to the badge's
+     * top-left, computed from the persisted CENTRE via the tested pure [BadgeLayout] in :core: the centre is
+     * first clamped on-screen ([BadgeLayout.clampCenter]) against the real display-1 size, then converted to a
+     * top-left ([BadgeLayout.topLeftFromCenter]). Size clamps to 60..240 dp inside [Prefs].
      */
     private fun buildLayoutParams(): WindowManager.LayoutParams {
         val density = appContext.resources.displayMetrics.density
-        val sizePx = (Prefs.badgeSizeDp(appContext) * density).toInt()
-        val dxPx = (Prefs.badgeDx(appContext) * density).toInt()
-        val dyPx = (Prefs.badgeDy(appContext) * density).toInt()
+        val sizePx = (Prefs.badgeSizeDp(appContext) * density).toInt().coerceAtLeast(1)
+        val (cx, cy) = BadgeLayout.clampCenter(
+            Prefs.badgeCenterX(appContext), Prefs.badgeCenterY(appContext), sizePx, clusterW, clusterH,
+        )
+        val (left, top) = BadgeLayout.topLeftFromCenter(cx, cy, sizePx)
         return WindowManager.LayoutParams(
             sizePx, sizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -95,9 +110,9 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = BadgeLayout.gravityForCorner(Prefs.badgeCorner(appContext))
-            x = dxPx
-            y = dyPx
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = left
+            y = top
         }
     }
 

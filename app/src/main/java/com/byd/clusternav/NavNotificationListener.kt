@@ -233,7 +233,7 @@ class NavNotificationListener : NotificationListenerService() {
         }
         source.start()
         wazeHudSource = source
-        Log.i(TAG, "WazeHUD logcat source started (dadb-shell poll)")
+        Log.i(TAG, "WazeHudLink logcat source started (dadb-shell poll)")
     }
 
     private fun stopWazeHudSource(clearFirst: Boolean = true) {

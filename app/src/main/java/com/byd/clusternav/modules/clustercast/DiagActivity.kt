@@ -91,24 +91,24 @@ class DiagActivity : Activity() {
             setPadding(0, dp(14), 0, dp(2))
         })
         root.addView(buttonRow(
-            controlButton(Lang.t("↖ Trên-trái", "↖ Top-left")) { setBadgeCorner(BadgeLayout.CORNER_TOP_LEFT) },
-            controlButton(Lang.t("↗ Trên-phải", "↗ Top-right")) { setBadgeCorner(BadgeLayout.CORNER_TOP_RIGHT) },
+            controlButton(Lang.t("↖ Trên-trái", "↖ Top-left")) { setBadgeCornerPreset(left = true, top = true) },
+            controlButton(Lang.t("↗ Trên-phải", "↗ Top-right")) { setBadgeCornerPreset(left = false, top = true) },
         ))
         root.addView(buttonRow(
-            controlButton(Lang.t("↙ Dưới-trái", "↙ Bottom-left")) { setBadgeCorner(BadgeLayout.CORNER_BOTTOM_LEFT) },
-            controlButton(Lang.t("↘ Dưới-phải", "↘ Bottom-right")) { setBadgeCorner(BadgeLayout.CORNER_BOTTOM_RIGHT) },
+            controlButton(Lang.t("↙ Dưới-trái", "↙ Bottom-left")) { setBadgeCornerPreset(left = true, top = false) },
+            controlButton(Lang.t("↘ Dưới-phải", "↘ Bottom-right")) { setBadgeCornerPreset(left = false, top = false) },
         ))
         root.addView(buttonRow(
             controlButton(Lang.t("Cỡ −10", "Size −10")) { nudgeBadgeSize(-BADGE_SIZE_STEP_DP) },
             controlButton(Lang.t("Cỡ +10", "Size +10")) { nudgeBadgeSize(BADGE_SIZE_STEP_DP) },
         ))
         root.addView(buttonRow(
-            controlButton("X −8") { nudgeBadgeDx(-BADGE_NUDGE_STEP_DP) },
-            controlButton("X +8") { nudgeBadgeDx(BADGE_NUDGE_STEP_DP) },
+            controlButton("X −$BADGE_MOVE_STEP_PX") { nudgeBadgeCenter(-BADGE_MOVE_STEP_PX, 0) },
+            controlButton("X +$BADGE_MOVE_STEP_PX") { nudgeBadgeCenter(BADGE_MOVE_STEP_PX, 0) },
         ))
         root.addView(buttonRow(
-            controlButton("Y −8") { nudgeBadgeDy(-BADGE_NUDGE_STEP_DP) },
-            controlButton("Y +8") { nudgeBadgeDy(BADGE_NUDGE_STEP_DP) },
+            controlButton("Y −$BADGE_MOVE_STEP_PX") { nudgeBadgeCenter(0, -BADGE_MOVE_STEP_PX) },
+            controlButton("Y +$BADGE_MOVE_STEP_PX") { nudgeBadgeCenter(0, BADGE_MOVE_STEP_PX) },
         ))
         badgeInfo = TextView(this).apply {
             textSize = 13f
@@ -191,12 +191,16 @@ class DiagActivity : Activity() {
     }
 
     // ─── Badge position/size controls ───────────────────────────────────────
-    // Each control persists to Prefs then re-applies the forced badge LIVE via the owner's debug overlay.
-    // The real ClusterSpeedBadgePort overlay shares SpeedBadgeOverlay and re-reads these same Prefs on its
-    // next show(), so tuning here is what the live speed-limit badge will use.
-    private fun setBadgeCorner(corner: Int) {
-        Prefs.setBadgeCorner(applicationContext, corner)
-        applyBadge()
+    // Each control persists the absolute centre / size to Prefs then re-applies the SHARED badge overlay LIVE
+    // via debugRefreshBadgeLayout(). Since BUG-1 unified the overlays, the debug force-show and the real
+    // ClusterSpeedBadgePort are one window reading the same Prefs — so tuning here is exactly what the live
+    // speed-limit badge uses. (The full drag-to-place UI is BadgePlacementView, added in the UI stage.)
+    private fun setBadgeCornerPreset(left: Boolean, top: Boolean) {
+        val sizePx = Prefs.badgeSizeDp(applicationContext)   // dp≈px approximation; overlay re-clamps exactly
+        val half = sizePx / 2
+        val cx = if (left) BADGE_EDGE_MARGIN_PX + half else BADGE_CLUSTER_W - BADGE_EDGE_MARGIN_PX - half
+        val cy = if (top) BADGE_EDGE_MARGIN_PX + half else BADGE_CLUSTER_H - BADGE_EDGE_MARGIN_PX - half
+        saveBadgeCenter(cx, cy, sizePx)
     }
 
     private fun nudgeBadgeSize(deltaDp: Int) {
@@ -205,19 +209,21 @@ class DiagActivity : Activity() {
         applyBadge()
     }
 
-    private fun nudgeBadgeDx(deltaDp: Int) {
+    private fun nudgeBadgeCenter(dxPx: Int, dyPx: Int) {
         val ctx = applicationContext
-        Prefs.setBadgeDx(ctx, (Prefs.badgeDx(ctx) + deltaDp).coerceIn(0, BADGE_NUDGE_MAX_DP))
+        saveBadgeCenter(Prefs.badgeCenterX(ctx) + dxPx, Prefs.badgeCenterY(ctx) + dyPx, Prefs.badgeSizeDp(ctx))
+    }
+
+    /** Clamp on the default cluster (BadgeLayout), persist the badge centre, then push it to the live overlay. */
+    private fun saveBadgeCenter(cx: Int, cy: Int, sizePx: Int) {
+        val ctx = applicationContext
+        val (ccx, ccy) = BadgeLayout.clampCenter(cx, cy, sizePx, BADGE_CLUSTER_W, BADGE_CLUSTER_H)
+        Prefs.setBadgeCenterX(ctx, ccx)
+        Prefs.setBadgeCenterY(ctx, ccy)
         applyBadge()
     }
 
-    private fun nudgeBadgeDy(deltaDp: Int) {
-        val ctx = applicationContext
-        Prefs.setBadgeDy(ctx, (Prefs.badgeDy(ctx) + deltaDp).coerceIn(0, BADGE_NUDGE_MAX_DP))
-        applyBadge()
-    }
-
-    /** Push the freshly-saved Prefs to the force-shown badge and refresh the on-screen readout. */
+    /** Push the freshly-saved Prefs to the shared badge and refresh the on-screen readout. */
     private fun applyBadge() {
         com.byd.clusternav.NavigationSpeedSignOwner.get(applicationContext).debugRefreshBadgeLayout()
         refreshBadgeInfo()
@@ -226,15 +232,9 @@ class DiagActivity : Activity() {
     private fun refreshBadgeInfo() {
         if (!::badgeInfo.isInitialized) return
         val ctx = applicationContext
-        val corner = Prefs.badgeCorner(ctx)
-        val cornerNames = listOf(
-            Lang.t("Trên-trái", "Top-left"), Lang.t("Trên-phải", "Top-right"),
-            Lang.t("Dưới-trái", "Bottom-left"), Lang.t("Dưới-phải", "Bottom-right"),
-        )
-        val name = cornerNames.getOrElse(corner) { "?" }
         badgeInfo.text = Lang.t(
-            "Vị trí: $name · cỡ ${Prefs.badgeSizeDp(ctx)}dp · lệch X=${Prefs.badgeDx(ctx)} Y=${Prefs.badgeDy(ctx)}",
-            "Layout: $name · size ${Prefs.badgeSizeDp(ctx)}dp · offset X=${Prefs.badgeDx(ctx)} Y=${Prefs.badgeDy(ctx)}",
+            "Tâm badge: X=${Prefs.badgeCenterX(ctx)} Y=${Prefs.badgeCenterY(ctx)} (px cụm) · cỡ ${Prefs.badgeSizeDp(ctx)}dp",
+            "Badge centre: X=${Prefs.badgeCenterX(ctx)} Y=${Prefs.badgeCenterY(ctx)} (cluster px) · size ${Prefs.badgeSizeDp(ctx)}dp",
         )
     }
 
@@ -261,7 +261,12 @@ class DiagActivity : Activity() {
 
     private companion object {
         const val BADGE_SIZE_STEP_DP = 10
-        const val BADGE_NUDGE_STEP_DP = 8
-        const val BADGE_NUDGE_MAX_DP = 600   // keep the badge reachable on-screen so a nudge can't lose it
+        const val BADGE_MOVE_STEP_PX = 20         // centre nudge step in cluster px
+        const val BADGE_EDGE_MARGIN_PX = 24       // gap from the cluster edge for the corner presets
+        // Default cluster dims for this diagnostic tuner's presets/clamp only. The overlay uses the REAL
+        // display-1 size + density on show(), so these fallbacks don't affect the live badge — the full
+        // drag-to-place UI is BadgePlacementView (UI stage).
+        const val BADGE_CLUSTER_W = 1920
+        const val BADGE_CLUSTER_H = 720
     }
 }

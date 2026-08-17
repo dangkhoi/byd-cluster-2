@@ -40,7 +40,7 @@ echo "→ Đang lấy log về: $DEST"
 if "$ADB" pull "$SRC" "$DEST" >/dev/null 2>&1; then
   echo "✅ XONG. Log nằm ở: $DEST"
   echo "   Gồm: nav_notif_*.csv (notification), nav_log_*.csv (khoảng cách+nội suy),"
-  echo "        nav_arrow_log_*.csv + nav_arrow_pngs_* (mũi tên), diag/ (ảnh chụp GMaps+cụm)."
+  echo "        nav_arrow_log_*.csv + nav_arrow_pngs_* (mũi tên), diag/ (ảnh chụp màn chính + cụm)."
   open "$DEST" >/dev/null 2>&1 || true   # macOS mở Finder; Linux bỏ qua
 else
   echo "❌ Không lấy được log. Thường do: app CHƯA bật 'Nhật ký chi tiết' (nhấn-giữ dòng phiên bản"

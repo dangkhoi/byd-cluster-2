@@ -20,8 +20,16 @@ import com.byd.clusternav.speedbadge.SpeedBadgeOverlay
  */
 class NavigationSpeedSignOwner private constructor(private val appContext: Context) : AutoCloseable {
     private val processEpoch = SystemClock.elapsedRealtimeNanos().coerceAtLeast(1L)
+
+    // BUG-1 (2026-08-17): exactly ONE SpeedBadgeOverlay on display 1, shared by the real cluster port AND the
+    // debug force-show below — so there is a single badge WINDOW, not two fighting overlays (the old code had
+    // ClusterSpeedBadgePort's own overlay PLUS a separate lazy debug overlay, giving two badges on-car and only
+    // the debug one was adjustable). Declared BEFORE `coordinator` so it is initialized first (Kotlin property
+    // init order) and can be injected into the port. Degrade-safe to no-op off-car (no display 1).
+    private val badgeOverlay = SpeedBadgeOverlay(appContext)
+
     private val coordinator = SpeedSignLifecycleCoordinator(
-        clusterPort = ClusterSpeedBadgePort(appContext),
+        clusterPort = ClusterSpeedBadgePort(badgeOverlay),
         hudPort = HalSpeedSignPort(appContext),
         monotonicNowMs = SystemClock::elapsedRealtime,
     ).also { it.onProcessRestart(processEpoch) }
@@ -61,31 +69,31 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
 
     // ─── T5 (telemetry): force-show badge ────────────────────────────────────
     // Isolates the OVERLAY-RENDER question ("does the badge draw over cast GMaps at all?") from the
-    // VietMap-DATA question. Uses an INDEPENDENT overlay on display 1, NOT the coordinator's port, so the real
-    // speed-sign pipeline (its ports, generation fencing, lifecycle) is never touched. Lazily created — no cost
-    // unless the driver actually taps the debug button.
-    private val debugBadgeOverlay by lazy { SpeedBadgeOverlay(appContext) }
+    // VietMap-DATA question. Operates on the SAME shared [badgeOverlay] as the real speed-sign pipeline
+    // (BUG-1 unify) so the forced badge and the real badge are literally one window — what you tune with the
+    // placement UI is exactly what force-show displays. The coordinator's ports, generation fencing and
+    // lifecycle are untouched; this only calls the overlay's own show/hide/refresh directly.
 
-    /** Debug-only: force a fixed badge (e.g. 50) on the cluster (display 1). Does not affect the live pipeline. */
+    /** Debug-only: force a fixed badge (e.g. 50) on the cluster (display 1). Shares the live overlay window. */
     fun debugForceBadge(valueKph: Int) {
-        runCatching { debugBadgeOverlay.show(valueKph, SpeedSignType.REGULATORY) }
+        runCatching { badgeOverlay.show(valueKph, SpeedSignType.REGULATORY) }
             .onFailure { Log.w(TAG, "debugForceBadge failed", it) }
     }
 
     /** Debug-only: hide the forced badge. */
     fun debugHideBadge() {
-        runCatching { debugBadgeOverlay.hide() }
+        runCatching { badgeOverlay.hide() }
             .onFailure { Log.w(TAG, "debugHideBadge failed", it) }
     }
 
     /**
-     * Debug-only: re-apply the badge layout (corner / size / nudge from Prefs) to the force-shown badge
-     * LIVE, so the driver moving the sliders in DiagActivity sees it move on the cluster immediately.
-     * Degrade-safe. The REAL pipeline badge (ClusterSpeedBadgePort → SpeedBadgeOverlay) reads the same
-     * Prefs on its next show(), so both the forced and the real badge honor the new position/size.
+     * Debug-only: re-apply the badge layout (absolute centre / size from Prefs) to the shared badge LIVE, so
+     * the driver moving the placement controls sees it move/resize on the cluster immediately. Degrade-safe.
+     * Because the real pipeline uses the SAME overlay, this is the one and only badge window — no divergence
+     * between a "debug" badge and the "real" badge.
      */
     fun debugRefreshBadgeLayout() {
-        runCatching { debugBadgeOverlay.refreshLayout() }
+        runCatching { badgeOverlay.refreshLayout() }
             .onFailure { Log.w(TAG, "debugRefreshBadgeLayout failed", it) }
     }
 

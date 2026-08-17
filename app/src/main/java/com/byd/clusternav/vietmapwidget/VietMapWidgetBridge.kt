@@ -240,6 +240,7 @@ class VietMapWidgetBridge private constructor(context: Context) {
                                             )
                                         )
                                         schedulePublish()
+                                        VietMapWidgetVerboseLog.logAlertIcons(appContext, extraction, view, current, h1, h2)
                                     }
                                 }
                             }
@@ -255,6 +256,7 @@ class VietMapWidgetBridge private constructor(context: Context) {
             }
         }
         schedulePublish()
+        VietMapWidgetVerboseLog.logHostViewTree(appContext, extraction, view)
     }
     private fun schedulePublish() {
         main.removeCallbacks(publishDebounced)
@@ -317,6 +319,7 @@ class VietMapWidgetBridge private constructor(context: Context) {
         if (next == published) return
         published = next
         dispatchToListeners(next)
+        VietMapWidgetVerboseLog.logPublishedSnapshot(appContext, combinedFreshness, next, combinedRaw)
     }
     /**
      * Dispatch snapshot to listeners, filtering out stale-generation entries.

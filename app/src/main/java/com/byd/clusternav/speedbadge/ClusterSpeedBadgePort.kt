@@ -1,6 +1,5 @@
 package com.byd.clusternav.speedbadge
 
-import android.content.Context
 import android.util.Log
 import com.byd.clusternav.contracts.SpeedLimitFrame
 import com.byd.clusternav.navigation.SpeedSignOutput
@@ -11,10 +10,12 @@ import com.byd.clusternav.navigation.SpeedSignSubmission
  * SpeedSignPort for CLUSTER output: renders the speed-limit badge as a
  * TYPE_APPLICATION_OVERLAY on display 1 (the instrument cluster).
  *
- * If display 1 is unavailable (off-car), degrades to no-op silently after one log line.
+ * The [SpeedBadgeOverlay] is injected (owned by [com.byd.clusternav.NavigationSpeedSignOwner]) so the real
+ * speed-sign pipeline and the debug force-show share exactly ONE overlay window on display 1 — one badge, not
+ * two (BUG-1, 2026-08-17). If display 1 is unavailable (off-car), the overlay degrades to no-op silently.
  * Generation fencing matches NoopSpeedSignPort semantics exactly.
  */
-class ClusterSpeedBadgePort(context: Context) : SpeedSignPort {
+class ClusterSpeedBadgePort(private val overlay: SpeedBadgeOverlay) : SpeedSignPort {
 
     companion object {
         private const val TAG = "ClusterSpeedBadge"
@@ -24,7 +25,6 @@ class ClusterSpeedBadgePort(context: Context) : SpeedSignPort {
 
     private val lock = Any()
     private var acceptedGeneration = 0L
-    private val overlay = SpeedBadgeOverlay(context.applicationContext)
 
     override fun publish(frame: SpeedLimitFrame, generation: Long): SpeedSignSubmission = synchronized(lock) {
         require(frame.value != null) { "publish requires an active frame" }

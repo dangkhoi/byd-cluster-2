@@ -175,24 +175,28 @@ object Prefs {
     fun disclaimerShown(ctx: Context): Boolean = sp(ctx).getBoolean(K_DISCLAIMER_SHOWN, false)
     fun setDisclaimerShown(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_DISCLAIMER_SHOWN, v).apply()
 
-    // ─── Cluster speed-limit badge overlay: POSITION + SIZE (persisted, live-adjustable) ────────
-    // The badge (SpeedBadgeOverlay, TYPE_APPLICATION_OVERLAY on display 1) used to be hard-coded at
-    // TOP|END / x=24 / y=24 / 120dp — a corner the cast app kept covering. These make it driver-adjustable
-    // from DiagActivity (save → SpeedBadgeOverlay.refreshLayout() applies it LIVE). Corner ids match
-    // BadgeLayout.CORNER_* in :core (0=TL,1=TR,2=BL,3=BR); size clamps to 60..240 dp on BOTH read & write
-    // via the tested BadgeLayout.clampSizeDp so a bad stored value can never blow the overlay up or shrink
-    // it to nothing. Dx/Dy are the dp nudge inward from the chosen corner.
-    private const val K_BADGE_CORNER = "badge_corner"
+    // ─── Cluster speed-limit badge overlay: ABSOLUTE POSITION + SIZE (persisted, live-adjustable) ─
+    // 2026-08-17 (spec speed-badge-placement-vietmap-logging §4.3): the old 4-corner model (corner + dp
+    // nudge) was REPLACED by an absolute CENTRE in cluster px so the driver can drag the badge anywhere on
+    // the cluster, not just to a corner the cast app kept covering. badgeCenterX/Y is the CENTRE of the badge
+    // in display-1 pixel coords; the overlay clamps it on-screen (BadgeLayout.clampCenter) and converts to a
+    // TOP|LEFT x/y (BadgeLayout.topLeftFromCenter). Size still clamps 60..240 dp on BOTH read & write via the
+    // tested BadgeLayout.clampSizeDp so a corrupt stored value can never blow the overlay up or shrink it away.
     private const val K_BADGE_SIZE_DP = "badge_size_dp"
+    private const val K_BADGE_CENTER_X = "badge_center_x"
+    private const val K_BADGE_CENTER_Y = "badge_center_y"
+    // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
+    private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"
     private const val K_BADGE_DY = "badge_dy"
 
-    fun badgeCorner(ctx: Context): Int =
-        com.byd.clusternav.speedbadge.BadgeLayout.clampCorner(
-            sp(ctx).getInt(K_BADGE_CORNER, com.byd.clusternav.speedbadge.BadgeLayout.CORNER_DEFAULT),
-        )
-    fun setBadgeCorner(ctx: Context, v: Int) =
-        sp(ctx).edit().putInt(K_BADGE_CORNER, com.byd.clusternav.speedbadge.BadgeLayout.clampCorner(v)).apply()
+    // Default CENTRE = top-right-ish on the default 1920×720 cluster (1920−140, 80): visible, out of the way of
+    // the centre nav/ETA. The overlay re-clamps with the real display size + density, so it is always on-screen.
+    const val BADGE_DEFAULT_CENTER_X = 1780
+    const val BADGE_DEFAULT_CENTER_Y = 80
+    // Default cluster dims used ONLY for the one-time legacy migration (real dims come from display 1 at render).
+    const val BADGE_MIGRATE_CLUSTER_W = 1920
+    const val BADGE_MIGRATE_CLUSTER_H = 720
 
     fun badgeSizeDp(ctx: Context): Int =
         com.byd.clusternav.speedbadge.BadgeLayout.clampSizeDp(
@@ -201,11 +205,46 @@ object Prefs {
     fun setBadgeSizeDp(ctx: Context, v: Int) =
         sp(ctx).edit().putInt(K_BADGE_SIZE_DP, com.byd.clusternav.speedbadge.BadgeLayout.clampSizeDp(v)).apply()
 
-    fun badgeDx(ctx: Context): Int = sp(ctx).getInt(K_BADGE_DX, 24)
-    fun setBadgeDx(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_DX, v).apply()
+    fun badgeCenterX(ctx: Context): Int {
+        migrateBadgeIfNeeded(ctx)
+        return sp(ctx).getInt(K_BADGE_CENTER_X, BADGE_DEFAULT_CENTER_X)
+    }
+    fun setBadgeCenterX(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_CENTER_X, v).apply()
 
-    fun badgeDy(ctx: Context): Int = sp(ctx).getInt(K_BADGE_DY, 24)
-    fun setBadgeDy(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_DY, v).apply()
+    fun badgeCenterY(ctx: Context): Int {
+        migrateBadgeIfNeeded(ctx)
+        return sp(ctx).getInt(K_BADGE_CENTER_Y, BADGE_DEFAULT_CENTER_Y)
+    }
+    fun setBadgeCenterY(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_BADGE_CENTER_Y, v).apply()
+
+    /**
+     * ONE-TIME migration from the legacy 4-corner model to an absolute centre. Fires only when the old
+     * corner key is present AND the new centre keys are absent, so it runs at most once per install and never
+     * clobbers a user's chosen absolute position (a fresh install just uses the defaults). Computes the centre
+     * from old corner + dp nudge + size on the default 1920×720 cluster, then clamps it on-screen. Approximate
+     * by design (treats stored dp as px on the migration cluster) — it only needs to keep existing users near
+     * their old corner rather than jumping to the default.
+     */
+    private fun migrateBadgeIfNeeded(ctx: Context) {
+        val p = sp(ctx)
+        if (!p.contains(K_BADGE_CORNER)) return                                   // fresh install → defaults
+        if (p.contains(K_BADGE_CENTER_X) || p.contains(K_BADGE_CENTER_Y)) return  // already migrated / user-set
+        val corner = p.getInt(K_BADGE_CORNER, 1)                                  // legacy ids: 0=TL,1=TR,2=BL,3=BR
+        val dx = p.getInt(K_BADGE_DX, 24)
+        val dy = p.getInt(K_BADGE_DY, 24)
+        val sizePx = com.byd.clusternav.speedbadge.BadgeLayout.clampSizeDp(
+            p.getInt(K_BADGE_SIZE_DP, com.byd.clusternav.speedbadge.BadgeLayout.SIZE_DEFAULT_DP),
+        )
+        val half = sizePx / 2
+        val isLeft = corner == 0 || corner == 2
+        val isBottom = corner == 2 || corner == 3
+        val cx = if (isLeft) dx + half else BADGE_MIGRATE_CLUSTER_W - dx - half
+        val cy = if (isBottom) BADGE_MIGRATE_CLUSTER_H - dy - half else dy + half
+        val (ccx, ccy) = com.byd.clusternav.speedbadge.BadgeLayout.clampCenter(
+            cx, cy, sizePx, BADGE_MIGRATE_CLUSTER_W, BADGE_MIGRATE_CLUSTER_H,
+        )
+        p.edit().putInt(K_BADGE_CENTER_X, ccx).putInt(K_BADGE_CENTER_Y, ccy).apply()
+    }
 
     // Toggle theo module (key namespaced "mod_" — không thể đụng các key lõi ở trên). Mặc định TẮT
     // (experiment phải bật tay). Key mồ côi sau khi xoá module = dead data vô hại, không cần dọn.

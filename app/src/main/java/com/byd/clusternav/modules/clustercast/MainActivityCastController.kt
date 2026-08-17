@@ -37,6 +37,7 @@ internal class MainActivityCastController(private val activity: Activity) {
     private lateinit var autostart: CastAutostart
     private lateinit var geometryEditor: CastGeometryEditor
     private lateinit var splitRatioButtons: CastSplitRatioButtons
+    private lateinit var badgePlacement: BadgePlacementController
 
     /** Named state listener for cleanup. */
     private val stateListener: (SimpleCastState) -> Unit = { state ->
@@ -110,6 +111,11 @@ internal class MainActivityCastController(private val activity: Activity) {
 
         geometryEditor = CastGeometryEditor(activity, coordinator)
 
+        // Visual speed-badge placement editor + VietMap bind-status line (spec speed-badge-placement-
+        // vietmap-logging §4.2/§4.3). Relocated into this Cast card from the Nav+HUD card; extracted to its
+        // own controller so this file stays a thin renderer. Degrade-safe (null-tolerant view lookups).
+        badgePlacement = BadgePlacementController(activity).also { it.bind() }
+
         // Master Cast enable switch — reveals/hides the Cast body and drives projection + bubble.
         CastEnableSwitch(activity, coordinator).bind(
             switch = activity.findViewById(R.id.switch_cast_enabled),
@@ -121,7 +127,12 @@ internal class MainActivityCastController(private val activity: Activity) {
         postUi { refresh() }
     }
 
-    fun onResume() { refresh() }
+    fun onResume() {
+        refresh()
+        // Bound state can change while away (e.g. returning from the VietMap diag bind flow) — refresh
+        // the status line here rather than every tick (bindingStatuses enumerates widget providers).
+        if (::badgePlacement.isInitialized) badgePlacement.refreshBindStatus()
+    }
     fun tick() { refresh() }
 
     fun onDestroy() {

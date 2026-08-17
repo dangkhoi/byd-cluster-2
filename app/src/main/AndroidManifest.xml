@@ -4,7 +4,7 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- READ_LOGS: required to read WazeMod HLP/1 data from logcat tag WazeHUD -->
+    <!-- READ_LOGS: required to read WazeMod HLP/1 data from logcat tags WazeHudLink / WazeHudLink-BLE -->
     <uses-permission android:name="android.permission.READ_LOGS" />
     <!-- Tự rebind nav listener sau khi khởi động lại máy (RebindReceiver). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

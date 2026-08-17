@@ -1,0 +1,131 @@
+package com.byd.clusternav.modules.clustercast
+
+import android.app.Activity
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.SeekBar
+import android.widget.TextView
+import com.byd.clusternav.Lang
+import com.byd.clusternav.NavigationSpeedSignOwner
+import com.byd.clusternav.Prefs
+import com.byd.clusternav.R
+import com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
+import com.byd.clusternav.modules.clustercast.simplified.SimpleCastState
+import com.byd.clusternav.speedbadge.BadgeLayout
+import com.byd.clusternav.vietmapwidget.VietMapWidgetBridge
+
+/**
+ * Wires the Cluster-Cast card's "speed badge on the cluster" block: the visual [BadgePlacementView],
+ * the size slider, the preview/reset buttons, and the VietMap bind-status line. Extracted from
+ * [MainActivityCastController] so both files stay thin (< 500 LOC) — this owns ONLY the badge-placement +
+ * bind-status UI; the speed-source spinner and the VietMap-diag button keep their existing MainActivity
+ * listeners (same ids, just relocated into this card).
+ *
+ * Persistence + live apply: a drag writes the clamped centre via [Prefs.setBadgeCenterX]/[Prefs.setBadgeCenterY]
+ * and the slider writes [Prefs.setBadgeSizeDp]; both then call
+ * [NavigationSpeedSignOwner.debugRefreshBadgeLayout] so the ONE shared badge overlay (BUG-1) moves/resizes
+ * on the cluster immediately. Everything is null-tolerant so a layout variant missing an id can't crash Home.
+ */
+internal class BadgePlacementController(private val activity: Activity) {
+
+    private var view: BadgePlacementView? = null
+    private var bindStatus: TextView? = null
+
+    private val density: Float get() = activity.resources.displayMetrics.density
+
+    fun bind() {
+        val container = activity.findViewById<FrameLayout>(R.id.badge_placement_container) ?: return
+        val (clusterW, clusterH) = clusterSize()
+
+        val placement = BadgePlacementView(activity, clusterW, clusterH) { cx, cy ->
+            // Persist the dragged centre (re-clamped on the ACTUAL cluster) + apply the shared badge LIVE.
+            val (ccx, ccy) = BadgeLayout.clampCenter(cx, cy, badgeSizePx(), clusterW, clusterH)
+            Prefs.setBadgeCenterX(activity, ccx)
+            Prefs.setBadgeCenterY(activity, ccy)
+            NavigationSpeedSignOwner.get(activity.applicationContext).debugRefreshBadgeLayout()
+        }
+        placement.setBadgeSizeCluster(badgeSizePx())
+        placement.setBadgeCenterCluster(Prefs.badgeCenterX(activity), Prefs.badgeCenterY(activity))
+        container.removeAllViews()
+        container.addView(
+            placement,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        view = placement
+
+        // Size slider: SeekBar progress 0..(MAX-MIN) maps to dp SIZE_MIN_DP..SIZE_MAX_DP (60..240).
+        activity.findViewById<SeekBar>(R.id.seek_badge_size)?.apply {
+            max = BadgeLayout.SIZE_MAX_DP - BadgeLayout.SIZE_MIN_DP
+            progress = (Prefs.badgeSizeDp(activity) - BadgeLayout.SIZE_MIN_DP).coerceIn(0, max)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    Prefs.setBadgeSizeDp(activity, BadgeLayout.SIZE_MIN_DP + progress)
+                    view?.setBadgeSizeCluster(badgeSizePx())
+                    NavigationSpeedSignOwner.get(activity.applicationContext).debugRefreshBadgeLayout()
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar) {}
+            })
+        }
+
+        // Preview on the cluster (force-show 50 on the shared overlay); Reset to defaults.
+        activity.findViewById<Button>(R.id.btn_badge_preview)?.setOnClickListener {
+            NavigationSpeedSignOwner.get(activity.applicationContext).debugForceBadge(50)
+        }
+        activity.findViewById<Button>(R.id.btn_badge_reset)?.setOnClickListener { resetBadge() }
+
+        bindStatus = activity.findViewById(R.id.txt_speed_source_bind)
+        refreshBindStatus()
+    }
+
+    private fun resetBadge() {
+        Prefs.setBadgeCenterX(activity, Prefs.BADGE_DEFAULT_CENTER_X)
+        Prefs.setBadgeCenterY(activity, Prefs.BADGE_DEFAULT_CENTER_Y)
+        Prefs.setBadgeSizeDp(activity, BadgeLayout.SIZE_DEFAULT_DP)
+        view?.setBadgeSizeCluster(badgeSizePx())
+        view?.setBadgeCenterCluster(Prefs.badgeCenterX(activity), Prefs.badgeCenterY(activity))
+        activity.findViewById<SeekBar>(R.id.seek_badge_size)?.progress =
+            BadgeLayout.SIZE_DEFAULT_DP - BadgeLayout.SIZE_MIN_DP
+        NavigationSpeedSignOwner.get(activity.applicationContext).debugRefreshBadgeLayout()
+    }
+
+    /**
+     * Reflect the VietMap widget bind state in [R.id.txt_speed_source_bind]. Cheap read (prefs + widget
+     * manager), safe without an active listening session; wrapped in runCatching so a widget-manager hiccup
+     * never crashes Home. Called on bind() and whenever Home resumes (e.g. returning from the VietMap diag).
+     */
+    fun refreshBindStatus() {
+        val label = bindStatus ?: return
+        label.text = runCatching {
+            val statuses = VietMapWidgetBridge.get(activity.applicationContext).bindingStatuses()
+            when {
+                statuses.any { !it.providerAvailable } ->
+                    Lang.t("Nguồn: chưa cài VietMap", "Source: VietMap not installed")
+                statuses.isNotEmpty() && statuses.all { it.bound } ->
+                    Lang.t("Nguồn: đã kết nối (tốc độ + cảnh báo)", "Source: connected (speed + alerts)")
+                statuses.any { it.bound } ->
+                    Lang.t("Nguồn: kết nối một phần", "Source: partially connected")
+                else -> Lang.t("Nguồn: chưa kết nối", "Source: not connected")
+            }
+        }.getOrDefault(Lang.t("Nguồn: chưa kết nối", "Source: not connected"))
+    }
+
+    private fun badgeSizePx(): Int = (Prefs.badgeSizeDp(activity) * density).toInt().coerceAtLeast(1)
+
+    /** Cluster W/H from the active cast display config (fallback 1920×720, the Seal cluster). */
+    private fun clusterSize(): Pair<Int, Int> {
+        val wmSize = when (val state = SimpleCastRuntime.coordinator(activity.applicationContext).state) {
+            is SimpleCastState.CastingFull -> state.displayConfig.wmSize
+            is SimpleCastState.CastingSplit -> state.left?.displayConfig?.wmSize ?: state.right?.displayConfig?.wmSize
+            else -> null
+        }
+        val parts = wmSize?.split("x")
+        val w = parts?.getOrNull(0)?.toIntOrNull() ?: 1920
+        val h = parts?.getOrNull(1)?.toIntOrNull() ?: 720
+        return w to h
+    }
+}

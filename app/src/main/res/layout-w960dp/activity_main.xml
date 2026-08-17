@@ -98,30 +98,18 @@
                 <CheckBox android:id="@+id/cb_marquee" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
                     android:text="Chạy chữ tên đường dài (marquee)" android:textColor="@color/text_secondary" />
-                <!-- Nguồn tốc độ + cảnh báo (biển báo · camera) — revive: VietMap/Waze speed-limit signal (research base). -->
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:text="Nguồn tốc độ + cảnh báo (biển báo · camera)"
-                    android:textColor="@color/text_secondary" android:textSize="13sp" />
-                <Spinner android:id="@+id/spinner_speed_source" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
+                <!-- Nguồn tốc độ + cảnh báo đã DỜI sang cột phải (card Cluster Cast · spec §4.2).
+                     btn_nav_stop ở lại cột Nav+HUD này. -->
                 <Button android:id="@+id/btn_reconnect_nav" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                    android:layout_height="wrap_content" android:layout_marginTop="12dp"
                     android:minHeight="@dimen/touch_min" android:background="@drawable/btn_outline"
                     android:text="Cấp quyền / kết nối lại" android:textAllCaps="false"
                     android:textColor="@color/brand" />
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:orientation="horizontal" android:layout_marginTop="8dp">
-                    <Button android:id="@+id/btn_nav_stop" android:layout_width="0dp"
-                        android:layout_height="wrap_content" android:layout_weight="1"
-                        android:layout_marginEnd="4dp" android:minHeight="@dimen/touch_min"
-                        android:background="@drawable/btn_warning_outline" android:text="Dừng toàn bộ"
-                        android:textAllCaps="false" android:textColor="@color/warn_amber" />
-                    <Button android:id="@+id/btn_vietmap_widget_diag" android:layout_width="0dp"
-                        android:layout_height="wrap_content" android:layout_weight="1"
-                        android:layout_marginStart="4dp" android:minHeight="@dimen/touch_min"
-                        android:background="@drawable/btn_outline" android:text="Dữ liệu VietMap"
-                        android:textAllCaps="false" android:textColor="@color/brand" />
-                </LinearLayout>
+                <Button android:id="@+id/btn_nav_stop" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                    android:minHeight="@dimen/touch_min"
+                    android:background="@drawable/btn_warning_outline" android:text="Dừng toàn bộ"
+                    android:textAllCaps="false" android:textColor="@color/warn_amber" />
 
                 <!-- T3 (1.13): Nút vật lý → Trợ lý giọng nói (cùng id với layout dọc). KHÔNG thay chức năng
                      gốc — chỉ nuốt đúng tổ hợp (nút + cử chỉ). Mặc định TẮT. "Học phím…" để gán nút trên xe. -->
@@ -277,6 +265,49 @@
                     android:layout_height="wrap_content" android:orientation="horizontal"
                     android:layout_marginTop="6dp"
                     android:contentDescription="Tỉ lệ chia đôi cụm khi chiếu hai app" />
+
+                <!-- ── Biển báo tốc độ trên cụm (dời từ Nav+HUD · spec §4.2/§4.3) ─────────────────────
+                     Nguồn tốc độ VietMap/Waze + trạng thái bind + UI đặt vị trí/cỡ badge trực quan.
+                     Giữ nguyên id spinner_speed_source + btn_vietmap_widget_diag. -->
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:layout_marginTop="14dp" android:layout_marginBottom="12dp" android:background="@color/divider" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="Biển báo tốc độ trên cụm" android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_status" android:fontFamily="sans-serif-medium" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" android:text="Nguồn tốc độ + cảnh báo (biển báo · camera)"
+                    android:textColor="@color/text_secondary" android:textSize="13sp" />
+                <Spinner android:id="@+id/spinner_speed_source" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
+                <TextView android:id="@+id/txt_speed_source_bind" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Nguồn: chưa kết nối"
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <Button android:id="@+id/btn_vietmap_widget_diag" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
+                    android:background="@drawable/btn_outline" android:text="Kết nối / Dữ liệu VietMap"
+                    android:textAllCaps="false" android:textColor="@color/brand" />
+                <FrameLayout android:id="@+id/badge_placement_container" android:layout_width="match_parent"
+                    android:layout_height="140dp" android:layout_marginTop="10dp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="8dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginEnd="10dp" android:text="Cỡ"
+                        android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    <SeekBar android:id="@+id/seek_badge_size" android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_height="wrap_content" android:minHeight="@dimen/touch_min"
+                        android:contentDescription="Cỡ biển báo tốc độ" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:layout_marginTop="8dp">
+                    <Button android:id="@+id/btn_badge_preview" android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:layout_marginEnd="4dp" android:minHeight="@dimen/touch_min"
+                        android:background="@drawable/btn_outline" android:text="Xem thử trên cụm"
+                        android:textAllCaps="false" android:textColor="@color/brand" />
+                    <Button android:id="@+id/btn_badge_reset" android:layout_width="0dp" android:layout_height="wrap_content"
+                        android:layout_weight="1" android:layout_marginStart="4dp" android:minHeight="@dimen/touch_min"
+                        android:background="@drawable/btn_outline" android:text="Đặt lại"
+                        android:textAllCaps="false" android:textColor="@color/brand" />
+                </LinearLayout>
 
                 <TextView android:id="@+id/cast_recovery_toggle" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center_vertical"

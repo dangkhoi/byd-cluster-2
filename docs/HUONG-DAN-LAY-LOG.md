@@ -66,7 +66,7 @@ Sau khi chạy xong, một thư mục **`clusternav-logs-<ngày-giờ>`** hiện
 - `nav_notif_*.csv` — notification Google Maps xe nhận được (hướng rẽ, cự ly, tên đường).
 - `nav_log_*.csv` — khoảng cách (GMaps thô · nội suy · hiển thị · đọc-màn accessibility · tốc độ xe).
 - `nav_arrow_log_*.csv` + `nav_arrow_pngs_*/` — phân loại mũi tên + **ảnh mũi tên**.
-- `diag/seg-*-gmaps.png` và `diag/seg-*-cluster.png` — **ảnh chụp GMaps + cụm (Giữa+ETA)** mỗi ngã rẽ.
+- `diag/seg-*-main.png`, `diag/seg-*-cluster.png` và `diag/seg-*-cluster-overlay.png` — **ảnh chụp màn chính + cụm (OEM composite) + lớp overlay cụm (có badge)** mỗi ngã rẽ.
 
 **Gửi nguyên cả thư mục đó về cho mình** (nén .zip rồi gửi là gọn nhất).
 

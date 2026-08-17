@@ -8,8 +8,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
@@ -102,9 +105,79 @@ internal class VietMapWidgetExtraction(context: Context) {
         hashExecutor.shutdownNow()
     }
 
+    /** Resolve the two alert [ImageView]s from the applied RemoteViews tree (verbose PNG capture). */
+    fun alertImageViews(root: AppWidgetHostView): Pair<ImageView?, ImageView?> {
+        val first = view(root, VietMapWidgetViewNames.FIRST_ALERT_IMAGE) as? ImageView
+        val second = view(root, VietMapWidgetViewNames.SECOND_ALERT_IMAGE) as? ImageView
+        return first to second
+    }
+
+    /**
+     * Verbose discovery (spec §4.4 C2): recursively walk the applied RemoteViews hierarchy and surface
+     * EVERY leaf we might care about — including fields the app does NOT yet parse — as flat strings:
+     *   • `TV:<resEntryNameOrHex>=<text>`      for every [TextView] (and subclasses)
+     *   • `IV:<resEntryNameOrHex>=visible|gone` for every [ImageView] (and subclasses)
+     * The id name is resolved via the VietMap package [remoteResources] ([Resources.getResourceEntryName]);
+     * ids without a name (or id==0) fall back to a `0x`-prefixed hex. Pure read of the view tree — must be
+     * called on the thread that owns the views (main); the caller hands the result off-thread for the write.
+     */
+    fun dumpAllViews(root: View): List<String> {
+        val out = ArrayList<String>()
+        walkViews(root, out)
+        return out
+    }
+
+    private fun walkViews(v: View, out: MutableList<String>) {
+        when (v) {
+            is TextView -> out.add("TV:${resEntryName(v.id)}=${v.text?.toString().orEmpty()}")
+            is ImageView -> out.add("IV:${resEntryName(v.id)}=${if (v.visibility == View.VISIBLE) "visible" else "gone"}")
+        }
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) walkViews(v.getChildAt(i), out)
+        }
+    }
+
+    private fun resEntryName(id: Int): String {
+        if (id == 0 || id == View.NO_ID) return "0x0"
+        return try {
+            remoteResources?.getResourceEntryName(id) ?: "0x%08x".format(id)
+        } catch (_: Resources.NotFoundException) {
+            "0x%08x".format(id)
+        }
+    }
+
+    /**
+     * Verbose discovery (spec §4.4 C3): write the alert icon bitmap to `dir/vietmap-alert-<hash>.png`
+     * ONCE per unique [hash] (skip if the file already exists) so off-car we can eyeball what each
+     * camera/police/… icon actually looks like. Pixels are captured on the calling (main) thread — drawable
+     * access requires it, reusing the same capture used for hashing — then the PNG encode + write are
+     * deferred to [hashExecutor]. Degrade-safe: every failure is swallowed.
+     */
+    fun saveAlertImagePng(image: ImageView, hash: String, dir: File) {
+        val target = File(dir, "vietmap-alert-$hash.png")
+        if (target.exists()) return
+        val captured = capturePixelsSized(image) ?: return
+        hashExecutor.execute {
+            runCatching {
+                if (target.exists()) return@runCatching
+                if (!dir.exists()) dir.mkdirs()
+                val bitmap = Bitmap.createBitmap(captured.width, captured.height, Bitmap.Config.ARGB_8888)
+                bitmap.setPixels(captured.pixels, 0, captured.width, 0, 0, captured.width, captured.height)
+                val part = File(dir, "vietmap-alert-$hash.png.part")
+                FileOutputStream(part).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+                if (!part.renameTo(target)) part.delete()
+            }
+        }
+    }
+
     // --- Private helpers ---
 
-    private fun capturePixels(image: ImageView): IntArray? {
+    private class CapturedPixels(val pixels: IntArray, val width: Int, val height: Int)
+
+    private fun capturePixels(image: ImageView): IntArray? = capturePixelsSized(image)?.pixels
+
+    private fun capturePixelsSized(image: ImageView): CapturedPixels? {
         val drawable = image.drawable ?: return null
         return try {
             val width = drawable.intrinsicWidth.takeIf { it > 0 }?.coerceAtMost(MAX_HASH_EDGE) ?: 1
@@ -116,7 +189,7 @@ internal class VietMapWidgetExtraction(context: Context) {
             val pixels = IntArray(width * height)
             bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
             bitmap.recycle()
-            pixels
+            CapturedPixels(pixels, width, height)
         } catch (error: RuntimeException) {
             Log.w(TAG, "pixel capture failed: ${error.javaClass.simpleName}")
             null
