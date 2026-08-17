@@ -4,22 +4,23 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import com.byd.clusternav.contracts.SpeedLimitSource
-import com.byd.clusternav.navigation.NoopSpeedSignPort
 import com.byd.clusternav.navigation.SpeedSignLifecycleCoordinator
 import com.byd.clusternav.navigation.SpeedSignOutput
+import com.byd.clusternav.speedbadge.ClusterSpeedBadgePort
+import com.byd.clusternav.speedbadge.HalSpeedSignPort
 
 /**
  * Android lifecycle facade for the typed speed-sign coordinator.
  *
- * T7 is deliberately disabled at the vehicle boundary: cluster and HUD are distinct NOOP ports.
- * Source/master/output events and clear fencing execute normally, but no frame can become a HAL,
- * property, shell, or candidate write before a separately field-proven T11 profile exists.
+ * Cluster port renders a speed-limit badge overlay on display 1 (TYPE_APPLICATION_OVERLAY).
+ * HUD port writes STATISTICS_ISA_CURRENT_ROAD_SPEED_LIMIT_SET (0x4B40001C) via BydHal reflection.
+ * Both ports degrade gracefully to no-op off-car (no display 1 / no HAL device).
  */
 class NavigationSpeedSignOwner private constructor(private val appContext: Context) : AutoCloseable {
     private val processEpoch = SystemClock.elapsedRealtimeNanos().coerceAtLeast(1L)
     private val coordinator = SpeedSignLifecycleCoordinator(
-        clusterPort = NoopSpeedSignPort(SpeedSignOutput.CLUSTER),
-        hudPort = NoopSpeedSignPort(SpeedSignOutput.HUD),
+        clusterPort = ClusterSpeedBadgePort(appContext),
+        hudPort = HalSpeedSignPort(appContext),
         monotonicNowMs = SystemClock::elapsedRealtime,
     ).also { it.onProcessRestart(processEpoch) }
 
@@ -68,7 +69,7 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
             instance ?: NavigationSpeedSignOwner(context.applicationContext).also {
                 instance = it
                 it.syncFromPrefs()
-                Log.i(TAG, "typed lifecycle active with independent NOOP cluster/HUD ports")
+                Log.i(TAG, "typed lifecycle active with ClusterSpeedBadge + HalSpeedSign ports")
             }
         }
     }

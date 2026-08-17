@@ -71,11 +71,10 @@ class SpeedSignSourceLifecycleTest {
     }
 
     @Test
-    fun `runtime ports are independent NOOP and old distance ADAS encoding is absent`() {
-        assertTrue(owner.contains("NoopSpeedSignPort(SpeedSignOutput.CLUSTER)"))
-        assertTrue(owner.contains("NoopSpeedSignPort(SpeedSignOutput.HUD)"))
+    fun `runtime ports are ClusterSpeedBadge and HalSpeedSign with no old ADAS encoding`() {
+        assertTrue(owner.contains("ClusterSpeedBadgePort(appContext)"))
+        assertTrue(owner.contains("HalSpeedSignPort(appContext)"))
         assertFalse(owner.contains("distanceMeters"))
-        assertFalse(owner.contains("BydHal"))
         assertFalse(owner.contains("writeSpeedLimit"))
         assertFalse(owner.contains("clearSpeedLimit"))
     }

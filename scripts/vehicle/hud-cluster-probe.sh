@@ -26,7 +26,7 @@ set -uo pipefail
 
 # ── config ──────────────────────────────────────────────────────────────────
 SERIAL="${1:-${CAR_HOST:-}}"
-SEL="${SEL:-A B C D}"
+SEL="${SEL:-A B C D E}"
 OBSERVE="${OBSERVE:-manual}"
 DRY="${DRY:-0}"
 JAR_SRC="${JAR_SRC:-$(cd "$(dirname "$0")/../.." && pwd)/../apks/navopen-v3.jar}"
@@ -276,6 +276,50 @@ main(){
     log "   ADAS ACC_MODE_ARHUD(r): $(hal_get adas 29C0000C)"
     log "   ADAS HUD_SYSTEM_STATUS(r): $(hal_get adas 17F00008)"
     toggle_case "D1-SMART-SLC" adas 32B0E018 1FF02012 1 0 "ADAS smart-speed-limit-control (biển tốc độ HUD?)"
+  ;; esac
+
+  # ── GROUP E: APP speed-limit badge overlay on cluster (display 1) + HAL write ──
+  case " $SEL " in *" E "*)
+    hr; log "▶ E preflight: app installed + overlay"
+    local ver
+    ver="$(adb_sh "dumpsys package com.byd.clusternav2 | grep versionName" 2>/dev/null | awk -F= '{print $2}' | tr -d '[:space:]')"
+    if [ -z "$ver" ]; then
+      log "   ⛔ com.byd.clusternav2 NOT INSTALLED — skip Group E"; STOP_REQUESTED=0
+    else
+      log "   app version=$ver"
+      # E1: overlay window present on display 1?
+      if gate "E1-OVERLAY"; then
+        hr; log "▶ E1 — overlay window on display 1"
+        local wdump
+        wdump="$(adb_sh "dumpsys window windows | grep -i speedbadge" 2>/dev/null)"
+        if [ -n "$wdump" ]; then log "   ✅ overlay found: $wdump"
+        else log "   ⚠ overlay NOT found in window dump (app may need Nav+HUD enabled)"; fi
+      fi
+      # E2: baseline ISA read
+      if gate "E2-ISA-BASELINE"; then
+        hr; log "▶ E2 — ISA baseline read"
+        local isa_before
+        isa_before="$(hal_get statistic 4B40001C)"
+        log "   ISA 0x4B40001C baseline=$isa_before"
+      fi
+      # E3: operator observe (drive past speed sign with VietMap/Waze active)
+      if gate "E3-DRIVE-OBSERVE"; then
+        hr; log "▶ E3 — operator: mở VietMap/Waze, chạy qua biển tốc độ, NHÌN CỤM (display 1)"
+        observe "CỤM (display 1): có badge tốc độ (vòng đỏ + số) ở góc trên-phải không?"
+      fi
+      # E4: ISA read-back after app write
+      if gate "E4-ISA-READBACK"; then
+        hr; log "▶ E4 — ISA read-back after app write"
+        local isa_after
+        isa_after="$(hal_get statistic 4B40001C)"
+        log "   ISA 0x4B40001C after=$isa_after (baseline was ${isa_before:-?})"
+        if [ "${isa_after:-NA}" != "NA" ] && [ "${isa_after:-}" != "${isa_before:-}" ]; then
+          log "   ✅ ISA CHANGED — HalSpeedSignPort wrote successfully"
+        else
+          log "   ⚠ ISA unchanged or unreadable — check app logs"
+        fi
+      fi
+    fi
   ;; esac
 
   hr
