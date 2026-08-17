@@ -11,8 +11,15 @@ import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.os.SystemClock
 import android.util.Log
 import com.byd.clusternav.navigation.NavigationPermission
+import com.byd.clusternav.contracts.SpeedLimitSource
+import com.byd.clusternav.vietmapwidget.VietMapWidgetBridge
+import com.byd.clusternav.vietmapwidget.VietMapWidgetFreshness
+import com.byd.clusternav.vietmapwidget.VietMapWidgetOwner
+import com.byd.clusternav.modules.wazehud.WazeHudSource
+import com.byd.clusternav.modules.wazehud.WazeHudAvailability
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
 
 /**
@@ -33,8 +40,18 @@ class NavNotificationListener : NotificationListenerService() {
         val MAPS_PACKAGES = setOf(
             "com.google.android.apps.maps",
             "app.revanced.android.apps.maps",
+            // ★ Revive: NotificationParser đã biết đọc field-đảo của VietMap (đường ở title, cự ly ở text —
+            // xem NotificationParser.kt) từ trước. Gói xác nhận qua dump thật (WmParseTest: "vn.vietmap.live/.MainActivity").
+            "vn.vietmap.live",
+            // WazeMod — HUD signal source, dùng song song GMaps
+            "com.chisadin.wazemod",
+            "com.waze",
         )
     }
+
+    // ★ Revive (2026-08-17): speed-sign owner (VietMap/Waze speed-limit signal). Port ở 1.21 = Noop (chưa chạy) —
+    // đây là base research (xem NavigationSpeedSignOwner + docs/specs/waze-vietmap-signal-revival.html).
+    private val speedSignOwner by lazy { NavigationSpeedSignOwner.get(applicationContext) }
 
     /**
      * R7 (#2): per-session arrival + distance-regression guard (pure logic in :core). Reset on
@@ -66,6 +83,16 @@ class NavNotificationListener : NotificationListenerService() {
             ClusterNavLaneWidget.onNavIdle()
             Log.i(TAG, "binding thả -> stop authoritative session (nguồn dừng)")
         }.onFailure { Log.e(TAG, "stop on disconnect failed", it) }
+        // ★ Revive: teardown tín hiệu (speed-sign + VietMap widget bridge + Waze HUD poll) — cô lập trong runCatching
+        // để KHÔNG chặn keep-alive stop ở trên (B1 1.30) nếu nguồn tín hiệu ném lỗi.
+        runCatching {
+            speedSignOwner.onProviderDisconnected(SpeedLimitSource.VIETMAP)
+            speedSignOwner.onProviderDisconnected(SpeedLimitSource.WAZE)
+            stopWazeHudSource(clearFirst = false)
+            val bridge = VietMapWidgetBridge.get(applicationContext)
+            bridge.stop(VietMapWidgetOwner.NAVIGATION)
+            bridge.removeListener(speedLimitPusher)
+        }.onFailure { Log.e(TAG, "signal teardown on disconnect failed", it) }
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.UNKNOWN) }
             .onFailure { Log.e(TAG, "permission state update failed", it) }
         runCatching {
@@ -79,6 +106,16 @@ class NavNotificationListener : NotificationListenerService() {
         // D1 (closeout 1.28): entry point that always runs on (re)bind → refresh the in-memory verbose gate
         // (set BEFORE the enabled early-return so the gate is correct even while Nav+HUD is OFF).
         NavLog.init(applicationContext)
+        // ★ Revive: khởi động nguồn tín hiệu (speed-sign sync + VietMap widget bridge + Waze HUD logcat poll).
+        // GIỮ hành vi 1.21: chạy TRƯỚC cổng Prefs.enabled (nguồn poll độc lập). ⚠️ Waze poll logcat ~4000×/h
+        // (hao pin — bản chất 1.21); base research, tối ưu sau (spec revival Q4). Cô lập trong runCatching.
+        runCatching {
+            speedSignOwner.syncFromPrefs()
+            val bridge = VietMapWidgetBridge.get(applicationContext)
+            bridge.start(VietMapWidgetOwner.NAVIGATION)
+            bridge.addListener(speedLimitPusher)
+            startWazeHudSource()
+        }.onFailure { Log.e(TAG, "signal source start failed", it) }
         if (!Prefs.enabled(applicationContext)) return
         SourceArbiter.clear()
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.GRANTED) }
@@ -95,6 +132,15 @@ class NavNotificationListener : NotificationListenerService() {
 
     override fun onDestroy() {
         connected = false
+        // ★ Revive: teardown tín hiệu (cô lập).
+        runCatching {
+            speedSignOwner.onSourceStopped(SpeedLimitSource.VIETMAP)
+            speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
+            stopWazeHudSource(clearFirst = false)
+            val bridge = VietMapWidgetBridge.get(applicationContext)
+            bridge.stop(VietMapWidgetOwner.NAVIGATION)
+            bridge.removeListener(speedLimitPusher)
+        }.onFailure { Log.e(TAG, "signal teardown on destroy failed", it) }
         super.onDestroy()
     }
 
@@ -110,7 +156,92 @@ class NavNotificationListener : NotificationListenerService() {
     private fun ensureBridgeStarted() {
         if (connected) return
         connected = true
+        // ★ Revive: an toàn khởi động nguồn tín hiệu nếu onListenerConnected chưa (re)fire sau khi process restart.
+        runCatching {
+            val bridge = VietMapWidgetBridge.get(applicationContext)
+            bridge.start(VietMapWidgetOwner.NAVIGATION)
+            bridge.addListener(speedLimitPusher)
+            startWazeHudSource()
+        }.onFailure { Log.e(TAG, "signal source start (safety net) failed", it) }
         Log.i(TAG, "listener connected (safety net from onNotificationPosted)")
+    }
+
+    // ─── ★ Revive (2026-08-17): nguồn tín hiệu speed-limit (VietMap widget push + Waze HUD logcat poll) ───
+    // Bản chất 1.21: speed ports = Noop (do-nothing), WazeHudSource poll logcat qua dadb-shell ~4000×/giờ (hao pin).
+    // Đây là base research — "làm nó chạy thật" (port HAL, bỏ poll) là feature riêng sau (spec revival Q4).
+    private val speedLimitPusher: (com.byd.clusternav.vietmapwidget.VietMapWidgetSnapshot) -> Unit = { snapshot ->
+        speedSignOwner.onSourceSelected(Prefs.speedLimitSource(applicationContext))
+        if (snapshot.speedFreshness == VietMapWidgetFreshness.FRESH) {
+            speedSignOwner.onSpeedLimit(
+                source = SpeedLimitSource.VIETMAP,
+                valueKph = snapshot.speedLimitKph ?: 0,
+                observedAtMonotonicMs = snapshot.speedUpdatedAtElapsedMs ?: SystemClock.elapsedRealtime(),
+            )
+        } else {
+            speedSignOwner.onProviderDisconnected(SpeedLimitSource.VIETMAP)
+        }
+    }
+
+    private var wazeHudSource: WazeHudSource? = null
+
+    private fun startWazeHudSource() {
+        if (wazeHudSource != null) return
+        // Read logcat via the privileged dadb shell (uid 2000). An app-uid `logcat` cannot see
+        // WazeMod's logs without effective READ_LOGS; the shell has full log access (see WazeHudSource).
+        val source = WazeHudSource { cmd ->
+            runCatching {
+                val r = com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
+                    .coordinator(applicationContext).executeShell(cmd)
+                if (r.success) r.stdout else null
+            }.getOrNull()
+        }
+        source.availabilityListener = { availability ->
+            when (availability) {
+                WazeHudAvailability.AVAILABLE -> Unit
+                WazeHudAvailability.UNAVAILABLE ->
+                    speedSignOwner.onProviderDisconnected(SpeedLimitSource.WAZE)
+                WazeHudAvailability.STOPPED ->
+                    speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
+            }
+        }
+        source.listener = listener@{ state ->
+            val ctx = applicationContext
+            val masterEnabled = Prefs.enabled(ctx)
+            speedSignOwner.onMasterEnabled(masterEnabled)
+            speedSignOwner.onSourceSelected(Prefs.speedLimitSource(ctx))
+
+            // Navigation requires an active route; speed acquisition below remains route-independent.
+            if (masterEnabled && state.navigating) {
+                val navMode = Prefs.sourceMode(ctx)
+                if ((navMode == Prefs.PREFER_WAZE || navMode == Prefs.AUTO) &&
+                    SourceArbiter.shouldFeed("com.chisadin.wazemod", navMode, System.currentTimeMillis())) {
+                    ClusterBroadcaster.selectSource("com.chisadin.wazemod")
+                    val navState = source.toNavState(state)
+                    ClusterBroadcaster.emitLane(ctx, navState)
+                    ClusterBroadcaster.emitHud(ctx, navState)
+                    ClusterNavLaneWidget.onNavActive(ctx)
+                }
+            }
+
+            // HLP lim=0/missing is a real clear event. Never gate speed on `navigating`.
+            speedSignOwner.onSpeedLimit(
+                source = SpeedLimitSource.WAZE,
+                valueKph = state.speedLimitKmh,
+                observedAtMonotonicMs = SystemClock.elapsedRealtime(),
+            )
+        }
+        source.start()
+        wazeHudSource = source
+        Log.i(TAG, "WazeHUD logcat source started (dadb-shell poll)")
+    }
+
+    private fun stopWazeHudSource(clearFirst: Boolean = true) {
+        val source = wazeHudSource ?: return
+        if (clearFirst) speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
+        source.listener = null
+        source.availabilityListener = null
+        source.stop()
+        wazeHudSource = null
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
