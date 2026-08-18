@@ -110,6 +110,12 @@ echo --- 38B00028 HUD_NAV_CONTENT_STATUS --- >> "%OUT%"
 "%ADB%" %TGT% shell "%NAV% setting 38B00028" >> "%OUT%" 2>&1
 echo --- 38B0001E HUD_ADAS_STATUS --- >> "%OUT%"
 "%ADB%" %TGT% shell "%NAV% setting 38B0001E" >> "%OUT%" 2>&1
+echo --- 38B00020 (xe minh: provisioned=0) --- >> "%OUT%"
+"%ADB%" %TGT% shell "%NAV% setting 38B00020" >> "%OUT%" 2>&1
+echo --- 38B00022 (xe minh: provisioned=0) --- >> "%OUT%"
+"%ADB%" %TGT% shell "%NAV% setting 38B00022" >> "%OUT%" 2>&1
+echo --- 38B00018 (xe minh: -10013) --- >> "%OUT%"
+"%ADB%" %TGT% shell "%NAV% setting 38B00018" >> "%OUT%" 2>&1
 
 echo.
 echo [4/6] Doc guide oversea/domestic...
