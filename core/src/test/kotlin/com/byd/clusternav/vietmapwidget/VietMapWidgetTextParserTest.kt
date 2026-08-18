@@ -153,4 +153,138 @@ class VietMapWidgetTextParserTest {
             ),
         )
     }
+
+    // ─── VMAlertWidgetProvider: upcoming/enforced speed-limit-ahead (ALERT_FULL slot) ───
+
+    @Test
+    fun `full-alert view names target the VMAlertWidgetProvider warning_speed views`() {
+        assertEquals("warning_speed_limit_widget_text_view", VietMapWidgetViewNames.WARNING_SPEED_LIMIT)
+        assertEquals("warning_speed_distance_text_view", VietMapWidgetViewNames.WARNING_SPEED_DISTANCE)
+        assertEquals(
+            "second_warning_speed_limit_widget_text_view",
+            VietMapWidgetViewNames.SECOND_WARNING_SPEED_LIMIT,
+        )
+        // Anchor requires BOTH first-pair views; the second_* siblings are optional.
+        assertTrue(VietMapWidgetTextParser.supportsAlertFullShape(VietMapWidgetViewNames.alertFullRequired))
+        assertFalse(
+            VietMapWidgetTextParser.supportsAlertFullShape(setOf(VietMapWidgetViewNames.WARNING_SPEED_LIMIT)),
+        )
+    }
+
+    @Test
+    fun `parseUpcomingSpeedLimit parses limit int plus distance and collapses sentinels`() {
+        val m = VietMapWidgetTextParser.parseUpcomingSpeedLimit("60", "300 m")
+        assertEquals(60, m.limitKph)
+        assertEquals(300, m.distanceMeters)
+        assertEquals("300 m", m.distanceText)
+
+        val km = VietMapWidgetTextParser.parseUpcomingSpeedLimit("80", "1,2 km")
+        assertEquals(80, km.limitKph)
+        assertEquals(1_200, km.distanceMeters)
+
+        // Idle sentinels collapse to null on both fields.
+        val idle = VietMapWidgetTextParser.parseUpcomingSpeedLimit("--", "--")
+        assertNull(idle.limitKph)
+        assertNull(idle.distanceMeters)
+        assertNull(idle.distanceText)
+
+        // Out-of-range limit rejected; unknown-unit distance keeps text but no metres.
+        val partial = VietMapWidgetTextParser.parseUpcomingSpeedLimit("400", "gần camera")
+        assertNull(partial.limitKph)
+        assertEquals("gần camera", partial.distanceText)
+        assertNull(partial.distanceMeters)
+    }
+
+    @Test
+    fun `composeSnapshot maps upcoming fields when full-alert is fresh and keeps combined on speed plus alerts`() {
+        val composed = VietMapWidgetTextParser.composeSnapshot(
+            speed = VietMapProviderState(
+                VietMapWidgetRawValues(currentSpeedText = "42", speedLimitText = "50"),
+                VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alerts = VietMapProviderState(
+                VietMapWidgetRawValues(firstAlertDistanceText = "250 m", firstAlertImageVisible = true),
+                VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alertFull = VietMapProviderState(
+                VietMapWidgetRawValues(
+                    upcomingSpeedLimitText = "60",
+                    upcomingDistanceText = "300 m",
+                    secondUpcomingSpeedLimitText = "40",
+                    secondUpcomingDistanceText = "1 km",
+                ),
+                VietMapWidgetFreshness.FRESH, null, 11_000L,
+            ),
+            providerVersion = "3.3.4",
+            nowElapsedMs = 12_000L,
+        )
+        val s = composed.snapshot
+        assertEquals(60, s.upcomingLimitKph)
+        assertEquals(300, s.upcomingDistanceMeters)
+        assertEquals("300 m", s.upcomingDistanceText)
+        assertEquals(40, s.secondUpcomingLimitKph)
+        assertEquals(1_000, s.secondUpcomingDistanceMeters)
+        assertEquals(VietMapWidgetFreshness.FRESH, s.alertFullFreshness)
+        assertEquals(11_000L, s.alertFullUpdatedAtElapsedMs)
+        // Existing fields still parse; combined updatedAt stays min(speed, alerts) — ignores full-alert's 11_000.
+        assertEquals(42, s.currentSpeedKph)
+        assertEquals(50, s.speedLimitKph)
+        assertEquals(10_000L, s.updatedAtElapsedMs)
+        // The sticky-alert capture is preserved through the combinedRaw handed to logging.
+        assertEquals("250 m", composed.combinedRaw.firstAlertDistanceText)
+        assertTrue(composed.combinedRaw.firstAlertImageVisible)
+    }
+
+    @Test
+    fun `composeSnapshot never lets an unavailable full-alert mask the working speed slot`() {
+        val composed = VietMapWidgetTextParser.composeSnapshot(
+            speed = VietMapProviderState(
+                VietMapWidgetRawValues(currentSpeedText = "55", speedLimitText = "60"),
+                VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alerts = VietMapProviderState(
+                VietMapWidgetRawValues(), VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alertFull = VietMapProviderState(
+                raw = null,
+                freshness = VietMapWidgetFreshness.UNAVAILABLE,
+                reason = VietMapWidgetUnavailableReason.NOT_BOUND,
+                updatedAtElapsedMs = null,
+            ),
+            providerVersion = "3.3.4",
+            nowElapsedMs = 12_000L,
+        )
+        val s = composed.snapshot
+        // Combined + speed stay FRESH; full-alert is independently UNAVAILABLE.
+        assertEquals(VietMapWidgetFreshness.FRESH, s.freshness)
+        assertEquals(VietMapWidgetFreshness.FRESH, s.speedFreshness)
+        assertEquals(VietMapWidgetFreshness.UNAVAILABLE, s.alertFullFreshness)
+        assertEquals(55, s.currentSpeedKph)
+        assertEquals(60, s.speedLimitKph)
+        // No upcoming leaked while the full-alert slot is down.
+        assertNull(s.upcomingLimitKph)
+        assertNull(s.upcomingDistanceText)
+    }
+
+    @Test
+    fun `composeSnapshot hides upcoming values while full-alert is only stale`() {
+        val composed = VietMapWidgetTextParser.composeSnapshot(
+            speed = VietMapProviderState(
+                VietMapWidgetRawValues(currentSpeedText = "40", speedLimitText = "50"),
+                VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alerts = VietMapProviderState(
+                VietMapWidgetRawValues(), VietMapWidgetFreshness.FRESH, null, 10_000L,
+            ),
+            alertFull = VietMapProviderState(
+                VietMapWidgetRawValues(upcomingSpeedLimitText = "60", upcomingDistanceText = "200 m"),
+                VietMapWidgetFreshness.STALE, null, 5_000L,
+            ),
+            providerVersion = "3.3.4",
+            nowElapsedMs = 12_000L,
+        )
+        assertNull(composed.snapshot.upcomingLimitKph)
+        assertNull(composed.snapshot.upcomingDistanceMeters)
+        assertEquals(VietMapWidgetFreshness.STALE, composed.snapshot.alertFullFreshness)
+    }
 }

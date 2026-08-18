@@ -78,6 +78,11 @@ internal object VietMapWidgetVerboseLog {
                 a2Dist = combinedRaw.secondAlertDistanceText,
                 a2ImgVisible = combinedRaw.secondAlertImageVisible,
                 a2ImgHash = combinedRaw.secondAlertImageHash,
+                // ALERT_FULL upcoming/enforced limit ahead — read from the already-parsed snapshot fields.
+                upLimit = snapshot.upcomingLimitKph,
+                upDist = snapshot.upcomingDistanceText,
+                up2Limit = snapshot.secondUpcomingLimitKph,
+                up2Dist = snapshot.secondUpcomingDistanceText,
             )
         }
     }

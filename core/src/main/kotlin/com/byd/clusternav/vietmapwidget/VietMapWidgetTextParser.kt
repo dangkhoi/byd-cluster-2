@@ -17,6 +17,16 @@ object VietMapWidgetViewNames {
     const val PLACE_HOLDER = "place_holder_textView"
     const val SECOND_PLACE_HOLDER = "second_place_holder_textView"
 
+    // VMAlertWidgetProvider (the FULL alert widget, VietMap 3.3.4) — the upcoming/enforced speed-limit CHANGE
+    // ahead + the distance to it. These views live ONLY on the full-alert widget, NOT on the sticky provider
+    // (`VMOnlyStickyAlertWidgetProvider`) the ALERTS slot binds — proven by on-car dumps where the sticky
+    // slot only ever exposed `warning_alert_image` + `place_holder_textView`='--'. Captured via the ALERT_FULL
+    // slot so the existing sticky cấm-dừng/đỗ icon capture is untouched.
+    const val WARNING_SPEED_LIMIT = "warning_speed_limit_widget_text_view"
+    const val WARNING_SPEED_DISTANCE = "warning_speed_distance_text_view"
+    const val SECOND_WARNING_SPEED_LIMIT = "second_warning_speed_limit_widget_text_view"
+    const val SECOND_WARNING_SPEED_DISTANCE = "second_warning_speed_distance_text_view"
+
     val speedRequired = setOf(CURRENT_SPEED, SPEED_LIMIT)
     val alertsRequired = setOf(
         ALERT_CURRENT_SPEED,
@@ -26,6 +36,10 @@ object VietMapWidgetViewNames {
         SECOND_PLACE_HOLDER,
         SECOND_ALERT_IMAGE,
     )
+
+    // The STABLE anchor for the full-alert widget = the first upcoming limit + distance pair. The `second_…`
+    // siblings are OPTIONAL (only a second queued limit populates them), so they are NOT part of the anchor.
+    val alertFullRequired = setOf(WARNING_SPEED_LIMIT, WARNING_SPEED_DISTANCE)
 }
 
 object VietMapWidgetTextParser {
@@ -58,6 +72,9 @@ object VietMapWidgetTextParser {
 
     fun supportsAlertsShape(availableNames: Set<String>): Boolean =
         availableNames.containsAll(VietMapWidgetViewNames.alertsRequired)
+
+    fun supportsAlertFullShape(availableNames: Set<String>): Boolean =
+        availableNames.containsAll(VietMapWidgetViewNames.alertFullRequired)
 
     fun freshness(
         updatedAtElapsedMs: Long?,
@@ -120,6 +137,96 @@ object VietMapWidgetTextParser {
             freshness = freshness,
             reason = null,
         )
+    }
+
+    /**
+     * Parse the VMAlertWidgetProvider upcoming/enforced speed-limit pair. The limit is an integer km/h
+     * (`warning_speed_limit_widget_text_view`); the distance is free text (`warning_speed_distance_text_view`)
+     * whose metres are derived only for known units. Sentinels ("--"/"!"/empty) collapse to null on both.
+     */
+    fun parseUpcomingSpeedLimit(limitText: String?, distanceText: String?): VietMapUpcomingSpeedLimit {
+        val distance = parseDistance(distanceText)
+        return VietMapUpcomingSpeedLimit(
+            limitKph = parseSpeedLimit(limitText),
+            distanceMeters = distance?.meters,
+            distanceText = distance?.text,
+        )
+    }
+
+    /**
+     * Compose the public snapshot from the three INDEPENDENT provider states (speed, sticky alerts,
+     * full-alert). Pure — no clock, no Android. The legacy combined [VietMapWidgetSnapshot.freshness] and
+     * `updatedAtElapsedMs` stay defined by speed + sticky-alerts ONLY (backward-compat: ALERT_FULL never
+     * changes them); ALERT_FULL is projected purely into the additive `upcoming*` fields under its OWN
+     * `alertFullFreshness`. Each provider's driving values are exposed only while that provider is FRESH.
+     */
+    fun composeSnapshot(
+        speed: VietMapProviderState,
+        alerts: VietMapProviderState,
+        alertFull: VietMapProviderState,
+        providerVersion: String?,
+        nowElapsedMs: Long,
+    ): VietMapComposedSnapshot {
+        fun freshRaw(state: VietMapProviderState): VietMapWidgetRawValues =
+            if (state.freshness == VietMapWidgetFreshness.FRESH) {
+                state.raw ?: VietMapWidgetRawValues()
+            } else {
+                VietMapWidgetRawValues()
+            }
+
+        val speedRaw = freshRaw(speed)
+        val alertsRaw = freshRaw(alerts)
+        val alertFullRaw = freshRaw(alertFull)
+
+        val combinedRaw = speedRaw.copy(
+            firstAlertSpeedLimitText = alertsRaw.firstAlertSpeedLimitText,
+            firstAlertDistanceText = alertsRaw.firstAlertDistanceText,
+            firstAlertImageVisible = alertsRaw.firstAlertImageVisible,
+            firstAlertImageHash = alertsRaw.firstAlertImageHash,
+            secondAlertSpeedLimitText = alertsRaw.secondAlertSpeedLimitText,
+            secondAlertDistanceText = alertsRaw.secondAlertDistanceText,
+            secondAlertImageVisible = alertsRaw.secondAlertImageVisible,
+            secondAlertImageHash = alertsRaw.secondAlertImageHash,
+        )
+
+        val combinedFreshness = worst(speed.freshness, alerts.freshness)
+        val combinedReason = speed.reason ?: alerts.reason
+        val updatedAt = when {
+            speed.updatedAtElapsedMs != null && alerts.updatedAtElapsedMs != null ->
+                minOf(speed.updatedAtElapsedMs, alerts.updatedAtElapsedMs)
+            else -> speed.updatedAtElapsedMs ?: alerts.updatedAtElapsedMs
+        }
+
+        val upcoming = parseUpcomingSpeedLimit(alertFullRaw.upcomingSpeedLimitText, alertFullRaw.upcomingDistanceText)
+        val secondUpcoming =
+            parseUpcomingSpeedLimit(alertFullRaw.secondUpcomingSpeedLimitText, alertFullRaw.secondUpcomingDistanceText)
+
+        val snapshot = parseSnapshot(combinedRaw, providerVersion, updatedAt, nowElapsedMs, combinedReason).copy(
+            freshness = combinedFreshness,
+            reason = combinedReason,
+            speedFreshness = speed.freshness,
+            alertsFreshness = alerts.freshness,
+            speedUpdatedAtElapsedMs = speed.updatedAtElapsedMs,
+            alertsUpdatedAtElapsedMs = alerts.updatedAtElapsedMs,
+            upcomingLimitKph = upcoming.limitKph,
+            upcomingDistanceMeters = upcoming.distanceMeters,
+            upcomingDistanceText = upcoming.distanceText,
+            secondUpcomingLimitKph = secondUpcoming.limitKph,
+            secondUpcomingDistanceMeters = secondUpcoming.distanceMeters,
+            secondUpcomingDistanceText = secondUpcoming.distanceText,
+            alertFullFreshness = alertFull.freshness,
+            alertFullUpdatedAtElapsedMs = alertFull.updatedAtElapsedMs,
+        )
+        return VietMapComposedSnapshot(snapshot, combinedRaw)
+    }
+
+    /** Worst-of two freshness values (UNAVAILABLE > STALE > FRESH) — used for the legacy combined field. */
+    private fun worst(a: VietMapWidgetFreshness, b: VietMapWidgetFreshness): VietMapWidgetFreshness = when {
+        a == VietMapWidgetFreshness.UNAVAILABLE || b == VietMapWidgetFreshness.UNAVAILABLE ->
+            VietMapWidgetFreshness.UNAVAILABLE
+        a == VietMapWidgetFreshness.STALE || b == VietMapWidgetFreshness.STALE ->
+            VietMapWidgetFreshness.STALE
+        else -> VietMapWidgetFreshness.FRESH
     }
 
     private fun alert(

@@ -49,6 +49,11 @@ class VietMapWidgetBridge private constructor(context: Context) {
         updatedAtElapsedMs = null, freshness = VietMapWidgetFreshness.UNAVAILABLE,
         reason = VietMapWidgetUnavailableReason.NOT_BOUND, generation = 0L,
     )
+    private var alertFullSnapshot = VietMapProviderSnapshot<VietMapWidgetRawValues>(
+        slot = VietMapWidgetSlot.ALERT_FULL, values = null,
+        updatedAtElapsedMs = null, freshness = VietMapWidgetFreshness.UNAVAILABLE,
+        reason = VietMapWidgetUnavailableReason.NOT_BOUND, generation = 0L,
+    )
     private var listening = false
     @Volatile private var published = unavailable(VietMapWidgetUnavailableReason.NOT_BOUND)
     private val publishDebounced = Runnable { publishSnapshot() }
@@ -254,6 +259,19 @@ class VietMapWidgetBridge private constructor(context: Context) {
                     }.start()
                 }
             }
+            VietMapWidgetSlot.ALERT_FULL -> {
+                val extracted = extraction.extractAlertFull(view)
+                if (extracted == null) {
+                    unsupportedSlots += slot
+                } else {
+                    unsupportedSlots -= slot
+                    alertFullSnapshot = alertFullSnapshot.copy(
+                        values = extracted,
+                        updatedAtElapsedMs = now,
+                        generation = callbackGeneration,
+                    )
+                }
+            }
         }
         schedulePublish()
         VietMapWidgetVerboseLog.logHostViewTree(appContext, extraction, view)
@@ -266,61 +284,37 @@ class VietMapWidgetBridge private constructor(context: Context) {
     private fun publishSnapshot() {
         val now = SystemClock.elapsedRealtime()
         // Compute per-provider freshness INDEPENDENTLY — no combined gate
-        val speedReason = unavailableReasonForSlot(VietMapWidgetSlot.SPEED_LIMIT)
-        val alertsReason = unavailableReasonForSlot(VietMapWidgetSlot.ALERTS)
         val (speedFresh, speedFreshReason) = VietMapWidgetTextParser.freshness(
-            speedSnapshot.updatedAtElapsedMs, now, speedReason
+            speedSnapshot.updatedAtElapsedMs, now, unavailableReasonForSlot(VietMapWidgetSlot.SPEED_LIMIT)
         )
         val (alertsFresh, alertsFreshReason) = VietMapWidgetTextParser.freshness(
-            alertsSnapshot.updatedAtElapsedMs, now, alertsReason
+            alertsSnapshot.updatedAtElapsedMs, now, unavailableReasonForSlot(VietMapWidgetSlot.ALERTS)
         )
-        // Update provider snapshots with computed freshness
+        val (alertFullFresh, alertFullFreshReason) = VietMapWidgetTextParser.freshness(
+            alertFullSnapshot.updatedAtElapsedMs, now, unavailableReasonForSlot(VietMapWidgetSlot.ALERT_FULL)
+        )
+        // Persist computed freshness back onto each provider snapshot
         speedSnapshot = speedSnapshot.copy(freshness = speedFresh, reason = speedFreshReason)
         alertsSnapshot = alertsSnapshot.copy(freshness = alertsFresh, reason = alertsFreshReason)
-        // Compose combined snapshot for backward-compat consumers
-        val speedRaw = if (speedFresh == VietMapWidgetFreshness.FRESH)
-            speedSnapshot.values ?: VietMapWidgetRawValues() else VietMapWidgetRawValues()
-        val alertsRaw = if (alertsFresh == VietMapWidgetFreshness.FRESH)
-            alertsSnapshot.values ?: VietMapWidgetRawValues() else VietMapWidgetRawValues()
-        val combinedRaw = speedRaw.copy(
-            firstAlertSpeedLimitText = alertsRaw.firstAlertSpeedLimitText,
-            firstAlertDistanceText = alertsRaw.firstAlertDistanceText,
-            firstAlertImageVisible = alertsRaw.firstAlertImageVisible,
-            firstAlertImageHash = alertsRaw.firstAlertImageHash,
-            secondAlertSpeedLimitText = alertsRaw.secondAlertSpeedLimitText,
-            secondAlertDistanceText = alertsRaw.secondAlertDistanceText,
-            secondAlertImageVisible = alertsRaw.secondAlertImageVisible,
-            secondAlertImageHash = alertsRaw.secondAlertImageHash,
+        alertFullSnapshot = alertFullSnapshot.copy(freshness = alertFullFresh, reason = alertFullFreshReason)
+        // Delegate the (pure, tested) composition to :core — combined freshness stays speed+alerts only;
+        // ALERT_FULL projects purely into the additive upcoming* fields under its own freshness.
+        val composed = VietMapWidgetTextParser.composeSnapshot(
+            speed = providerState(speedSnapshot),
+            alerts = providerState(alertsSnapshot),
+            alertFull = providerState(alertFullSnapshot),
+            providerVersion = providerVersion(),
+            nowElapsedMs = now,
         )
-        // Combined freshness uses the WORSE of the two only for the legacy field
-        val combinedFreshness = when {
-            speedFresh == VietMapWidgetFreshness.UNAVAILABLE || alertsFresh == VietMapWidgetFreshness.UNAVAILABLE ->
-                VietMapWidgetFreshness.UNAVAILABLE
-            speedFresh == VietMapWidgetFreshness.STALE || alertsFresh == VietMapWidgetFreshness.STALE ->
-                VietMapWidgetFreshness.STALE
-            else -> VietMapWidgetFreshness.FRESH
-        }
-        val combinedReason = speedFreshReason ?: alertsFreshReason
-        val updatedAt = if (speedSnapshot.updatedAtElapsedMs != null && alertsSnapshot.updatedAtElapsedMs != null) {
-            minOf(speedSnapshot.updatedAtElapsedMs!!, alertsSnapshot.updatedAtElapsedMs!!)
-        } else {
-            speedSnapshot.updatedAtElapsedMs ?: alertsSnapshot.updatedAtElapsedMs
-        }
-        val next = VietMapWidgetTextParser.parseSnapshot(
-            combinedRaw, providerVersion(), updatedAt, now, combinedReason
-        ).copy(
-            freshness = combinedFreshness,
-            reason = combinedReason,
-            speedFreshness = speedFresh,
-            alertsFreshness = alertsFresh,
-            speedUpdatedAtElapsedMs = speedSnapshot.updatedAtElapsedMs,
-            alertsUpdatedAtElapsedMs = alertsSnapshot.updatedAtElapsedMs,
-        )
+        val next = composed.snapshot
         if (next == published) return
         published = next
         dispatchToListeners(next)
-        VietMapWidgetVerboseLog.logPublishedSnapshot(appContext, combinedFreshness, next, combinedRaw)
+        VietMapWidgetVerboseLog.logPublishedSnapshot(appContext, next.freshness, next, composed.combinedRaw)
     }
+
+    private fun providerState(snap: VietMapProviderSnapshot<VietMapWidgetRawValues>): VietMapProviderState =
+        VietMapProviderState(snap.values, snap.freshness, snap.reason, snap.updatedAtElapsedMs)
     /**
      * Dispatch snapshot to listeners, filtering out stale-generation entries.
      * Stale listeners are automatically pruned.
@@ -437,6 +431,11 @@ class VietMapWidgetBridge private constructor(context: Context) {
             reason = VietMapWidgetUnavailableReason.NOT_BOUND,
         )
         alertsSnapshot = alertsSnapshot.copy(
+            values = null, updatedAtElapsedMs = null,
+            freshness = VietMapWidgetFreshness.UNAVAILABLE,
+            reason = VietMapWidgetUnavailableReason.NOT_BOUND,
+        )
+        alertFullSnapshot = alertFullSnapshot.copy(
             values = null, updatedAtElapsedMs = null,
             freshness = VietMapWidgetFreshness.UNAVAILABLE,
             reason = VietMapWidgetUnavailableReason.NOT_BOUND,

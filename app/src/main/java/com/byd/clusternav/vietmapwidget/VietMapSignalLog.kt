@@ -32,7 +32,8 @@ object VietMapSignalLog {
 
     const val HEADER =
         "ts,freshness,providerVersion,currentSpeedKph,speedLimitKph," +
-            "a1Limit,a1Dist,a1ImgVisible,a1ImgHash,a2Limit,a2Dist,a2ImgVisible,a2ImgHash"
+            "a1Limit,a1Dist,a1ImgVisible,a1ImgHash,a2Limit,a2Dist,a2ImgVisible,a2ImgHash," +
+            "upLimit,upDist,up2Limit,up2Dist"
 
     const val VIEWS_HEADER = "ts,dump"
 
@@ -76,6 +77,10 @@ object VietMapSignalLog {
         a2Dist: String?,
         a2ImgVisible: Boolean,
         a2ImgHash: String?,
+        upLimit: Int? = null,
+        upDist: String? = null,
+        up2Limit: Int? = null,
+        up2Dist: String? = null,
     ): String = CsvEscape.row(
         listOf(
             ts.toString(),
@@ -91,6 +96,10 @@ object VietMapSignalLog {
             a2Dist,
             a2ImgVisible.toString(),
             a2ImgHash,
+            upLimit?.toString(),
+            upDist,
+            up2Limit?.toString(),
+            up2Dist,
         ),
     )
 
@@ -116,11 +125,16 @@ object VietMapSignalLog {
         a2Dist: String?,
         a2ImgVisible: Boolean,
         a2ImgHash: String?,
+        upLimit: Int? = null,
+        upDist: String? = null,
+        up2Limit: Int? = null,
+        up2Dist: String? = null,
     ) {
         if (!NavLog.verbose) return
         val row = buildRow(
             System.currentTimeMillis(), freshness, providerVersion, currentSpeedKph, speedLimitKph,
             a1Limit, a1Dist, a1ImgVisible, a1ImgHash, a2Limit, a2Dist, a2ImgVisible, a2ImgHash,
+            upLimit, upDist, up2Limit, up2Dist,
         )
         val app = ctx.applicationContext
         runCatching { io.execute { appendSignalLocked(app, row) } }

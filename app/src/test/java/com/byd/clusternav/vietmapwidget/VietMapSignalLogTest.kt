@@ -11,18 +11,19 @@ import org.junit.jupiter.api.Test
 class VietMapSignalLogTest {
 
     @Test
-    fun `header lists the 13 signal columns in the exact contract order`() {
+    fun `header lists the 17 signal columns in the exact contract order`() {
         assertEquals(
             "ts,freshness,providerVersion,currentSpeedKph,speedLimitKph," +
-                "a1Limit,a1Dist,a1ImgVisible,a1ImgHash,a2Limit,a2Dist,a2ImgVisible,a2ImgHash",
+                "a1Limit,a1Dist,a1ImgVisible,a1ImgHash,a2Limit,a2Dist,a2ImgVisible,a2ImgHash," +
+                "upLimit,upDist,up2Limit,up2Dist",
             VietMapSignalLog.HEADER,
         )
-        // Header column count == fields a fully-populated row emits (13).
-        assertEquals(13, VietMapSignalLog.HEADER.split(",").size)
+        // Header column count == fields a fully-populated row emits (17).
+        assertEquals(17, VietMapSignalLog.HEADER.split(",").size)
     }
 
     @Test
-    fun `buildRow emits every column in header order with 13 fields`() {
+    fun `buildRow emits every column in header order with 17 fields`() {
         val row = VietMapSignalLog.buildRow(
             ts = 1234L,
             freshness = "FRESH",
@@ -37,10 +38,36 @@ class VietMapSignalLogTest {
             a2Dist = "1 km",
             a2ImgVisible = false,
             a2ImgHash = null,
+            upLimit = 70,
+            upDist = "500 m",
+            up2Limit = 60,
+            up2Dist = "1,2 km",
         )
-        assertEquals("1234,FRESH,3.2.1,60,80,50,300 m,true,abcdef,40,1 km,false,", row)
-        // No embedded commas in this row → split gives exactly the 13 header columns.
-        assertEquals(VietMapSignalLog.HEADER.split(",").size, row.split(",").size)
+        assertEquals("1234,FRESH,3.2.1,60,80,50,300 m,true,abcdef,40,1 km,false,,70,500 m,60,\"1,2 km\"", row)
+        // upDist "1,2 km" has an embedded comma → that field is quoted; the other 16 have none.
+        assertEquals(VietMapSignalLog.HEADER.split(",").size, (row.split(",").size - 1))
+    }
+
+    @Test
+    fun `buildRow upcoming columns default to empty when omitted`() {
+        val row = VietMapSignalLog.buildRow(
+            ts = 1L,
+            freshness = "FRESH",
+            providerVersion = "3.3.4",
+            currentSpeedKph = 30,
+            speedLimitKph = 50,
+            a1Limit = null,
+            a1Dist = null,
+            a1ImgVisible = false,
+            a1ImgHash = null,
+            a2Limit = null,
+            a2Dist = null,
+            a2ImgVisible = false,
+            a2ImgHash = null,
+        )
+        // 4 trailing empty upcoming fields keep the 17-column shape even when the full-alert slot is idle.
+        assertEquals("1,FRESH,3.3.4,30,50,,,false,,,,false,,,,,", row)
+        assertEquals(17, row.split(",").size)
     }
 
     @Test
@@ -60,7 +87,7 @@ class VietMapSignalLogTest {
             a2ImgVisible = false,
             a2ImgHash = null,
         )
-        assertEquals("0,,,,,,,false,,,,false,", row)
+        assertEquals("0,,,,,,,false,,,,false,,,,,", row)
     }
 
     @Test
@@ -80,8 +107,9 @@ class VietMapSignalLogTest {
             a2ImgVisible = false,
             a2ImgHash = null,
         )
-        // "v,1" and "1,2 km" wrapped in quotes; a"b → quoted with the embedded quote doubled.
-        assertEquals("7,STALE,\"v,1\",,,,\"1,2 km\",true,\"a\"\"b\",,,false,", row)
+        // "v,1" and "1,2 km" wrapped in quotes; a"b → quoted with the embedded quote doubled;
+        // the 4 idle upcoming columns append as trailing empties.
+        assertEquals("7,STALE,\"v,1\",,,,\"1,2 km\",true,\"a\"\"b\",,,false,,,,,", row)
     }
 
     @Test

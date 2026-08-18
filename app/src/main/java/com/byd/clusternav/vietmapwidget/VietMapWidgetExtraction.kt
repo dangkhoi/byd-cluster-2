@@ -89,6 +89,29 @@ internal class VietMapWidgetExtraction(context: Context) {
     }
 
     /**
+     * Extract the VMAlertWidgetProvider (full-alert widget) UPCOMING/ENFORCED speed-limit-ahead + distance.
+     * STABLE anchor = the first `warning_speed_limit_widget_text_view` + `warning_speed_distance_text_view`
+     * pair; if either view is absent from the applied tree the widget is the wrong shape → null (the slot
+     * reports UNSUPPORTED_SHAPE, isolated from speed/sticky-alerts). The `second_…` siblings are OPTIONAL
+     * (only a queued second limit populates them). All text is captured RAW (parsing happens in :core) so a
+     * sentinel/idle value ("--"/"!"/empty) is preserved and later collapsed to null by the parser, not here.
+     */
+    fun extractAlertFull(root: AppWidgetHostView): VietMapWidgetRawValues? {
+        val limitView = view(root, VietMapWidgetViewNames.WARNING_SPEED_LIMIT) as? TextView ?: return null
+        val distanceView = view(root, VietMapWidgetViewNames.WARNING_SPEED_DISTANCE) as? TextView ?: return null
+        fun optText(name: String): String? {
+            val tv = view(root, name) as? TextView ?: return null
+            return tv.text?.toString()?.takeIf { effectivelyVisible(tv, root) }
+        }
+        return VietMapWidgetRawValues(
+            upcomingSpeedLimitText = limitView.text?.toString()?.takeIf { effectivelyVisible(limitView, root) },
+            upcomingDistanceText = distanceView.text?.toString()?.takeIf { effectivelyVisible(distanceView, root) },
+            secondUpcomingSpeedLimitText = optText(VietMapWidgetViewNames.SECOND_WARNING_SPEED_LIMIT),
+            secondUpcomingDistanceText = optText(VietMapWidgetViewNames.SECOND_WARNING_SPEED_DISTANCE),
+        )
+    }
+
+    /**
      * Submit drawable hashing work to background thread. Returns a future pair of (firstHash, secondHash).
      * Caller must capture the bitmap data on main thread (drawable → pixel array) then hash off-thread.
      */

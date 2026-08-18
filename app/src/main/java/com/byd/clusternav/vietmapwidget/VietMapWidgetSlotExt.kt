@@ -14,4 +14,6 @@ val VietMapWidgetSlot.component: ComponentName
             ComponentName(VIETMAP_PACKAGE, "$VIETMAP_PACKAGE.homewidget.VMOnlySpeedLimitWidgetProvider")
         VietMapWidgetSlot.ALERTS ->
             ComponentName(VIETMAP_PACKAGE, "$VIETMAP_PACKAGE.homewidget.VMOnlyStickyAlertWidgetProvider")
+        VietMapWidgetSlot.ALERT_FULL ->
+            ComponentName(VIETMAP_PACKAGE, "$VIETMAP_PACKAGE.homewidget.VMAlertWidgetProvider")
     }

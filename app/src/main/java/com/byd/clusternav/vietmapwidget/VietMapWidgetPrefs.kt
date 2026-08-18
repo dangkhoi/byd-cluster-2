@@ -31,8 +31,8 @@ internal class VietMapWidgetPrefs(context: Context) {
 
     fun clearAll() {
         commitWithRetry("clearAll") {
-            remove(VietMapWidgetSlot.SPEED_LIMIT.preferenceKey)
-            remove(VietMapWidgetSlot.ALERTS.preferenceKey)
+            // Iterate all slots so new providers (e.g. ALERT_FULL) are cleared automatically.
+            VietMapWidgetSlot.entries.forEach { remove(it.preferenceKey) }
             remove(KEY_PROVIDER_VERSION)
         }
     }

@@ -84,7 +84,7 @@ class VietMapWidgetDiagActivity : Activity() {
         }
         column.addView(text("VietMap data bridge", 24f, true))
         column.addView(text(
-            "Hai widget được bind như nguồn dữ liệu nội bộ. ClusterNav không hiển thị giao diện widget VietMap.",
+            "Các widget VietMap được bind như nguồn dữ liệu nội bộ. ClusterNav không hiển thị giao diện widget VietMap.",
             14f,
         ).withTop(dp(6)))
         bindingText = text("Đang kiểm tra binding…", 14f).withTop(dp(18))
@@ -96,7 +96,7 @@ class VietMapWidgetDiagActivity : Activity() {
         column.addView(valuesText)
 
         column.addView(Button(this).apply {
-            text = "Bind hai nguồn VietMap"
+            text = "Bind các nguồn VietMap"
             isAllCaps = false
             minHeight = dp(52)
             setTextColor(getColor(android.R.color.white))
@@ -127,7 +127,7 @@ class VietMapWidgetDiagActivity : Activity() {
     private fun bindNextMissing(allowGrantRetry: Boolean = true) {
         val next = bridge.bindingStatuses().firstOrNull { !it.bound }
         if (next == null) {
-            toast("Hai nguồn VietMap đã được bind")
+            toast("Các nguồn VietMap đã được bind")
             render(bridge.snapshot())
             return
         }
@@ -186,6 +186,16 @@ class VietMapWidgetDiagActivity : Activity() {
             appendLine("Update age  : $age")
             appendLine("Speed       : ${snapshot.currentSpeedKph?.let { "$it km/h" } ?: "—"}")
             appendLine("Speed limit : ${snapshot.speedLimitKph?.let { "$it km/h" } ?: "—"}")
+            appendLine(
+                "Upcoming    : ${snapshot.upcomingLimitKph?.let { "$it km/h" } ?: "—"} " +
+                    "@ ${snapshot.upcomingDistanceText ?: "—"} (${snapshot.alertFullFreshness})",
+            )
+            if (snapshot.secondUpcomingLimitKph != null || snapshot.secondUpcomingDistanceText != null) {
+                appendLine(
+                    "Upcoming 2  : ${snapshot.secondUpcomingLimitKph?.let { "$it km/h" } ?: "—"} " +
+                        "@ ${snapshot.secondUpcomingDistanceText ?: "—"}",
+                )
+            }
             if (snapshot.alerts.isEmpty()) {
                 append("Alerts      : —")
             } else {
