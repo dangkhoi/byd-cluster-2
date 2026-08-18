@@ -68,6 +68,13 @@ class NavNotificationListener : NotificationListenerService() {
     // per-notification spam while keeping a low-rate signal. Reset at session boundaries (like lastManeuverIcon).
     @Volatile private var lastNavLogKey: String? = null
 
+    // RAW-notif capture collapse (diagnostic only): last raw (title\u0001text\u0001sub\u0001big) per package.
+    // Touched ONLY on the listener callback thread (onNotificationPosted + the onListenerConnected
+    // activeNotifications scan both run on the main looper), so a plain HashMap with no lock is safe. Skips
+    // CONSECUTIVE-IDENTICAL notifs (GMaps redraws the same frame ~1/s) so the raw CSV isn't flooded. Bounded to
+    // the five nav packages. NOT reset at session boundaries — it never feeds the cluster, purely a flood guard.
+    private val lastRaw = HashMap<String, String>()
+
     /** Hệ thống THẢ binding (head-unit hay làm lúc chạy) → clear typed sources before teardown. */
     override fun onListenerDisconnected() {
         connected = false
@@ -279,6 +286,33 @@ class NavNotificationListener : NotificationListenerService() {
         val text = ex.getCharSequence("android.text")?.toString()?.trim().orEmpty()
         val sub = ex.getCharSequence("android.subText")?.toString()?.trim().orEmpty()
         val big = ex.getCharSequence("android.bigText")?.toString()?.trim().orEmpty()
+        // RAW notif capture (T2b, diagnostic + ADDITIVE — runs BEFORE the empty-title/text guard, the arrival
+        // guard AND the `if (!isNav && !hasDist) return` drop below, so it logs EVERY notification from the five
+        // nav packages — even the non-nav ones the parsed NavNotifLog necessarily hides ("Waze is running",
+        // VietMap "Ứng dụng đang chạy", WazeMod status) AND ones whose content lives only in subText/bigText
+        // (empty title+text). verbose-gated (default OFF) + off-main (NavNotifRawLog owns its own daemon
+        // Executor) + degrade-safe. NEVER touches SourceArbiter / cluster feed / nav state. Consecutive-identical
+        // per package is collapsed (lastRaw, listener-thread only → no lock) to kill GMaps' ~1/s identical redraws.
+        if (NavLog.verbose) {
+            val category = n.category ?: ""
+            val hasLargeIcon = n.getLargeIcon() != null
+            // Collapse key spans the 4 raw text fields PLUS category + large-icon presence, so a status→nav
+            // transition (category flips) or an arrow appearing/disappearing with otherwise-identical text is
+            // still recorded as DISTINCT — while true per-frame redraws (all fields identical) stay collapsed,
+            // killing GMaps' ~1/s identical frames. \u0001 (SOH) separates fields: it never occurs in notif text.
+            val rawKey = "$title\u0001$text\u0001$sub\u0001$big\u0001$category\u0001$hasLargeIcon"
+            if (lastRaw[sbn.packageName] != rawKey) {
+                lastRaw[sbn.packageName] = rawKey
+                runCatching {
+                    NavNotifRawLog.record(
+                        applicationContext, sbn.packageName, category,
+                        n.category == Notification.CATEGORY_NAVIGATION,
+                        DIST_TOKEN.containsMatchIn(title) || DIST_TOKEN.containsMatchIn(text),
+                        hasLargeIcon, title, text, sub, big,
+                    )
+                }.onFailure { Log.w(TAG, "raw notif log failed", it) }
+            }
+        }
         if (title.isEmpty() && text.isEmpty()) return
         // ĐÃ ĐẾN NƠI (R7/#2): GMaps/VietMap báo "Arrived/đã đến" → PHÁT STOP/CLEAR cụm (về đồng hồ),
         // KHÔNG cắm frame kẹt heart-beat STALE_MS. Trước đây nhánh này ingest 1 frame icon-đích (15) và
