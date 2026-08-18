@@ -72,6 +72,14 @@
             <CheckBox android:id="@+id/cb_marquee" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
                 android:text="Chạy chữ tên đường dài (marquee)" android:textColor="@color/text_secondary" />
+            <!-- Data-collection logging + screenshots (owner 2026-08-18): MẶC ĐỊNH TẮT. Dùng thường KHÔNG thu
+                 thập dữ liệu (không log/ảnh → không đầy bộ nhớ xe). Chủ chỉ BẬT trước một chuyến thu thập dữ
+                 liệu; tắt lại sau. Có storage-cap luôn-bật (DiagStorageCap, ~150 MB) làm chốt chặn. Nhấn-giữ
+                 ẩn trên nhãn phiên bản cũng gạt công tắc này. -->
+            <Switch android:id="@+id/switch_diag_logging" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
+                android:text="Thu thập dữ liệu chẩn đoán (log + ảnh)" android:textColor="@color/text_secondary"
+                android:contentDescription="Bật hoặc tắt thu thập dữ liệu chẩn đoán: nhật ký và ảnh chụp. Mặc định tắt." />
             <!-- Nguồn tốc độ + cảnh báo (biển báo · camera) đã DỜI sang card Cluster Cast
                  (spec speed-badge-placement-vietmap-logging §4.2). btn_nav_stop ở lại card này. -->
             <Button android:id="@+id/btn_reconnect_nav" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -186,6 +194,12 @@
                 android:checked="true" android:text="Hiện biển báo tốc độ trên cụm"
                 android:textColor="@color/text_secondary"
                 android:contentDescription="Bật hoặc tắt biển báo tốc độ trên cụm" />
+            <!-- Biển "giới hạn sắp tới" (spec upcoming-speed-limit-badge, default BẬT). Biển nhỏ + cự ly đếm lùi, vẽ dưới badge chính. -->
+            <Switch android:id="@+id/switch_upcoming_badge" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="4dp" android:minHeight="@dimen/touch_min"
+                android:checked="true" android:text="Hiện giới hạn sắp tới"
+                android:textColor="@color/text_secondary"
+                android:contentDescription="Bật hoặc tắt biển giới hạn tốc độ sắp tới trên cụm" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="10dp" android:text="Nguồn tốc độ + cảnh báo (biển báo · camera)"
                 android:textColor="@color/text_secondary" android:textSize="13sp" />

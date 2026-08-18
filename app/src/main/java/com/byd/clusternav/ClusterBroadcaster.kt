@@ -117,6 +117,12 @@ object ClusterBroadcaster {
 
     /** Dựng frame với tên đường (marquee cuộn theo THỜI GIAN, hoặc TĨNH = tên đầy đủ) rồi gửi. Dùng chung cho emit + nhịp tim. */
     private fun sendFrame(ctx: Context, s: NavState, byd: Boolean) {
+        // Storage cap (defensive, periodic): while verbose data-collection is ON this ~4 Hz path writes a CSV
+        // row + (on change) an arrow PNG every frame, so opportunistically trim the diagnostics dir to the cap.
+        // enforce() is throttled to once/60s + runs off-thread, so the nav frame pays only a volatile read here;
+        // no-op when verbose is OFF (nothing is being written). This bounds a single long drive between the
+        // session-start trims (NavNotificationListener.onListenerConnected).
+        if (NavLog.verbose) DiagStorageCap.enforce(ctx)
         // marquee ON (mặc định 1.14): cuộn cửa sổ ROAD_MAX_UNITS ký tự, offset theo THỜI GIAN từ lúc đường
         // xuất hiện (roadShownAtMs) → đều/mượt, bắt đầu từ đầu tên. marquee OFF: gửi tên RÚT GỌN
         // (NavFormat.fitRoadName, ví dụ "Trần Trọng Kim" → "T.T.Kim") thay vì để firmware hard-cut tên đầy đủ.

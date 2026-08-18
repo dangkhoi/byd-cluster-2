@@ -193,6 +193,13 @@ object Prefs {
     // trên main handler (SharedPreferences cache sẵn nên rẻ, không chạm notification thread).
     fun badgeEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_BADGE_ENABLED, true)
     fun setBadgeEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_BADGE_ENABLED, v).apply()
+
+    // ★ Biển "giới hạn sắp tới" (spec upcoming-speed-limit-badge, owner 2026-08-18): MẶC ĐỊNH BẬT (theo tiền lệ
+    // badge). Gate riêng cho biển nhỏ (~70%) + nhãn cự ly đếm lùi, vẽ NGAY DƯỚI badge chính trên CỤM. KHÔNG có
+    // ngưỡng cự ly riêng (OQ2 — hiện/ẩn theo VietMap). TẮT → SpeedBadgeOverlay không bao giờ vẽ biển sắp-tới.
+    private const val K_SHOW_UPCOMING_BADGE = "show_upcoming_badge"
+    fun showUpcomingBadge(ctx: Context): Boolean = sp(ctx).getBoolean(K_SHOW_UPCOMING_BADGE, true)
+    fun setShowUpcomingBadge(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_SHOW_UPCOMING_BADGE, v).apply()
     // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
     private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"

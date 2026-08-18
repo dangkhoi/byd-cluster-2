@@ -50,6 +50,17 @@ internal class BadgePlacementController(private val activity: Activity) {
             }
         }
 
+        // "Hiện giới hạn sắp tới" toggle (spec upcoming-speed-limit-badge, default ON). Same detach-before-restore
+        // pattern so restoring isChecked never fires a spurious toggle; persist + re-evaluate the shared overlay.
+        activity.findViewById<Switch>(R.id.switch_upcoming_badge)?.apply {
+            setOnCheckedChangeListener(null)
+            isChecked = Prefs.showUpcomingBadge(activity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setShowUpcomingBadge(activity, checked)
+                NavigationSpeedSignOwner.get(activity.applicationContext).onUpcomingBadgeEnabledChanged()
+            }
+        }
+
         val placement = BadgePlacementView(activity, clusterW, clusterH) { cx, cy ->
             // Persist the dragged centre (re-clamped on the ACTUAL cluster) + apply the shared badge LIVE.
             val (ccx, ccy) = BadgeLayout.clampCenter(cx, cy, badgeSizePx(), clusterW, clusterH)

@@ -114,6 +114,11 @@ class NavNotificationListener : NotificationListenerService() {
         // D1 (closeout 1.28): entry point that always runs on (re)bind → refresh the in-memory verbose gate
         // (set BEFORE the enabled early-return so the gate is correct even while Nav+HUD is OFF).
         NavLog.init(applicationContext)
+        // Storage cap (defensive, always-on): trim the app-external diagnostics dir to the ~150 MB cap at every
+        // session start. force=true bypasses the throttle so it always runs on connect. This bounds a long
+        // verbose drive AND cleans data a previous verbose session left behind even if verbose is now OFF, so a
+        // data-collection build can never fill the car's storage. Off-thread + degrade-safe (never throws).
+        runCatching { DiagStorageCap.enforce(applicationContext, force = true) }
         // ★ Revive: khởi động nguồn tín hiệu (speed-sign sync + VietMap widget bridge + Waze HUD logcat poll).
         // GIỮ hành vi 1.21: chạy TRƯỚC cổng Prefs.enabled (nguồn poll độc lập). ⚠️ Waze poll logcat ~4000×/h
         // (hao pin — bản chất 1.21); base research, tối ưu sau (spec revival Q4). Cô lập trong runCatching.
@@ -188,6 +193,27 @@ class NavNotificationListener : NotificationListenerService() {
         } else {
             speedSignOwner.onProviderDisconnected(SpeedLimitSource.VIETMAP)
         }
+        // ── Upcoming speed-limit badge (spec upcoming-speed-limit-badge, ADDITIVE) ──────────────────────
+        // Mirror VietMap's "speed-limit ahead" (ALERT_FULL slot) onto a smaller badge + countdown BELOW the
+        // main badge on the cluster. Pure decision in :core (UpcomingBadgeDecision) — OQ2: no own distance
+        // threshold, show exactly when VietMap shows a FRESH upcoming limit; hide when null/stale/reached.
+        // Gated by the user toggle Prefs.showUpcomingBadge (default ON). Degrade-safe (never throws into the feed).
+        runCatching {
+            if (Prefs.showUpcomingBadge(applicationContext)) {
+                val d = com.byd.clusternav.navigation.UpcomingBadgeDecision.decide(
+                    limitKph = snapshot.upcomingLimitKph,
+                    distanceMeters = snapshot.upcomingDistanceMeters,
+                    fresh = snapshot.alertFullFreshness == VietMapWidgetFreshness.FRESH,
+                )
+                if (d.show) {
+                    speedSignOwner.setUpcomingBadge(d.limitKph, d.distanceMeters, snapshot.upcomingDistanceText)
+                } else {
+                    speedSignOwner.setUpcomingBadge(null, null, null)
+                }
+            } else {
+                speedSignOwner.setUpcomingBadge(null, null, null)
+            }
+        }.onFailure { Log.w(TAG, "upcoming badge push failed", it) }
     }
 
     private var wazeHudSource: WazeHudSource? = null

@@ -57,17 +57,13 @@ class MainActivity : Activity() {
         val versionName = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
         val titleView = findViewById<TextView>(R.id.txt_app_title)
         titleView.text = "ClusterNav" + (versionName?.let { " · v$it" } ?: "")
-        // D5 (closeout 1.28): HIDDEN verbose-log toggle — long-press the version label flips NavLog.verbose,
-        // persists it (Prefs), and Toasts the new state. No BuildConfig.DEBUG (OTA ships a RELEASE apk); default OFF.
+        // D5 (closeout 1.28): HIDDEN verbose-log toggle — long-press the version label. It now ROUTES THROUGH
+        // the visible "Thu thập dữ liệu chẩn đoán" switch so both stay in sync; the switch's listener persists
+        // (Prefs), mirrors the live NavLog gate, trims storage on enable, and Toasts. No BuildConfig.DEBUG (OTA
+        // ships a RELEASE apk); default OFF. Fallback flips directly if the switch view is somehow absent.
         titleView.setOnLongClickListener {
-            val on = !NavLog.verbose
-            NavLog.verbose = on
-            Prefs.setNavVerboseLog(this, on)
-            Toast.makeText(
-                this,
-                Lang.t("Nhật ký chi tiết: ", "Verbose log: ") + if (on) Lang.t("BẬT", "ON") else Lang.t("TẮT", "OFF"),
-                Toast.LENGTH_SHORT,
-            ).show()
+            val sw = findViewById<Switch>(R.id.switch_diag_logging)
+            if (sw != null) sw.isChecked = !sw.isChecked else setDiagLogging(!NavLog.verbose)
             true
         }
 
@@ -205,6 +201,15 @@ class MainActivity : Activity() {
         findViewById<android.widget.CheckBox>(R.id.cb_marquee).also { cb ->
             cb.isChecked = Prefs.marquee(this)
             cb.setOnCheckedChangeListener { _, on -> Prefs.setMarquee(this, on) }
+        }
+
+        // Data-collection logging + screenshots (owner 2026-08-18) — MẶC ĐỊNH TẮT. Normal use collects NO data.
+        // Set the checked state BEFORE attaching the listener so opening the app never fires setDiagLogging
+        // (no spurious toast / storage scan). The hidden long-press on the version label routes through this
+        // same switch, so the two controls always agree.
+        findViewById<Switch>(R.id.switch_diag_logging)?.also { sw ->
+            sw.isChecked = Prefs.navVerboseLog(this)
+            sw.setOnCheckedChangeListener { _, on -> setDiagLogging(on) }
         }
 
         // 1.21 Item 1 (owner): "Tự khởi động nền" — nổ máy chỉ chạy setup nền (BootSetupService qua
@@ -393,6 +398,25 @@ class MainActivity : Activity() {
         NavigationOutputFailureReason.EXECUTOR_REJECTED -> Lang.t("luồng gửi đã dừng", "executor rejected")
         NavigationOutputFailureReason.DISPLAY_ACK_REJECTED -> Lang.t("cụm từ chối xác nhận", "cluster acknowledgement rejected")
         NavigationOutputFailureReason.INTERNAL_CONTRACT_ERROR -> Lang.t("sai hợp đồng nội bộ", "internal contract error")
+    }
+
+    /**
+     * Apply the diagnostic data-collection state (verbose logging + PNG dumps + screenshots): persist it,
+     * mirror the live in-memory [NavLog.verbose] gate, and — when turning ON — trim the diagnostics dir to the
+     * storage cap ([DiagStorageCap]) BEFORE a collection drive begins (so leftover data from a prior session
+     * doesn't count against the budget). Single source of truth shared by the visible switch and the hidden
+     * long-press. Default is OFF: normal use collects no data.
+     */
+    private fun setDiagLogging(on: Boolean) {
+        Prefs.setNavVerboseLog(this, on)
+        NavLog.verbose = on
+        if (on) DiagStorageCap.enforce(this, force = true)
+        Toast.makeText(
+            this,
+            Lang.t("Thu thập dữ liệu chẩn đoán: ", "Diagnostic data collection: ") +
+                if (on) Lang.t("BẬT", "ON") else Lang.t("TẮT", "OFF"),
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     /**

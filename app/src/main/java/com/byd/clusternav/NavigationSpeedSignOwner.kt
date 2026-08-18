@@ -106,6 +106,22 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
             .onFailure { Log.w(TAG, "onBadgeEnabledChanged failed", it) }
     }
 
+    /**
+     * Set (or clear) the "upcoming speed-limit ahead" badge on the shared cluster overlay (spec
+     * `upcoming-speed-limit-badge`). A null/<=0 [limitKph] hides it. [distText] is VietMap's raw distance
+     * label ("300 m" / "1,2 km") for the countdown, with [distM] the parsed metres as a fallback. Degrade-safe.
+     */
+    fun setUpcomingBadge(limitKph: Int?, distM: Int?, distText: String?) {
+        runCatching { badgeOverlay.setUpcoming(limitKph, distM, distText) }
+            .onFailure { Log.w(TAG, "setUpcomingBadge failed", it) }
+    }
+
+    /** The "Hiện giới hạn sắp tới" toggle changed ([Prefs.showUpcomingBadge]) — re-evaluate the shared overlay. */
+    fun onUpcomingBadgeEnabledChanged() {
+        runCatching { badgeOverlay.applyUpcomingEnabled() }
+            .onFailure { Log.w(TAG, "onUpcomingBadgeEnabledChanged failed", it) }
+    }
+
     override fun close() {
         coordinator.close()
     }
