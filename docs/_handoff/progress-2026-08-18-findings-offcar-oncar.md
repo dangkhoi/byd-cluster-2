@@ -81,8 +81,33 @@
 
 ---
 
-## 5. Checklist thu data chuyến sau
-- [ ] Build data-collection (tag nguồn a11y + VMAlert slot) đang cài trên xe.
+## 4b. Nguyên tắc "ĐO HẾT, kết luận sau" (2026-08-18 15:35) + ma trận capture
+
+Owner chốt: **KHÔNG chọn sẵn kênh cho từng app** (giả định từ lần trước). Thu ĐỦ mọi kênh cho cả 4 app,
+về đọc log mới kết luận app nào kênh nào có/không data — bằng SỐ LIỆU, không phải giả định.
+
+Rà lại code → phát hiện **kênh notif đang lọc ngầm**: `handle()` drop notif không-phải-nav
+(`!isNav && !hasDist return`) TRƯỚC khi ghi → giấu mất "Waze/VietMap có post notif nhưng rỗng nav".
+**Đã sửa** (commit `16f7214`): thêm `NavNotifRawLog` ghi **RAW mọi notif của cả 5 gói** (tag pkg +
+category + isNav + hasDist + hasLargeIcon + title/text/sub/big) TRƯỚC mọi drop. Verbose-gated, off-thread,
+không đụng feed cụm. app 392 test pass, review APPROVED (sửa P2 vị trí + P3 collapse-key).
+
+**Ma trận capture (build 4-kênh, sau khi sửa) — giờ MAXIMAL, không lọc theo giả định:**
+| Kênh | GMaps | VietMap | Waze | WazeMod | Ghi chú |
+|---|---|---|---|---|---|
+| `nav_access` (a11y: text + **giọng/announcement**) | ✅ | ✅ | ✅ | ✅ | cả 5 gói tag pkg; **chỉ thấy app FOREGROUND** |
+| `nav_notif_raw` (RAW mọi notif) | ✅ | ✅ | ✅ | ✅ | cả 5 gói, kể cả notif rỗng-nav — chạy NỀN |
+| `nav_notif` (parsed nav) | ✅ | (nếu có nav) | (nếu có) | (nếu có) | chỉ notif qua được gate nav |
+| `vietmap_signal` (widget) | — | ✅ | — | — | chỉ VietMap publish widget (bản chất) |
+| `nav_arrow`/`nav_log` (arrow+interp) | ✅ | — | — | — | dẫn xuất từ notif GMaps |
+- Kết luận per-app/per-kênh **để DÀNH cho lúc đọc log sau chuyến** — không đóng khung trước.
+
+## 5. Checklist thu data chuyến sau (build 4-kênh)
+- [ ] Cài **APK 4-kênh**: `~/Desktop/ClusterNav2.0-debug-thu-data-4kenh-20260818.apk` (VMAlert + raw-notif + a11y-tag).
+- [ ] Bật Nav+HUD → **tắt/bật 1 lần** (a11y rebind config mới có typeAnnouncement).
+- [ ] **PROTOCOL foreground**: luân phiên đưa từng app lên foreground ~1–2 phút (GMaps→VietMap→Waze→WazeMod)
+      để a11y bắt từng cái (a11y CHỈ thấy app foreground). notif_raw + widget tự chạy NỀN.
+- [ ] WazeHud (HLP) sẽ trống — bằng chứng "cần ESP32", không phải lỗi.
 - [ ] GMaps dẫn (maneuver/arrow/ETA) + VietMap dẫn song song (speed/limit/alert/**up-limit+dist**).
 - [ ] Đi qua **vòng xuyến** (V4) + đoạn **đổi giới hạn tốc độ** (V3).
 - [ ] Kéo log: `pull-drive-logs.bat` → `D:\clusternav`.
