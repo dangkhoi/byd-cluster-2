@@ -34,12 +34,13 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 <body><div class="wrap">
 
 <h1>Vẽ "giới hạn tốc độ sắp tới + cự ly" (VietMap) lên cụm</h1>
-<p class="muted">Slug: <code>upcoming-speed-limit-badge</code> · Branch <code>feat/speed-limit-badge-hal-hud</code> · <span class="pill wait">Chờ duyệt</span> · <span class="pill block">Cổng implement: V3 PASS</span></p>
+<p class="muted">Slug: <code>upcoming-speed-limit-badge</code> · Branch <code>feat/speed-limit-badge-hal-hud</code> · <span class="pill">Hướng đã chốt (OQ resolved)</span> · <span class="pill block">Cổng implement: V3 PASS</span></p>
 <p class="muted">Tuân thủ <code>.kiro/steering/{workflow,product-team-workflow,trace-den-tan-cung}.md</code>. Không dùng thư viện mới (chỉ Android SDK: <code>SpeedBadgeView</code>/Canvas + WindowManager overlay + SharedPreferences, đều đã dùng trong badge hiện tại) → <b>không cần Context7</b>.</p>
 
 <h2>1. Changelog</h2>
 <ul>
 <li><b>Pass 0 — 2026-08-18</b>: Spec khởi tạo từ finding phiên sáng: VietMap phơi "giới hạn tốc độ sắp tới + cự ly" qua <code>VMAlertWidgetProvider</code> (slot <code>ALERT_FULL</code>, đã CAPTURE ở commit <code>36f6bf0</code>). Owner muốn vẽ nó lên cụm.</li>
+<li><b>Pass 0.1 — CHỐT HƯỚNG 2026-08-18</b>: Owner trả lời OQ (chưa implement, chờ V3): <b>OQ1</b> neo dưới badge chính ✓. <b>OQ2</b> <b>theo VietMap</b> — KHÔNG đặt ngưỡng cự ly riêng, hiện đúng khi VietMap hiện (dùng cự ly VietMap báo). <b>OQ3</b> HUD kính lái: <b>rất muốn</b> nhưng <b>không chắc lên</b> — vì <b>ngay cả giới hạn tốc độ HIỆN TẠI cũng CHƯA lên HUD</b> (badge đang chạy trên <b>CỤM qua cast</b>, HUD bị chặn bởi provisioning <code>0x38B00030</code>) → HUD ngoài scope, gate theo V5/coding. <b>OQ4</b> số <b>đếm lùi</b>. <b>OQ5</b> chỉ <b>1 cái gần nhất</b>.</li>
 </ul>
 
 <h2>2. Context</h2>
@@ -50,11 +51,13 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 <h2>3. Requirements</h2>
 <h3>Chức năng</h3>
 <ul>
-<li>R1. Khi VietMap báo giới hạn tốc độ sắp tới (<code>upcomingLimitKph</code> ≠ null, <code>alertFullFreshness=FRESH</code>) và cự ly <code>upcomingDistanceMeters</code> ≤ ngưỡng → hiện trên cụm một <b>biển giới hạn tốc độ (giá trị SẮP TỚI)</b> + <b>cự ly tới nó</b> (vd "300 m").</li>
-<li>R2. Cự ly <b>đếm lùi</b> theo mỗi snapshot khi lại gần; khi tới nơi (VietMap chuyển giá trị đó thành giới hạn HIỆN TẠI <code>speedLimitKph</code>) → <b>ẩn</b> biển sắp-tới.</li>
-<li>R3. Ẩn khi: <code>upcomingLimitKph=null</code>, hoặc <code>alertFullFreshness≠FRESH</code> (stale/unavailable), hoặc cự ly &gt; ngưỡng, hoặc master Nav+HUD/Cast tắt.</li>
-<li>R4. Phân biệt rõ với biển giới hạn HIỆN TẠI (badge đang có): biển sắp-tới nhỏ hơn / có nhãn cự ly bên dưới → tài xế không nhầm "đang phạt" với "sắp tới".</li>
+<li>R1. Khi VietMap báo giới hạn tốc độ sắp tới (<code>upcomingLimitKph</code> ≠ null, <code>alertFullFreshness=FRESH</code>) → hiện trên <b>cụm</b> một <b>biển giới hạn tốc độ (giá trị SẮP TỚI)</b> + <b>cự ly tới nó</b> (số, vd "300 m"). <b>Theo VietMap (OQ2)</b>: KHÔNG đặt ngưỡng cự ly riêng — hiện đúng khi VietMap đang hiện, dùng cự ly VietMap báo.</li>
+<li>R2. Cự ly <b>đếm lùi</b> (số) theo mỗi snapshot khi lại gần; khi tới nơi (VietMap chuyển giá trị đó thành giới hạn HIỆN TẠI <code>speedLimitKph</code>) → <b>ẩn</b> biển sắp-tới.</li>
+<li>R3. Ẩn khi: <code>upcomingLimitKph=null</code>, hoặc <code>alertFullFreshness≠FRESH</code> (stale/unavailable — VietMap thôi hiện), hoặc master Nav+HUD/Cast tắt.</li>
+<li>R4. Phân biệt rõ với biển giới hạn HIỆN TẠI (badge đang có): biển sắp-tới nhỏ hơn (~70%) + có nhãn cự ly bên dưới → tài xế không nhầm "đang phạt" với "sắp tới".</li>
 <li>R5. <b>Toggle bật/tắt</b> riêng (mặc định BẬT — theo tiền lệ badge). Off → không bao giờ vẽ biển sắp-tới.</li>
+<li>R6b. <b>Chỉ 1 cái gần nhất (OQ5)</b> — bỏ qua <code>second*</code>.</li>
+<li>R7b. <b>Bề mặt = CỤM qua cast (OQ3)</b>. HUD kính lái ngoài scope: hiện <b>ngay cả giới hạn HIỆN TẠI cũng chưa lên HUD</b> (HUD bị chặn provisioning <code>0x38B00030</code>). Khi V5/coding mở khoá HUD thì badge hiện-tại + sắp-tới cùng lên HUD sau (track riêng).</li>
 </ul>
 <h3>Phi chức năng</h3>
 <ul>
@@ -96,15 +99,16 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 <h3>4.3 Quyết định thuần (:core)</h3>
 <pre>data class UpcomingBadge(val show: Boolean, val limitKph: Int, val distanceMeters: Int)
 object UpcomingBadgeDecision {
-  // show khi: limit hợp lệ (>0) + FRESH + 0 &lt; dist ≤ threshold. Ngoài ra ẩn.
-  fun decide(limitKph: Int?, distanceMeters: Int?, fresh: Boolean, thresholdM: Int): UpcomingBadge
+  // OQ2 — theo VietMap: show khi limit hợp lệ (&gt;0) + FRESH. KHÔNG có ngưỡng cự ly riêng
+  // (VietMap tự quyết khi nào hiện; ta chỉ soi gương). dist chỉ để hiển thị + ẩn khi ≤0 (đã tới).
+  fun decide(limitKph: Int?, distanceMeters: Int?, fresh: Boolean): UpcomingBadge
 }</pre>
-<ul><li>Unit-test: null→ẩn; stale→ẩn; dist&gt;threshold→ẩn; dist trong ngưỡng + FRESH→hiện; dist≤0→ẩn (đã tới).</li></ul>
+<ul><li>Unit-test: null→ẩn; stale/unavailable→ẩn; FRESH+limit&gt;0→hiện (cự ly dùng như VietMap báo); dist≤0→ẩn (đã tới).</li></ul>
 
 <h3>4.4 Prefs</h3>
 <ul>
 <li><code>showUpcomingBadge</code> (Bool, mặc định <b>true</b>) — R5 toggle.</li>
-<li><code>upcomingThresholdMeters</code> (Int, mặc định <b>1000</b>) — ngưỡng bắt đầu hiện (OQ: có cho chỉnh trong UI không).</li>
+<li>(OQ2 chốt: <b>KHÔNG</b> cần <code>upcomingThresholdMeters</code> — hiện/ẩn theo VietMap.)</li>
 </ul>
 
 <h2>5. Tasks (DAG)</h2>
@@ -126,14 +130,15 @@ object UpcomingBadgeDecision {
 <li>V-lifecycle: badge sắp-tới không làm hỏng badge chính; degrade khi data mất (chỉ ẩn).</li>
 </ul>
 
-<h2>7. Open Questions</h2>
+<h2>7. Open Questions — ĐÃ CHỐT (owner 2026-08-18)</h2>
 <ul>
-<li>OQ1. Vị trí: neo dưới badge chính (đề xuất) hay cho user đặt riêng qua UI placement? (đề xuất: neo dưới, đỡ 1 UI.)</li>
-<li>OQ2. Ngưỡng cự ly hiện (mặc định 1000 m) — cố định hay cho chỉnh?</li>
-<li>OQ3. Có vẽ luôn lên <b>HUD kính lái</b> không? (Ngoài scope lần này — HUD là track riêng + xe owner chưa provisioned; để sau.)</li>
-<li>OQ4. Hình thức cự ly: chữ số "300 m" (đề xuất) hay thanh tiến trình đếm lùi?</li>
-<li>OQ5. Có hiện <code>second*</code> (giới hạn sắp tới thứ 2) không, hay chỉ cái gần nhất? (đề xuất: chỉ cái gần nhất.)</li>
+<li>OQ1 <span class="ok">✓</span> Vị trí: <b>neo dưới badge chính</b> (không làm UI đặt vị trí riêng).</li>
+<li>OQ2 <span class="ok">✓</span> Ngưỡng cự ly: <b>theo VietMap</b> — không đặt ngưỡng riêng; hiện/ẩn + cự ly đúng như VietMap báo.</li>
+<li>OQ3 <span class="warn">✓ (ngoài scope)</span> HUD kính lái: <b>rất muốn</b> nhưng <b>không chắc lên</b> — ngay cả giới hạn HIỆN TẠI cũng chưa lên HUD (badge chạy trên CỤM qua cast; HUD chặn bởi provisioning <code>0x38B00030</code>). Để sau, gate theo V5/coding.</li>
+<li>OQ4 <span class="ok">✓</span> Cự ly: <b>số đếm lùi</b> (không dùng thanh tiến trình).</li>
+<li>OQ5 <span class="ok">✓</span> Chỉ <b>1 cái gần nhất</b> (bỏ <code>second*</code>).</li>
 </ul>
+<p class="muted">Hướng đã chốt. <b>Chưa implement</b> — chờ V3 (chuyến thật xác nhận <code>upLimit/upDist</code> có data) rồi mới code.</p>
 
 <h2>8. References</h2>
 <ul>
