@@ -61,10 +61,12 @@ internal class VietMapWidgetExtraction(context: Context) {
 
     fun extractAlerts(root: AppWidgetHostView): VietMapWidgetRawValues? {
         // The sticky-alert widget's STABLE anchor = the two alert images (present even in the no-alert
-        // placeholder state, e.g. `place_holder_textView`='--'). The per-alert TEXT views
-        // (limit/distance) exist only WHILE an alert is active, so they are OPTIONAL — their absence
-        // means "no active alert", NOT an unsupported shape. Requiring them (old behaviour) made the
-        // idle placeholder report UNSUPPORTED_SHAPE, which dragged the whole VietMap snapshot to
+        // placeholder state, e.g. `place_holder_textView`='--'). The per-alert value/distance TEXT lives in
+        // `place_holder_textView` / `second_place_holder_textView` (VietMap 3.3.2 — the old
+        // `warning_speed_*_text_view` names DO NOT EXIST here, proven by 2851 view-dumps). Those text slots
+        // carry the live value only WHILE an alert is active, so they are OPTIONAL — their absence (or a '--'
+        // placeholder) means "no active alert", NOT an unsupported shape. Requiring them (old behaviour) made
+        // the idle placeholder report UNSUPPORTED_SHAPE, which dragged the whole VietMap snapshot to
         // UNAVAILABLE and masked a perfectly working speed slot (proven by on-car widget dump 2026-08-06).
         val firstImage = view(root, VietMapWidgetViewNames.FIRST_ALERT_IMAGE) as? ImageView ?: return null
         val secondImage = view(root, VietMapWidgetViewNames.SECOND_ALERT_IMAGE) as? ImageView ?: return null
@@ -73,12 +75,14 @@ internal class VietMapWidgetExtraction(context: Context) {
             return tv.text.toString().takeIf { effectivelyVisible(tv, root) }
         }
         return VietMapWidgetRawValues(
-            firstAlertSpeedLimitText = optText(VietMapWidgetViewNames.FIRST_ALERT_LIMIT),
-            firstAlertDistanceText = optText(VietMapWidgetViewNames.FIRST_ALERT_DISTANCE),
+            // VietMap 3.3.2 exposes a single place-holder text slot per alert (no dedicated speed-limit slot):
+            // route it to the distance-text field so the parser preserves the raw value and treats '--' as null.
+            firstAlertSpeedLimitText = null,
+            firstAlertDistanceText = optText(VietMapWidgetViewNames.PLACE_HOLDER),
             firstAlertImageVisible = effectivelyVisible(firstImage, root),
             firstAlertImageHash = null, // hash computed asynchronously
-            secondAlertSpeedLimitText = optText(VietMapWidgetViewNames.SECOND_ALERT_LIMIT),
-            secondAlertDistanceText = optText(VietMapWidgetViewNames.SECOND_ALERT_DISTANCE),
+            secondAlertSpeedLimitText = null,
+            secondAlertDistanceText = optText(VietMapWidgetViewNames.SECOND_PLACE_HOLDER),
             secondAlertImageVisible = effectivelyVisible(secondImage, root),
             secondAlertImageHash = null, // hash computed asynchronously
         )

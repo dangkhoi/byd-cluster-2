@@ -83,13 +83,73 @@ class VietMapWidgetTextParserTest {
     }
 
     @Test
+    fun `alert view names target the place_holder text slots present in VietMap 3_3_2`() {
+        assertEquals("place_holder_textView", VietMapWidgetViewNames.PLACE_HOLDER)
+        assertEquals("second_place_holder_textView", VietMapWidgetViewNames.SECOND_PLACE_HOLDER)
+        // The old warning_speed_* names are gone from the required shape (they never existed on-car).
+        assertTrue(VietMapWidgetViewNames.PLACE_HOLDER in VietMapWidgetViewNames.alertsRequired)
+        assertTrue(VietMapWidgetViewNames.SECOND_PLACE_HOLDER in VietMapWidgetViewNames.alertsRequired)
+        assertFalse(VietMapWidgetViewNames.alertsRequired.any { it.startsWith("warning_speed") })
+    }
+
+    @Test
+    fun `place_holder value is parsed as the alert value and '--' means no active alert`() {
+        // extractAlerts routes place_holder / second_place_holder into the *DistanceText fields.
+        val snapshot = VietMapWidgetTextParser.parseSnapshot(
+            raw = VietMapWidgetRawValues(
+                currentSpeedText = "42",
+                speedLimitText = "50",
+                // First alert: active value in place_holder + a visible icon.
+                firstAlertDistanceText = "250 m",
+                firstAlertImageVisible = true,
+                firstAlertImageHash = "cam-hash",
+                // Second alert: place_holder shows the idle "--" sentinel and no icon → dropped entirely.
+                secondAlertDistanceText = "--",
+                secondAlertImageVisible = false,
+            ),
+            providerVersion = "3.3.2",
+            updatedAtElapsedMs = 10_000L,
+            nowElapsedMs = 12_000L,
+        )
+
+        assertEquals(VietMapWidgetFreshness.FRESH, snapshot.freshness)
+        // Only the active alert survives; the '--' placeholder with no icon is not an alert.
+        assertEquals(1, snapshot.alerts.size)
+        assertEquals("250 m", snapshot.alerts[0].distanceText)
+        assertEquals(250, snapshot.alerts[0].distanceMeters)
+        assertEquals("cam-hash", snapshot.alerts[0].imageHash)
+    }
+
+    @Test
+    fun `an active icon with a '--' place_holder still reports an alert with null value`() {
+        val snapshot = VietMapWidgetTextParser.parseSnapshot(
+            raw = VietMapWidgetRawValues(
+                currentSpeedText = "42",
+                speedLimitText = "50",
+                firstAlertDistanceText = "--", // idle value text …
+                firstAlertImageVisible = true, // … but the alert icon is showing
+                firstAlertImageHash = "police-hash",
+            ),
+            providerVersion = "3.3.2",
+            updatedAtElapsedMs = 10_000L,
+            nowElapsedMs = 12_000L,
+        )
+
+        assertEquals(1, snapshot.alerts.size)
+        assertNull(snapshot.alerts[0].distanceText)
+        assertNull(snapshot.alerts[0].distanceMeters)
+        assertTrue(snapshot.alerts[0].imageVisible)
+        assertEquals("police-hash", snapshot.alerts[0].imageHash)
+    }
+
+    @Test
     fun `shape checks require names not decompiled integer resource ids`() {
         assertTrue(VietMapWidgetTextParser.supportsSpeedShape(VietMapWidgetViewNames.speedRequired))
         assertFalse(VietMapWidgetTextParser.supportsSpeedShape(setOf(VietMapWidgetViewNames.CURRENT_SPEED)))
         assertTrue(VietMapWidgetTextParser.supportsAlertsShape(VietMapWidgetViewNames.alertsRequired))
         assertFalse(
             VietMapWidgetTextParser.supportsAlertsShape(
-                VietMapWidgetViewNames.alertsRequired - VietMapWidgetViewNames.SECOND_ALERT_DISTANCE,
+                VietMapWidgetViewNames.alertsRequired - VietMapWidgetViewNames.SECOND_PLACE_HOLDER,
             ),
         )
     }

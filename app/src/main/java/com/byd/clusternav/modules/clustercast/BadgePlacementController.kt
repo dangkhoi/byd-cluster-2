@@ -4,6 +4,7 @@ import android.app.Activity
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.SeekBar
+import android.widget.Switch
 import android.widget.TextView
 import com.byd.clusternav.Lang
 import com.byd.clusternav.NavigationSpeedSignOwner
@@ -36,6 +37,18 @@ internal class BadgePlacementController(private val activity: Activity) {
     fun bind() {
         val container = activity.findViewById<FrameLayout>(R.id.badge_placement_container) ?: return
         val (clusterW, clusterH) = clusterSize()
+
+        // Badge on/off toggle (owner 2026-08-18, default ON). Detach listener before setting the persisted
+        // state so restoring isChecked never fires a spurious enable/disable, then persist + re-evaluate the
+        // shared overlay gate on user changes. Null-tolerant so a layout variant missing the id can't crash.
+        activity.findViewById<Switch>(R.id.switch_badge_enabled)?.apply {
+            setOnCheckedChangeListener(null)
+            isChecked = Prefs.badgeEnabled(activity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setBadgeEnabled(activity, checked)
+                NavigationSpeedSignOwner.get(activity.applicationContext).onBadgeEnabledChanged()
+            }
+        }
 
         val placement = BadgePlacementView(activity, clusterW, clusterH) { cx, cy ->
             // Persist the dragged centre (re-clamped on the ACTUAL cluster) + apply the shared badge LIVE.

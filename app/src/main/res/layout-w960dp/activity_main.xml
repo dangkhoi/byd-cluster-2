@@ -274,6 +274,12 @@
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="Biển báo tốc độ trên cụm" android:textColor="@color/text_primary"
                     android:textSize="@dimen/text_status" android:fontFamily="sans-serif-medium" />
+                <!-- Badge on/off (owner 2026-08-18, default BẬT). Tắt = không vẽ badge lên cụm (overlay display 1). -->
+                <Switch android:id="@+id/switch_badge_enabled" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
+                    android:checked="true" android:text="Hiện biển báo tốc độ trên cụm"
+                    android:textColor="@color/text_secondary"
+                    android:contentDescription="Bật hoặc tắt biển báo tốc độ trên cụm" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:layout_marginTop="10dp" android:text="Nguồn tốc độ + cảnh báo (biển báo · camera)"
                     android:textColor="@color/text_secondary" android:textSize="13sp" />

@@ -5,6 +5,7 @@ import com.byd.clusternav.navigation.NavScreenReading
 import com.byd.clusternav.navigation.NavScreenScan
 import com.byd.clusternav.navigation.NavParse
 import com.byd.clusternav.navigation.NavAccessHint
+import com.byd.clusternav.navigation.NavAccessRow
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
@@ -35,6 +36,17 @@ class NavAccessibilityService : AccessibilityService() {
 
     private var lastProcessed = 0L
     private val maps = setOf("com.google.android.apps.maps", "app.revanced.android.apps.maps")
+
+    // All nav sources we source-tag for capture. GMaps also drives the on-screen distance ground-truth scan
+    // below; VietMap / Waze / WazeMod post NO nav notifications and render the map in a SurfaceView (empty
+    // a11y tree), so their ONLY same-device nav signal is the ANNOUNCEMENT / window-content voice-guidance
+    // text captured (source-tagged) in [logEventText]. packageNames in nav_accessibility_config.xml must list
+    // all of these for their events to be delivered.
+    private val navPackages = maps + setOf("vn.vietmap.live", "com.waze", "com.chisadin.wazemod")
+
+    // Per-package last logged voice-guidance text — collapses the window-content redraw flood into distinct
+    // rows. Touched only on the accessibility (main) callback thread → no lock needed. Bounded (≤ navPackages).
+    private val lastText = HashMap<String, String>(8)
 
     // T3: nút vật lý → trợ lý giọng nói. Matcher thuần ở :core; service chỉ map KeyEvent + phóng intent.
     private val voiceKeyMatcher = VoiceKeyMatcher()
@@ -94,16 +106,55 @@ class NavAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
+        if (pkg !in navPackages) return
+        if (!Prefs.enabled(applicationContext) || !Prefs.accBooster(applicationContext)) return
+
+        // MULTI-SOURCE capture (telemetry, verbose-gated in NavAccessLog): log the announced / window-content
+        // voice-guidance text tagged by SOURCE package, so GMaps / VietMap / Waze / WazeMod rows are
+        // distinguishable off-car. This is the ONLY same-device nav signal for VietMap/Waze/WazeMod. Gated on
+        // NavLog.verbose HERE (not only inside NavAccessLog.record) so the DEFAULT telemetry-off path skips the
+        // per-event text extraction entirely — GMaps fires TYPE_WINDOW_CONTENT_CHANGED densely on the UI thread
+        // and this runs BEFORE the 200ms scan throttle below, so unguarded it would join/trim on every event.
+        if (NavLog.verbose) {
+            runCatching { logEventText(event, pkg) }.onFailure { Log.w(TAG, "logEventText failed", it) }
+        }
+
+        // GMaps on-screen distance GROUND-TRUTH path — UNCHANGED behaviour. Only GMaps exposes the readable
+        // distance we refine the interpolator from; the other sources have an empty (SurfaceView) a11y tree.
         if (pkg !in maps) return
         val now = SystemClock.elapsedRealtime()
         NavAccessibilitySource.lastEventAt = now
         if (now - lastProcessed < THROTTLE_MS) return         // GMaps bắn event dày -> tiết lưu 200ms
         lastProcessed = now
-        if (!Prefs.enabled(applicationContext) || !Prefs.accBooster(applicationContext)) return
 
         val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
-        runCatching { scan(root, now) }.onFailure { Log.e(TAG, "scan failed", it) }
+        runCatching { scan(root, now, pkg) }.onFailure { Log.e(TAG, "scan failed", it) }
         runCatching { root.recycle() }
+    }
+
+    /**
+     * MULTI-SOURCE telemetry: capture the announced voice-guidance / window-content text from ANY nav source,
+     * tagged by [pkg]. Only TYPE_ANNOUNCEMENT (spoken guidance) + TYPE_WINDOW_CONTENT_CHANGED (text that
+     * carries guidance) are recorded; other event types and empty text are skipped. Consecutive identical
+     * text per package is collapsed so the redraw flood doesn't spam the CSV. Verbose-gated + off-thread in
+     * [NavAccessLog]; a wrong/empty capture never reaches the cluster (diagnostics only).
+     */
+    @Suppress("DEPRECATION") // TYPE_ANNOUNCEMENT was deprecated in API 36 only for SENDERS
+    // (View.announceForAccessibility). A RECEIVING accessibility service has no replacement — the constant
+    // stays the only way to detect other apps' spoken voice-guidance, which is our sole VietMap/Waze signal.
+    private fun logEventText(event: AccessibilityEvent, pkg: String) {
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_ANNOUNCEMENT,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> Unit
+            else -> return
+        }
+        val text = event.text
+            .joinToString(" ") { it?.toString().orEmpty() }
+            .trim()
+        if (text.isEmpty()) return
+        if (lastText[pkg] == text) return
+        lastText[pkg] = text
+        NavAccessLog.record(applicationContext, pkg, NavAccessRow.NO_METERS, "", "", text)
     }
 
     /**
@@ -113,7 +164,7 @@ class NavAccessibilityService : AccessibilityService() {
      * nên đúng đoạn quyết định con số tài xế thấy trên cụm lại không có bài kiểm nào. Ở đây giờ chỉ còn
      * việc đi cây `AccessibilityNodeInfo` và ghi kết quả — hai thứ thật sự cần Android.
      */
-    private fun scan(root: AccessibilityNodeInfo, now: Long) {
+    private fun scan(root: AccessibilityNodeInfo, now: Long, pkg: String) {
         val items = ArrayList<Triple<String, Int, Int>>(64)
         // T3 (telemetry): also gather content descriptions (the arrow/maneuver hint GMaps hides there), but
         // ONLY when verbose and into a SEPARATE list that is NEVER fed to NavScreenScan — so refine() below is
@@ -144,7 +195,7 @@ class NavAccessibilityService : AccessibilityService() {
         if (descs != null) {
             val hint = NavAccessHint.maneuverHint(descs, items.map { it.first })
             NavAccessibilitySource.maneuverHint = hint
-            NavAccessLog.record(applicationContext, reading.turnMeters, reading.road, hint)
+            NavAccessLog.record(applicationContext, pkg, reading.turnMeters, reading.road, hint, "")
         }
     }
 

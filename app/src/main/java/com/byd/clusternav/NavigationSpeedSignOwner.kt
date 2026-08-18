@@ -97,6 +97,15 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
             .onFailure { Log.w(TAG, "debugRefreshBadgeLayout failed", it) }
     }
 
+    /**
+     * Owner 2026-08-18: the cluster-badge on/off toggle changed ([Prefs.badgeEnabled]). Re-evaluate the shared
+     * overlay's enabled gate — detach when disabled, re-show the last value when re-enabled. Degrade-safe.
+     */
+    fun onBadgeEnabledChanged() {
+        runCatching { badgeOverlay.applyEnabled() }
+            .onFailure { Log.w(TAG, "onBadgeEnabledChanged failed", it) }
+    }
+
     override fun close() {
         coordinator.close()
     }

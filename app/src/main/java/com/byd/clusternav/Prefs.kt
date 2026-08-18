@@ -185,6 +185,14 @@ object Prefs {
     private const val K_BADGE_SIZE_DP = "badge_size_dp"
     private const val K_BADGE_CENTER_X = "badge_center_x"
     private const val K_BADGE_CENTER_Y = "badge_center_y"
+    private const val K_BADGE_ENABLED = "badge_enabled"
+
+    // ★ Badge on/off (owner 2026-08-18): MẶC ĐỊNH BẬT. Gate riêng cho biển báo tốc độ trên CỤM (overlay
+    // display 1) — độc lập với nguồn tốc độ/HUD. Khi TẮT: SpeedBadgeOverlay.show() gỡ overlay + không attach
+    // (real pipeline lẫn debug force-show đều tôn trọng vì cả hai đi qua show()). Đọc trực tiếp trong overlay
+    // trên main handler (SharedPreferences cache sẵn nên rẻ, không chạm notification thread).
+    fun badgeEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_BADGE_ENABLED, true)
+    fun setBadgeEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_BADGE_ENABLED, v).apply()
     // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
     private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"

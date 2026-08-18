@@ -6,22 +6,24 @@ object VietMapWidgetViewNames {
     const val CURRENT_SPEED = "osw_current_speed_tv"
     const val SPEED_LIMIT = "speed_limit_widget_text_view"
     const val ALERT_CURRENT_SPEED = "current_speed_textview"
-    const val FIRST_ALERT_LIMIT = "warning_speed_limit_widget_text_view"
-    const val FIRST_ALERT_DISTANCE = "warning_speed_distance_text_view"
     const val FIRST_ALERT_IMAGE = "warning_alert_image"
-    const val SECOND_ALERT_LIMIT = "second_speed_limit_widget_text_view"
-    const val SECOND_ALERT_DISTANCE = "second_warning_speed_distance_text_view"
     const val SECOND_ALERT_IMAGE = "second_warning_alert_image"
+
+    // VietMap 3.3.2: the per-alert value/distance text lives in `place_holder_textView` /
+    // `second_place_holder_textView`. The old `warning_speed_limit_widget_text_view` /
+    // `warning_speed_distance_text_view` (+ their `second_…` siblings) DO NOT EXIST in 3.3.2 — proven by
+    // 2851 on-car view-dumps that never contained them. A place-holder value of "--" means no active alert
+    // value (the parser's sentinel set treats it as null).
+    const val PLACE_HOLDER = "place_holder_textView"
+    const val SECOND_PLACE_HOLDER = "second_place_holder_textView"
 
     val speedRequired = setOf(CURRENT_SPEED, SPEED_LIMIT)
     val alertsRequired = setOf(
         ALERT_CURRENT_SPEED,
         SPEED_LIMIT,
-        FIRST_ALERT_LIMIT,
-        FIRST_ALERT_DISTANCE,
+        PLACE_HOLDER,
         FIRST_ALERT_IMAGE,
-        SECOND_ALERT_LIMIT,
-        SECOND_ALERT_DISTANCE,
+        SECOND_PLACE_HOLDER,
         SECOND_ALERT_IMAGE,
     )
 }

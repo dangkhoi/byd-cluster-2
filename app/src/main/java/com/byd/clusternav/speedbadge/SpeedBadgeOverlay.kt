@@ -13,7 +13,21 @@ import com.byd.clusternav.contracts.SpeedSignType
 
 /**
  * TYPE_APPLICATION_OVERLAY on display 1 (cluster) showing the speed-limit badge.
- * Gracefully degrades to no-op if display 1 is unavailable (off-car / emulator).
+ *
+ * LIFECYCLE (2026-08-18 fix, owner note "HƯỚNG FIX"): the cluster/cast display 1 can appear LONG after this
+ * overlay is constructed (the app opens before Cast projects), and it can come and go while driving. So init
+ * is **event-driven + retryable**, NOT one-shot:
+ *  - [initOverlay] is IDEMPOTENT (no-op once `clusterWm != null`) and is retried from [doShow] whenever the
+ *    display was not yet ready (`clusterWm == null`) — there is NO permanent one-way kill anymore.
+ *  - a [DisplayManager.DisplayListener] (re)initializes on `onDisplayAdded(1)` and re-shows the pending value,
+ *    and TEARS DOWN on `onDisplayRemoved(1)` (detach + drop the display WM/view) so it cleanly re-attaches
+ *    when display 1 returns (e.g. Cast toggled off→on).
+ * Off-car (emulator / no display 1) stays a cheap no-op: init finds no display and simply stays uninitialized.
+ *
+ * All WindowManager ops run on the main handler and are degrade-safe (runCatching, never throw to the caller).
+ * Absolute-centre positioning ([BadgeLayout.clampCenter]) is unchanged. The badge is GATED by
+ * [Prefs.badgeEnabled] (default ON): when disabled, [show] detaches and never attaches — this gate covers both
+ * the real speed-sign pipeline and the debug force-show, since both call [show].
  */
 class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
 
@@ -26,39 +40,77 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     private var clusterWm: WindowManager? = null
     private var badgeView: SpeedBadgeView? = null
     private var attached = false
-    private var degraded = false
+    // Last value seen, remembered so a re-attach (display 1 added, or badge re-enabled) can re-show it without
+    // waiting for the next pipeline emission. Null = nothing to show yet.
+    private var lastSpeedKph: Int? = null
+    private var lastSignType: SpeedSignType? = null
     // Real display-1 size in px for on-screen clamping (BadgeLayout.clampCenter). Falls back to the Seal
     // cluster 1920×720 when the real size can't be read, so placement math never divides by a bogus extent.
     private var clusterW = 1920
     private var clusterH = 720
 
-    init {
-        handler.post { initOverlay() }
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {
+            if (displayId != CLUSTER_DISPLAY_ID) return
+            handler.post {
+                initOverlay()
+                // If a value is pending, re-show it now that display 1 is back (respects the enabled gate).
+                lastSpeedKph?.let { doShow(it, lastSignType) }
+            }
+        }
+
+        override fun onDisplayRemoved(displayId: Int) {
+            if (displayId != CLUSTER_DISPLAY_ID) return
+            handler.post { teardown() }
+        }
+
+        override fun onDisplayChanged(displayId: Int) { /* size/rotation handled at next show via initOverlay */ }
     }
 
+    init {
+        handler.post {
+            initOverlay()
+            runCatching {
+                (appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+                    ?.registerDisplayListener(displayListener, handler)
+            }.onFailure { Log.w(TAG, "registerDisplayListener failed: ${it.message}") }
+        }
+    }
+
+    /**
+     * IDEMPOTENT + retryable init. No-op if already initialized (`clusterWm != null`). If display 1 is absent
+     * (off-car, or Cast not yet projecting) it stays UN-initialized and returns — the next [doShow] /
+     * onDisplayAdded retries. Never sets a permanent degrade. Degrade-safe (runCatching).
+     */
     private fun initOverlay() {
-        val dm = appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-        val display = dm?.getDisplay(CLUSTER_DISPLAY_ID)
-        if (display == null) {
-            Log.w(TAG, "display $CLUSTER_DISPLAY_ID not found — degrading to no-op")
-            degraded = true
-            return
-        }
-        val size = android.graphics.Point()
-        @Suppress("DEPRECATION") display.getRealSize(size)
-        if (size.x > 0 && size.y > 0) {
-            clusterW = size.x
-            clusterH = size.y
-        }
-        val clusterCtx = appContext.createDisplayContext(display)
-        clusterWm = clusterCtx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        if (clusterWm == null) {
-            Log.w(TAG, "WindowManager null for display $CLUSTER_DISPLAY_ID — degrading")
-            degraded = true
-            return
-        }
-        badgeView = SpeedBadgeView(clusterCtx)
-        Log.i(TAG, "overlay initialized for display $CLUSTER_DISPLAY_ID (${clusterW}x$clusterH)")
+        if (clusterWm != null) return
+        runCatching {
+            val dm = appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            val display = dm?.getDisplay(CLUSTER_DISPLAY_ID)
+            if (display == null) {
+                Log.d(TAG, "display $CLUSTER_DISPLAY_ID not ready — staying uninitialized, will retry")
+                return
+            }
+            val size = android.graphics.Point()
+            @Suppress("DEPRECATION") display.getRealSize(size)
+            if (size.x > 0 && size.y > 0) {
+                clusterW = size.x
+                clusterH = size.y
+            }
+            val clusterCtx = appContext.createDisplayContext(display)
+            val wm = clusterCtx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (wm == null) {
+                Log.d(TAG, "WindowManager null for display $CLUSTER_DISPLAY_ID — will retry")
+                return
+            }
+            // Build the view BEFORE publishing either field: if SpeedBadgeView construction throws, clusterWm
+            // stays null so the next doShow() / onDisplayAdded retries — never a half-initialized state
+            // (clusterWm set, badgeView null) that the `clusterWm == null` retry guard could not recover from.
+            val view = SpeedBadgeView(clusterCtx)
+            clusterWm = wm
+            badgeView = view
+            Log.i(TAG, "overlay initialized for display $CLUSTER_DISPLAY_ID (${clusterW}x$clusterH)")
+        }.onFailure { Log.w(TAG, "initOverlay failed: ${it.message}") }
     }
 
     fun show(speedKph: Int, signType: SpeedSignType?) {
@@ -69,19 +121,47 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         handler.post { doHide() }
     }
 
+    /**
+     * Re-evaluate the [Prefs.badgeEnabled] gate after the toggle changes: detach when disabled, or re-show the
+     * last known value when re-enabled. Posted to the main handler; degrade-safe.
+     */
+    fun applyEnabled() {
+        handler.post {
+            if (!Prefs.badgeEnabled(appContext)) {
+                teardown()
+            } else {
+                lastSpeedKph?.let { doShow(it, lastSignType) }
+            }
+        }
+    }
+
     override fun close() {
-        handler.post { doHide() }
+        handler.post {
+            runCatching {
+                (appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+                    ?.unregisterDisplayListener(displayListener)
+            }
+            teardown()
+        }
     }
 
     private fun doShow(speedKph: Int, signType: SpeedSignType?) {
-        if (degraded) return
-        val view = badgeView ?: return
+        lastSpeedKph = speedKph
+        lastSignType = signType
+        // Gate: badge disabled → make sure nothing is on the cluster and never attach.
+        if (!Prefs.badgeEnabled(appContext)) {
+            teardown()
+            return
+        }
+        // Retry init if display 1 was not ready when we were constructed (or after a teardown).
+        if (clusterWm == null) initOverlay()
+        val view = badgeView ?: return   // still no display 1 (off-car) → cheap no-op
         view.speedValue = speedKph
         view.signType = signType
         if (!attached) {
             val lp = buildLayoutParams()
             runCatching { clusterWm?.addView(view, lp) }
-                .onFailure { Log.e(TAG, "addView failed: ${it.message}"); degraded = true; return }
+                .onFailure { Log.w(TAG, "addView failed (will retry next show): ${it.message}"); return }
             attached = true
         }
         view.visibility = android.view.View.VISIBLE
@@ -119,15 +199,15 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     /**
      * Re-read the badge prefs and, if the badge is currently attached, apply the new position/size LIVE via
      * [WindowManager.updateViewLayout] on the main handler. Degrade-safe (runCatching, never throws to the
-     * caller) and a no-op before attach or when degraded — the next [show] then picks up the fresh prefs.
-     * Called by DiagActivity so the driver can force-show the badge and watch it move/resize on the cluster.
+     * caller) and a no-op before attach — the next [show] then picks up the fresh prefs.
+     * Called by DiagActivity / the placement UI so the driver can force-show the badge and watch it move.
      */
     fun refreshLayout() {
         handler.post { doRefreshLayout() }
     }
 
     private fun doRefreshLayout() {
-        if (degraded || !attached) return
+        if (!attached) return
         val view = badgeView ?: return
         runCatching { clusterWm?.updateViewLayout(view, buildLayoutParams()) }
             .onFailure { Log.w(TAG, "updateViewLayout failed: ${it.message}") }
@@ -136,5 +216,21 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     private fun doHide() {
         if (!attached) return
         badgeView?.visibility = android.view.View.INVISIBLE
+    }
+
+    /**
+     * Full teardown: detach the view from display 1 and DROP the display WindowManager + view so a fresh
+     * [initOverlay] rebuilds them against the display that comes back. Used on `onDisplayRemoved(1)`, on the
+     * disabled gate, and on [close]. Degrade-safe and idempotent (safe when nothing is attached).
+     */
+    private fun teardown() {
+        val view = badgeView
+        if (attached && view != null) {
+            runCatching { clusterWm?.removeView(view) }
+                .onFailure { Log.w(TAG, "removeView failed: ${it.message}") }
+        }
+        attached = false
+        clusterWm = null
+        badgeView = null
     }
 }

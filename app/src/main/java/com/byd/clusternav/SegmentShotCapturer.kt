@@ -18,14 +18,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * `seg-<n>-<ts>` timestamp correlates the images with the NavNotifLog / NavAccessLog rows.
  *
  * WHAT EACH FILE IS (on-car finding 2026-08-17):
- *  • `-main`            = display 0 (main head-unit) via `fission_screencap`. Display 0 shows whatever nav app
- *                         is foreground — not necessarily GMaps — hence `-main`, not the old `-gmaps`.
- *  • `-cluster`         = display 1 via `fission_screencap` (OEM composite). UNRELIABLE for our overlay: on-car
- *                         it sometimes returns the MAIN screen and never includes our TYPE_APPLICATION_OVERLAY
- *                         badge.
- *  • `-cluster-overlay` = display 1 via the platform `screencap` (Android overlay layer). This DOES capture the
- *                         TYPE_APPLICATION_OVERLAY badge, so it reflects what the driver actually sees on the
- *                         cluster. Both cluster shots are kept so the two layers can be compared per turn.
+ *  • `-cluster`         = `fission_screencap -d 0` = the CLUSTER composite (OEM + our badge). PROVEN on-car
+ *                         that fission's display ids are OPPOSITE Android's: fission `-d 0` is the cluster and
+ *                         fission `-d 1` is the main head-unit. This grabs the OEM composite for the cluster.
+ *  • `-main`            = `fission_screencap -d 1` = the MAIN head-unit screen. Shows whatever nav app is
+ *                         foreground — not necessarily GMaps — hence `-main`, not the old `-gmaps`.
+ *  • `-cluster-overlay` = Android display 1 via the platform `screencap` (the Android cast surface / overlay
+ *                         layer). Kept alongside the fission cluster shot so the two layers can be compared
+ *                         per turn.
  *
  * Safety envelope: (a) GATED behind [NavLog.verbose] (default OFF), (b) the debounce + shell round-trips run on
  * a single-thread daemon Executor, never on the main/notification thread, (c) DEBOUNCED to at most once per
@@ -62,14 +62,13 @@ class SegmentShotCapturer private constructor(private val appContext: Context) {
         val ts = System.currentTimeMillis()
         runCatching {
             val diag = File(appContext.getExternalFilesDir(null), "diag").apply { mkdirs() }
-            // display 0 (main head-unit): shows whatever nav app is foreground — not necessarily GMaps — so
-            // the suffix is -main. fission_screencap grabs the OEM composite for that display.
-            captureFission(0, File(diag, "seg-$n-$ts-main.png").absolutePath)
-            // display 1 (cluster): capture TWICE so the two layers can be compared per turn (on-car 2026-08-17):
-            //  • fission_screencap -> -cluster.png         = OEM composite (UNRELIABLE for our overlay: sometimes
-            //    returns the main screen, never includes the TYPE_APPLICATION_OVERLAY badge).
-            //  • platform screencap -> -cluster-overlay.png = Android overlay layer, which DOES include our badge.
-            captureFission(1, File(diag, "seg-$n-$ts-cluster.png").absolutePath)
+            // fission display ids are OPPOSITE Android's (proven on-car 2026-08-17):
+            //  • fission -d 0 = CLUSTER composite (OEM + our badge)  -> -cluster.png
+            //  • fission -d 1 = MAIN head-unit (foreground nav app)  -> -main.png
+            captureFission(0, File(diag, "seg-$n-$ts-cluster.png").absolutePath)
+            captureFission(1, File(diag, "seg-$n-$ts-main.png").absolutePath)
+            // Android display 1 via the platform screencap = the Android cast surface / overlay layer. Kept
+            // alongside the fission cluster shot so the two layers can be compared per turn.
             captureAndroid(1, File(diag, "seg-$n-$ts-cluster-overlay.png").absolutePath)
             Log.i(TAG, "segment $n screencaps -> ${diag.absolutePath}/seg-$n-$ts-*.png")
         }.onFailure { Log.w(TAG, "segment $n screencap failed", it) }
