@@ -2,7 +2,7 @@
 
 > **Loại:** Diagnostics · **Trạng thái:** Current · **Ngày:** 2026-08-19
 > **Nguồn:** readback `hud-compare.bat` (navopen getraw) hai xe + logcat lúc HUD hiện nav.
-> **⚠ Kết luận này SỬA ADR 0002** (cờ `0x38B00030` là SAI). Xem §Kết luận.
+> **⚠ ĐÍNH CHÍNH 2026-08-19 (đọc trước §Kết luận):** Kết luận gốc của doc này — "`0x38B00030` là cờ SAI / bị bác" — **KHÔNG còn đúng.** HUD hiện nav trên xe anh em là **HUD Taobao aftermarket** (đường render ĐỘC LẬP, tự vẽ từ bus, KHÔNG qua firmware HUD zin). Vì vậy readback này chỉ chứng minh **app ghi nav lên bus ĐÚNG** — nó **KHÔNG bác được** `0x38B00030` cho **HUD zin** (hai đường render khác nhau). **`0x38B00030` VẪN là nghi phạm gate HUD-ZIN, CHƯA bị bác.** `40d` 138 vs 162 = khác biệt **tình cờ** (khác biệt thật = zin vs Taobao). Bảng bằng chứng dưới (app writes rc=0, Taobao HUD render) VẪN đúng; chỉ phần *diễn giải* mục 2–3 §Kết luận là sai. Xem tổng hợp + xếp hạng: **`docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`** và ADR 0002 §Sửa lần 2.
 
 ## Câu hỏi
 Vì sao HUD kính lái hiện nav trên **xe anh em** mà **không** trên **xe owner** — khi cả hai chạy **cùng app ClusterNav + GMaps**?
@@ -46,7 +46,10 @@ HUD kính owner hiện đầy đủ: **tốc độ, giới hạn tốc độ (AD
 ### 5. Khác biệt DUY NHẤT bắt được giữa hai xe
 - **`40d` variant: owner = 138, anh em = 162.** `gbClientVersion` cùng `6125f`. Anh em `ro.build.region = ROW`.
 
-## Kết luận (SỬA ADR 0002)
+## Kết luận (⚠ mục 2–3 ĐÃ BỊ ĐÍNH CHÍNH — xem banner đầu doc)
+
+> **Đính chính:** mục **1** và **4** dưới đây VẪN ĐÚNG (app ghi nav lên bus đúng; không sửa được HUD **zin** qua app). Mục **2–3** SAI vì HUD anh em là **Taobao aftermarket** (render độc lập) → không bác được `0x38B00030` cho HUD zin. `0x38B00030` VẪN là nghi phạm gate HUD-zin (chưa bác); `40d` 138/162 chỉ tình cờ. Diễn giải đúng: `docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`.
+
 1. **App ClusterNav ĐẨY ĐƯỢC nav lên HUD kính** — chứng minh trên xe anh em (cùng app + GMaps, không đổi gì).
 2. **`0x38B00030` KHÔNG phải cờ quyết định.** Cả hai xe đọc `−2147482648`, mà HUD anh em vẫn hiện nav. Giả thuyết cũ ("`readSelfLearnState()` chỉ bật khi `config==1` → owner bị chặn bởi 38B00030") **bị xe thật bác bỏ**. `38B00030` gate một cơ chế khác (cluster→HUD self-learn mirror) mà **không xe nào dùng**; đường nav thật đi qua `AmapService`/instrument-guide (43E/43F).
 3. **Chặn nằm phía XE — biến thể `40d` 138 vs 162** (hoặc coding không đọc được qua getraw), **KHÔNG phải app**, **KHÔNG phải 38B00030**. Mọi cờ 38B đọc được đều giống nhau giữa hai xe.

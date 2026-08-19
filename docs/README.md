@@ -101,7 +101,8 @@
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
 | [`diagnostics/VEHICLE-TEST-V2.md`](diagnostics/VEHICLE-TEST-V2.md) | Checklist thử trên xe + ma trận Stage 11 (execution NOT STARTED) | Current | 2026-07-26 |
-| [`diagnostics/hud-provisioning-compare-2026-08-19.md`](diagnostics/hud-provisioning-compare-2026-08-19.md) | HUD-compare owner (40d=138) vs anh em (162): app đẩy được HUD; `0x38B00030` bị bác; chặn = variant coding (sửa ADR 0002) | Current | 2026-08-19 |
+| [`diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`](diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md) | Tổng hợp MỌI đường RE để HUD **zin** hiện nav + xếp hạng khả thi×chi phí (nghi phạm `0x38B00030` chưa bác; HUD Taobao ≠ zin) | Current | 2026-08-19 |
+| [`diagnostics/hud-provisioning-compare-2026-08-19.md`](diagnostics/hud-provisioning-compare-2026-08-19.md) | HUD-compare owner vs anh em: app đẩy nav lên bus đúng (HUD **Taobao** anh em hiện nav). ⚠ kết luận "`0x38B00030` bị bác" **đã đính chính** — Taobao ≠ zin, cờ chưa bác (xem `factory-hud-nav-RE-avenues`) | Current | 2026-08-19 |
 | [`diagnostics/arrow-validation-teammate-2026-08-18.md`](diagnostics/arrow-validation-teammate-2026-08-18.md) | Xác thực 18/18 mũi tên (blind bitmap vs answer-key) | Current | 2026-08-18 |
 | [`diagnostics/distance-interpolation-validation-2026-08-18.md`](diagnostics/distance-interpolation-validation-2026-08-18.md) | Kiểm cự ly 2 bên + nội suy km→turn (a11y screenRead) | Current | 2026-08-18 |
 | [`diagnostics/oncar-session-2026-08-16.md`](diagnostics/oncar-session-2026-08-16.md) | Tổng hợp + TODO phiên on-car 2026-08-16 | Current | 2026-08-16 |
@@ -133,7 +134,7 @@
 |-----|----------|-----------|----------|
 | [`decisions/README.md`](decisions/README.md) | Index ADR + hướng dẫn định dạng (Context·Decision·Consequences·Status·Date; khi nào mở ADR) | Current | 2026-08-19 |
 | [`decisions/0001-nav-source-strategy.md`](decisions/0001-nav-source-strategy.md) | Chiến lược nguồn nav per-app (GMaps notif · VietMap widget+a11y · Waze screen-capture) + adapter trung lập | Current | 2026-08-19 |
-| [`decisions/0002-hud-nav-coding-locked.md`](decisions/0002-hud-nav-coding-locked.md) | HUD kính lái = coding BYD (`0x38B00030` NOT provisioned), không phải bug app | Current | 2026-08-19 |
+| [`decisions/0002-hud-nav-coding-locked.md`](decisions/0002-hud-nav-coding-locked.md) | HUD kính ZIN nav = gate firmware (nghi phạm `0x38B00030` NOT provisioned, CHƯA bác), không phải bug app; xe anh em là HUD Taobao (đường độc lập) | Current | 2026-08-19 |
 | [`decisions/0003-datacollection-logging-default-off.md`](decisions/0003-datacollection-logging-default-off.md) | Thu thập dữ liệu (log + ảnh) mặc định OFF + storage cap ~150 MB | Current | 2026-08-19 |
 
 ## 9) Handoff — `_handoff/*.md` (tóm tắt phiên, tạm)

@@ -48,7 +48,7 @@
 |----|------|-----------|---------|----------|---------|
 | C1 | Cài build mới (logging-off + upcoming-badge) lên xe owner | ⛔ | | | `~/Desktop/ClusterNav2.0-nolog-upcomingbadge-20260818.apk`; khi ở xe |
 | C2 | Glyph-test vòng xuyến trên cụm owner — mã CAN nào vẽ directional (15/18/20/24/24+N) trên OEM owner | ⛔ | | | bug owner: vòng xuyến generic = OEM render (app gửi đúng CAN 18); on-car only |
-| C3 | HUD provisioning compare — anh em chạy `hud-compare.bat` (USB) → soi cờ | ✅ | 2026-08-19 | 2026-08-19 | **XONG.** `0x38B00030` bị BÁC (2 xe đều −2147482648, anh em vẫn lên HUD bằng app này). App đẩy được HUD; chặn = variant `40d` 138 vs 162. → `docs/diagnostics/hud-provisioning-compare-2026-08-19.md` (sửa ADR 0002) |
+| C3 | HUD provisioning compare — anh em chạy `hud-compare.bat` (USB) → soi cờ | ✅ | 2026-08-19 | 2026-08-19 | **XONG** (compare đã chạy). ⚠ **Đính chính:** HUD anh em hiện nav là **Taobao aftermarket** (render độc lập) → **KHÔNG bác được** `0x38B00030` cho HUD zin; cờ này VẪN là nghi phạm gate (chưa bác). `40d` 138/162 = tình cờ. → `docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md` + `hud-provisioning-compare-2026-08-19.md` (sửa ADR 0002 ×2) |
 | C4 | Verify on-car: badge lifecycle over cast; VietMap a11y turn/đường khi dẫn; giá trị VMAlert (upLimit/upDist) | ⛔ | | | sau khi cài C1 |
 | C5 | Merge feat → main | ⛔ | | | CHỈ sau khi PASS exact-build on-car + owner duyệt |
 
@@ -60,8 +60,8 @@
 |----|------|-----------|---------|----------|---------|
 | D1 | Làm mượt nội suy lúc transition/reroute | 📋 | | | hiện đã 95% khớp <1m; ưu tiên thấp |
 | D2 | `.bat` auto-reconnect khi WiFi drop | 📋 | | | tiện cho anh em |
-| D3 | Viết `docs/diagnostics/hud-provisioning-compare-*.md` sau khi có readback xe anh em | ✅ | 2026-08-19 | 2026-08-19 | `hud-provisioning-compare-2026-08-19.md`; sửa ADR 0002 (38B00030 sai) |
-| D6 | **HUD kính nav — unlock qua variant-coding** (`40d` 138→162 provisioning) bằng tool BYD/OBD-UDS; xác định cờ coding cụ thể (chưa biết, KHÔNG phải 38B00030) | 📋 | | | **NGOÀI scope app** (owner quyết); cần variant-coding dump so 2 xe hoặc bảng tra 40d |
+| D3 | Viết `docs/diagnostics/hud-provisioning-compare-*.md` sau khi có readback xe anh em | ✅ | 2026-08-19 | 2026-08-19 | `hud-provisioning-compare-2026-08-19.md`. ⚠ kết luận "38B00030 sai" trong doc này **đã bị đính chính** (anh em = HUD Taobao, không bác được cờ zin) → xem `factory-hud-nav-RE-avenues-2026-08-19.md` + ADR 0002 §Sửa lần 2 |
+| D6 | **HUD kính ZIN nav — unlock** (nghi phạm gate `0x38B00030`, CHƯA bác). Tổng hợp + xếp hạng đường: `docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`. **Top đường:** (0) HUD **Taobao** aftermarket = đã chạy với app; (1) sweep 2 fusion switch `0x8e2fcdbf`/`0xd61b6746` [on-car rẻ]; (2) đọc capability `ICarHudService.getHudConfig` HUD zin owner [on-car đọc]; (3) probe `0x32B1102E` [on-car rẻ]; (4) provision `0x38B00030=1` qua UDS coding [tool ngoài]; (5) variant-coding dump [tool ngoài] | 📋 | | | Off-car RE **XONG** (5 track). Đường 1-3 **on-car non-root** làm được; đường 4-5 **NGOÀI scope app** (owner + tool BYD). HUD Taobao ≠ HUD zin |
 | D4 | **Scrub secret CŨ (đã public)** khỏi HEAD + git HISTORY: mật khẩu factory DiLink (`hud-cluster-injection-findings-2026-08-10.md` ×2) + machine-username path (`handoff-2026-08-17-...md`) | 📋 | | | file CŨ đã push từ trước; scrub content hiện tại + `filter-repo` history + force-push (**cần owner duyệt**) |
 | D5 | Roundabout icon coverage từ chuyến có nhiều vòng xuyến (đã có data anh em) | 📋 | | | đã đủ coverage; low priority |
 
