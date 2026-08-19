@@ -1,5 +1,7 @@
 # Distance/interpolation validation — owner afternoon drive (2026-08-18)
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-18 · **Mục đích**: Kiểm cự ly 2 bên + nội suy km→turn từ chuyến chiều owner (có a11y screenRead).
+
 Dataset: `~/Desktop/clusternav-drive-pm-20260818/files` (chuyến chiều owner, có a11y screenRead).
 Mục tiêu (b): kiểm cự ly 2 bên đồng nhất, tìm sai lệch để patch nội suy.
 

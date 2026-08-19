@@ -1,5 +1,7 @@
 # APP CODE UPDATES — rút từ phiên on-car 2026-08-16
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-16 · **Mục đích**: Danh sách sửa CODE app rút từ phiên on-car 2026-08-16 (file:line + acceptance).
+
 > Việc cần sửa trong CODE app (không phải doc). Tất cả **OFF-CAR** trừ khi ghi rõ. Mỗi task có file:line + acceptance.
 > Nguồn: catalog icon on-car 2026-08-16 (`oncar-session-2026-08-16.md`) + học OpenBYD 2.3 (RE cache `openbyd-2.3/sources/`).
 

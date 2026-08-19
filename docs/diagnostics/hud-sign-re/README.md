@@ -1,5 +1,7 @@
 # Seal HUD + speed-sign reverse-engineering baseline — T0–T9
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-18 · **Mục đích**: Entry-doc workspace RE HUD + speed-sign (T0–T9) — corpus, evidence, expansion (đại diện cho cả thư mục `diagnostics/hud-sign-re/`).
+
 Scope is strictly off-car T0–T9 plus the T0 main-hook quarantine. No vehicle transport, installation, broadcast, discovery, or field execution was used. Paths below are corpus aliases; `<project-root>` and `<user-cache>` intentionally replace machine-specific paths.
 
 ## Starting baseline

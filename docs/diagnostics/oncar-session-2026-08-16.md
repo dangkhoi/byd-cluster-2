@@ -1,5 +1,7 @@
 # ON-CAR SESSION HANDOFF — 2026-08-16 (xe owner: BYD Seal · DiLink3.0 · region ROW · 40d=138)
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-16 · **Mục đích**: Tổng hợp + TODO phiên on-car 2026-08-16 (catalog icon, nav-on-cluster).
+
 > Parked-only · IP redact `<vehicle-ip>` · VIN redact `<vin>` · KHÔNG assume — mỗi claim trace `[readback]`/`[owner]`/`[RE:doc]`.
 > Phiên dài, nhiều nhánh. Đây là bản tổng hợp + TODO. Chi tiết 4-mode xem `oncar-runbook-4mode-track-a-probes-2026-08-14.md` §EXECUTED 2026-08-16.
 

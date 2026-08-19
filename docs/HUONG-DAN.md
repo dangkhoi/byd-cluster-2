@@ -1,5 +1,7 @@
 # ClusterNav — Hướng dẫn sử dụng
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-16 · **Mục đích**: Hướng dẫn dùng ClusterNav 1.30 (bật Nav+HUD, cấp quyền, cluster display, voice-key). VI + EN.
+
 > Phiên bản: **1.30** (versionCode 130). Dự án cá nhân thử nghiệm trên BYD DiLink 3.0 (Android 10). Không liên kết với BYD.
 
 ClusterNav có **hai hệ thống độc lập** trên cùng một app:

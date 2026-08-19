@@ -1,5 +1,7 @@
 # Arrow classification validation — teammate drive data (2026-08-18)
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-18 · **Mục đích**: Xác thực phân loại 18/18 mũi tên bằng data lái xe anh em (blind bitmap read vs answer-key).
+
 Nguồn: `runninglogs/files1800` (xe anh em, working-HUD, build CŨ hơn owner — không a11y/upcoming).
 Phương pháp: `nav_arrow` 38k live rows → **18 bitmap mũi tên distinct** → sub-agent đọc BLIND từng bitmap (upscale 216px) → so với phân loại của app (answer-key).
 

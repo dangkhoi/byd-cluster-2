@@ -1,5 +1,7 @@
 # On-car procedure — Gemini as assistant + mic-button → Gemini (prep 2026-08-13)
 
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-13 · **Mục đích**: Thủ tục on-car bật Gemini làm trợ lý + map nút mic → Gemini (2 hướng độc lập).
+
 > Off-car prep so the next on-car session is just execution. Vehicle IP redacted → set `VEH=<vehicle-ip>`.
 > Two independent paths; Path A is the "enable Gemini as the car's assistant" the community got working.
 
