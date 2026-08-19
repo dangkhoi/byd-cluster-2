@@ -61,7 +61,7 @@
 | D1 | Làm mượt nội suy lúc transition/reroute | 📋 | | | hiện đã 95% khớp <1m; ưu tiên thấp |
 | D2 | `.bat` auto-reconnect khi WiFi drop | 📋 | | | tiện cho anh em |
 | D3 | Viết `docs/diagnostics/hud-provisioning-compare-*.md` sau khi có readback xe anh em | 📋 | | | sau C3 |
-| D4 | Scrub mật khẩu factory DiLink (đã ẩn) khỏi git HISTORY (file cũ hud-cluster-injection-findings) nếu muốn sạch hẳn | 📋 | | | filter-repo + force-push (cần owner duyệt) |
+| D4 | **Scrub secret CŨ (đã public)** khỏi HEAD + git HISTORY: mật khẩu factory DiLink (`hud-cluster-injection-findings-2026-08-10.md` ×2) + machine-username path (`handoff-2026-08-17-...md`) | 📋 | | | file CŨ đã push từ trước; scrub content hiện tại + `filter-repo` history + force-push (**cần owner duyệt**) |
 | D5 | Roundabout icon coverage từ chuyến có nhiều vòng xuyến (đã có data anh em) | 📋 | | | đã đủ coverage; low priority |
 
 ---
@@ -71,10 +71,10 @@
 | ID | Việc | Trạng thái | Bắt đầu | Kết thúc | Ghi chú |
 |----|------|-----------|---------|----------|---------|
 | E0 | Rule Documentation & Backlog (steering, bắt buộc 100%) | ✅ | 2026-08-19 | 2026-08-19 | `.kiro/steering/documentation-and-backlog.md` |
-| E1 | **Refactor docs theo rule**: tạo `docs/README.md` INDEX + header mọi doc current + archive doc cũ + đúng 9-loại taxonomy | ✅ | 2026-08-19 | 2026-08-19 | INDEX + header (12 doc) + 9-loại; archive=0 (bảo thủ, chủ đích); docs off-car, **commit pending (W5)** |
-| E2 | Tạo `.kiro/steering/project-context.md` (kiến trúc + bản đồ nguồn nav + HAL/CAN facts + map file + trạng thái) | ✅ | 2026-08-19 | 2026-08-19 | 43 dòng (<150); khớp diagnostics+backlog; **commit pending (W5)**; nhớ `git add -f` (.kiro gitignored) |
-| E3 | Index knowledge base: `docs/` (Best) + `core/`+`app/` source (Fast) | 🔲 | | | R6.2; tra thay vì đọc lại |
-| E4 | Thêm §Nhật ký triển khai vào spec template + specs hiện có; tạo `docs/decisions/` (ADR) | 🔧 | 2026-08-19 | 2026-08-19 | template `_template.html` (§9) + `decisions/` (README+3 ADR) DONE; **back-fill §Nhật ký vào 38 specs hiện có = DEFERRED** (task riêng); commit pending (W5) |
+| E1 | **Refactor docs theo rule**: tạo `docs/README.md` INDEX + header mọi doc current + archive doc cũ + đúng 9-loại taxonomy | ✅ | 2026-08-19 | 2026-08-19 | INDEX + header (12 doc) + 9-loại; archive=0 (bảo thủ, chủ đích); docs off-car, **committed c7409b8** |
+| E2 | Tạo `.kiro/steering/project-context.md` (kiến trúc + bản đồ nguồn nav + HAL/CAN facts + map file + trạng thái) | ✅ | 2026-08-19 | 2026-08-19 | 43 dòng (<150); khớp diagnostics+backlog; **committed c7409b8**; nhớ `git add -f` (.kiro gitignored) |
+| E3 | Index knowledge base: `docs/` (Best) + `core/`+`app/` source (Fast) | ✅ | 2026-08-19 | 2026-08-19 | 3 KB: byd-clusternav-docs + code-core + code-app (indexing background); tra thay vì đọc lại |
+| E4 | Thêm §Nhật ký triển khai vào spec template + specs hiện có; tạo `docs/decisions/` (ADR) | 🔧 | 2026-08-19 | 2026-08-19 | template `_template.html` (§9) + `decisions/` (README+3 ADR) DONE; **back-fill §Nhật ký vào 38 specs hiện có = DEFERRED** (task riêng); committed c7409b8 |
 
 ## Ghi chú nguồn nav (tổng hợp — để tham chiếu khi làm B3)
 - **GMaps**: notif (nav đầy đủ, chạy NỀN) + arrow bitmap. ✅ đang dùng.
