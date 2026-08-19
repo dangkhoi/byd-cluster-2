@@ -38,3 +38,19 @@ Nếu/khi có 3 bí mật, chuỗi thử (no-root, qua ClusterDebug CAN-inject �
 
 ## F. Phương án chắc chắn (nhắc lại)
 - **HUD Taobao (HUD BYD rời)** — anh em đã chạy với app này (mũi tên+cự ly); né hẳn coding cụm. Đây là đường **đã chứng minh** nếu mục tiêu là "nav lên kính".
+
+---
+
+## Cập nhật 2026-08-19 (chiều-3) — TOOL coding thực tế: VDS2100 (đào `github.com/BYDcar`)
+
+**`github.com/BYDcar`** (7 repo, cập nhật 2023): `opendbc-byd` chỉ có **1 DBC BYD thật = `byd_tang_phev_2015.dbc`** (Tang PHEV 2016, cũ) — **KHÔNG có Seal/DiLink3, không tín hiệu HUD-nav/cụm**. `BYDRepairManual` có `仪表盘固件` (firmware cụm) + `维修手册` (repair manual) + `软件` — firmware/PDF cũ, chục GB, tiếng Trung; coding table có thể chôn trong đó nhưng là đào tay lớn.
+
+**2 intel giá trị:**
+1. **`VDS2100`** = máy chẩn đoán chính hãng BYD (do **Autel** làm, **"full coding programming system"**), **tiệm độc lập MUA được** (Alibaba/Maverick/KKS); third-party **XTOOL** cũng hỗ trợ BYD. ⇒ **Dealer từ chối = chính sách, nhưng thợ độc lập với VDS2100/Autel/XTOOL có thể coding equipment/vehicleCode của cụm.**
+2. **CAN cổng OBD2 bị LỌC** (opendbc-byd README: candump→canplay không phản ứng) → inject từ OBD ngoài khó (gateway lọc); **ClusterDebug CAN-inject trong xe (sau gateway, no-root) là đường tốt hơn** cho phần test.
+
+**⇒ Đường thực tế nhất cho HUD-nav xe owner:** mang xe tới **tiệm có VDS2100/Autel/XTOOL**, yêu cầu **bật equipment/coding "HUD-navigation" cho cụm đồng hồ**. Đích cụ thể (nói với thợ): cờ `0x38B00030` / equipment self-study `vehicleCode`.
+
+**Caveat (trace-den-tan-cung):** chưa có quy trình công khai "VDS2100 → HUD-nav trên Seal"; thợ phải tự tìm mục equipment. Và **nếu firmware cụm trim này KHÔNG có option HUD-nav** thì tool cũng chịu → **phải chạy C6 probe trước** (`getHudSupportedModes` / status regs) để biết cụm có hỗ trợ nav không. Nếu không → HUD BYD rời (đường anh em).
+
+**Trạng thái đào:** RE local CẠN + community (byd-dolphin-hacking / BYDcar / XDA / VDS2100) CẠN. Đích + tool + transport đều đã định danh; phần còn lại là **việc thế giới thực** (chạy C6 probe → nếu cụm hỗ trợ nav thì tìm thợ VDS2100; nếu không thì HUD rời).
