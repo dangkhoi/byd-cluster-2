@@ -1,6 +1,8 @@
-# 0002 — HUD kính lái là coding BYD, không phải app (`0x38B00030`)
+# 0002 — HUD kính lái là coding BYD, không phải app (variant `40d`)
 
-> **Trạng thái**: Accepted · **Ngày**: 2026-08-19 · **Mục đích**: Chốt root-cause "HUD kính không lên nav" = cờ variant-coding của XE chưa provisioned, KHÔNG phải bug app → app đừng "fix" oversea write.
+> **Trạng thái**: Accepted · **Ngày**: 2026-08-19 · **Sửa**: 2026-08-19 (xem §Sửa) · **Mục đích**: Chốt root-cause "HUD kính không lên nav" = coding/variant của XE, KHÔNG phải bug app → app đừng "fix" oversea write.
+
+> **⚠ SỬA 2026-08-19 (bằng chứng xe anh em, `40d`=162):** Cơ chế `0x38B00030` trong ADR gốc **SAI**. Xe anh em có HUD hiện nav (bằng **chính app này + GMaps**) nhưng đọc `0x38B00030 = −2147482648` **y hệt xe owner** → `38B00030` **KHÔNG** phải cờ quyết định, HUD-nav **KHÔNG cần** `38B00030==1`. **Quyết định lõi vẫn đúng và được củng cố** (cùng một app chạy trên xe coding khác thì lên HUD ⇒ chặn ở phía XE, không phải app). Khác biệt thật = **variant `40d` 138 (owner) vs 162 (anh em)** — cờ coding cụ thể **chưa xác định**, KHÔNG nằm trong các cờ 38B đọc được (đều giống nhau giữa hai xe). Mở khoá = re-code sang provisioning biến thể 162 (dealer/OBD-UDS), KHÔNG riêng `38B00030=1`. Chi tiết: `docs/diagnostics/hud-provisioning-compare-2026-08-19.md`. Phần dưới giữ nguyên làm bản ghi lịch sử.
 
 ## Context
 
@@ -32,7 +34,7 @@ Chốt: **HUD kính lái lên nav là do cờ variant-coding `0x38B00030` của 
 
 ## Status
 
-Accepted — root-cause xác nhận on-car (readback 2026-08-16) + write-attempt bị từ chối toàn bộ (2026-08-18, A11). **Mở khoá:** set `0x38B00030=1` qua coding tool BYD (OBD/UDS). Nếu Sealion 6 compare cho kết quả khác → cập nhật ADR.
+Accepted, **amended 2026-08-19** (xem §Sửa ở đầu). Quyết định lõi (HUD-nav = coding/variant XE, KHÔNG phải app; app ghi đúng) **giữ nguyên + được củng cố**. Cơ chế `0x38B00030` **bị bác** bởi readback xe anh em (`40d`=162): HUD anh em lên nav bằng **chính app này** dù `38B00030=−2147482648` như owner. **Mở khoá:** re-code xe owner sang provisioning biến thể `40d`=162 qua tool coding BYD (OBD/UDS) — cờ cụ thể **chưa xác định** (KHÔNG phải `38B00030`). Chi tiết + bằng chứng: `docs/diagnostics/hud-provisioning-compare-2026-08-19.md`.
 
 ## Date
 

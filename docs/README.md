@@ -96,12 +96,12 @@
 - [`specs/cast-ui-state-v2.schema.json`](specs/cast-ui-state-v2.schema.json) — schema JSON hỗ trợ (artifact)
 
 ## 6) Diagnostics — `diagnostics/*` (finding có BẰNG CHỨNG + ngày)
-
 ### Current
 
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
 | [`diagnostics/VEHICLE-TEST-V2.md`](diagnostics/VEHICLE-TEST-V2.md) | Checklist thử trên xe + ma trận Stage 11 (execution NOT STARTED) | Current | 2026-07-26 |
+| [`diagnostics/hud-provisioning-compare-2026-08-19.md`](diagnostics/hud-provisioning-compare-2026-08-19.md) | HUD-compare owner (40d=138) vs anh em (162): app đẩy được HUD; `0x38B00030` bị bác; chặn = variant coding (sửa ADR 0002) | Current | 2026-08-19 |
 | [`diagnostics/arrow-validation-teammate-2026-08-18.md`](diagnostics/arrow-validation-teammate-2026-08-18.md) | Xác thực 18/18 mũi tên (blind bitmap vs answer-key) | Current | 2026-08-18 |
 | [`diagnostics/distance-interpolation-validation-2026-08-18.md`](diagnostics/distance-interpolation-validation-2026-08-18.md) | Kiểm cự ly 2 bên + nội suy km→turn (a11y screenRead) | Current | 2026-08-18 |
 | [`diagnostics/oncar-session-2026-08-16.md`](diagnostics/oncar-session-2026-08-16.md) | Tổng hợp + TODO phiên on-car 2026-08-16 | Current | 2026-08-16 |

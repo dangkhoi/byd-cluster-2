@@ -56,5 +56,5 @@ Quy ước:
 | ADR | Tiêu đề | Status | Ngày |
 |-----|---------|--------|------|
 | [0001](0001-nav-source-strategy.md) | Chiến lược nguồn dẫn đường per-app (GMaps notif · VietMap widget+a11y · Waze screen-capture) | Accepted | 2026-08-19 |
-| [0002](0002-hud-nav-coding-locked.md) | HUD kính lái = coding BYD (`0x38B00030`), không phải app | Accepted | 2026-08-19 |
+| [0002](0002-hud-nav-coding-locked.md) | HUD kính lái = coding/variant XE (`40d` 138 vs 162), không phải app · `0x38B00030` là cờ SAI (sửa 2026-08-19) | Accepted (amended) | 2026-08-19 |
 | [0003](0003-datacollection-logging-default-off.md) | Thu thập dữ liệu (log + ảnh) mặc định OFF + storage cap ~150 MB | Accepted | 2026-08-19 |

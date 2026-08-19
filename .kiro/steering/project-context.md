@@ -17,12 +17,12 @@
 - **Waze / WazeMod** (`com.waze` / `com.chisadin.wazemod`): **KHÔNG có kênh data nền**. Nav qua **screen-capture mũi tên (B3, học OpenBYD `WazeArrowCaptureService`)** HOẶC WazeMod HLP-logcat (cần cấu hình) HOẶC ESP32 HUD.
 
 ## 3. HAL / CAN facts (đã proven on-car / RE)
-- **`0x38B00030` = INSTRUMENT_HUD_NAVIGATION_MAP_CONFIG** (mirror nav→HUD kính). Owner đọc **`-2147482648` = NOT provisioned** → HUD kính KHÔNG hiện nav. Bật khi `config==1`. **Coding-locked** (dealer/OBD UDS `WriteDataByIdentifier`); **app KHÔNG ghi được** (A11: mọi write bị từ chối). KHÔNG phải bug app — đừng "fix" oversea trong code.
+- **HUD kính nav = coding/variant XE, KHÔNG phải app** (ADR 0002, **sửa 2026-08-19**). **App ĐẨY ĐƯỢC nav lên HUD** — proven trên xe anh em (`40d`=162, **chính app này + GMaps**, qua `AmapService`→`43E0003A/43FA1008/43F02018/0201E`). Xe owner (`40d`=138) HUD hiện speed/limit/ADAS/call mà **không hiện nav** → chặn **phía XE**. **`0x38B00030` KHÔNG phải cờ** (cả 2 xe đọc `-2147482648`, anh em vẫn lên HUD). Cờ coding thật (138 vs 162) **chưa xác định**; đừng "fix" trong code. Chi tiết: `docs/diagnostics/hud-provisioning-compare-2026-08-19.md`.
 - **`NOT_PROVISIONED_RC = -2147482648`** (= `Int.MIN_VALUE + 1000` = `0x800003E8`; **KHÁC** `Int.MIN_VALUE`). BydHal cache per-feature-id gặp rc này → skip frame sau (hết spam `no permission device 1007`). Xe provision oversea (Sealion 6) không bao giờ nhận sentinel → vẫn ghi.
 - **guide** `INSTRUMENT_GUIDE_INFO_SIMPLE_SET`: **`0x43F01010` (domestic)** / **`0x1F701010` (oversea)** — cả HUD kính + cụm-centre đọc; app ghi CẢ 2 họ.
 - **`SET_NAVI_SCREEN_STATUS_SET = 0x4C10E015`** (BYDAutoSettingDevice); `NAV_SCREEN_MODE_ON = 3`.
 - **`Maneuver.toHudIcon()` vòng xuyến** (CAN ghi-thẳng, OpenBYD `w40`+`HudController`): **15=trái · 18=phải · 20=thẳng/generic · 22=u-turn** (CCW/VN); CW=16/17/19/21; có số lối ra → **24+N** (25..34). `ROUNDABOUT_EXIT`→HUD **24**. `toAmapIcon()` vòng xuyến (mọi hướng) = **11 generic** (cụm-strip không có glyph hướng).
-- **Cluster-nav registers ghi được (rc=0)**; **HUD `0x38B000xx` từ chối ghi** (coding-locked).
+- **Nav-guide registers (43E/43F: NAVI_STATUS/PATHNAME/TRIP) ghi rc=0** → nuôi cụm-centre + (trên xe provision như 162) **cả HUD kính**. `0x38B000xx` từ chối ghi nhưng **KHÔNG liên quan** đường nav-lên-HUD (đường thật đi qua 43E/43F, không qua 38B).
 - **Bug owner "vòng xuyến generic"** = **OEM RENDER-side**, đặc thù variant xe owner (`vehicle_40d` owner=138 vs bạn=162). App gửi **ĐÚNG CAN 18** (data owner + bạn xác nhận). → glyph-test cần data owner on-car (C2).
 
 ## 4. Map file chính
@@ -40,4 +40,4 @@
 ## 5. Trạng thái
 - **Branch** `feat/speed-limit-badge-hal-hud` (HEAD `3745046`, **đã push `origin`, sync**); **main = `f7843c0`** (1.0 ổn định — KHÔNG đụng tới khi chưa PASS exact-build on-car + owner duyệt).
 - **Validate off-car (PASS)**: mũi tên **18/18 đúng** (send-side); **nội suy cự ly đúng** (median 0 vs notif GMaps; chuyến sáng 95% <1m). Xem `docs/diagnostics/arrow-validation-*` + `distance-interpolation-validation-*`.
-- **OPEN**: (a) vòng xuyến generic trên cụm owner = **OEM-render** → glyph-test **on-car** (C2); (b) HUD kính coding `0x38B00030` → **dealer/OBD** hoặc so readback xe bạn (C3); (c) **screen-capture** Waze arrow + VietMap camera (**B3**, off-car spec trước).
+- **OPEN**: (a) vòng xuyến generic trên cụm owner = **OEM-render** → glyph-test **on-car** (C2); (b) HUD kính nav = **coding/variant `40d` 138 vs 162** (C3 đã so xong — `0x38B00030` bị bác; app đẩy được HUD trên xe 162; cờ cụ thể chưa xác định → cần variant-coding dump/tool); (c) **screen-capture** Waze arrow + VietMap camera (**B3**, off-car spec trước).
