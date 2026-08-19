@@ -43,8 +43,10 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         private const val TAG = "SpeedBadgeOverlay"
         private const val CLUSTER_DISPLAY_ID = 1
         // ── Upcoming "speed-limit ahead" badge (spec upcoming-speed-limit-badge) ──
-        private const val UPCOMING_SCALE = 0.7f          // R4: upcoming badge is ~70% of the main badge
-        private const val UPCOMING_GAP_FRAC = 0.10f      // vertical gap below the main badge (× main size)
+        // B2 (owner 2026-08-19): 80% size + GRAY (muted) badge + 45° LOWER-LEFT of the main badge (was ~70% +
+        // red/black + straight-below). See §Nhật ký triển khai in the spec.
+        private const val UPCOMING_SCALE = 0.8f          // B2: upcoming badge is 80% of the main badge (was 0.7)
+        private const val UPCOMING_DIAG_FRAC = 0.70f     // B2: 45° offset per axis (× main size) — left + down
         private const val UPCOMING_CONTAINER_W_FRAC = 1.8f // window width (× main size) so the distance text never clips
         private const val UPCOMING_LABEL_FRAC = 0.42f    // distance label text size (× upcoming badge size)
     }
@@ -57,8 +59,9 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     // waiting for the next pipeline emission. Null = nothing to show yet.
     private var lastSpeedKph: Int? = null
     private var lastSignType: SpeedSignType? = null
-    // ── Upcoming "speed-limit ahead" badge: a SECOND SpeedBadgeView (~70%) + a countdown distance label in a
-    // vertical container, anchored directly BELOW the main badge. Its own window (additive) so the current-limit
+    // ── Upcoming "speed-limit ahead" badge: a SECOND SpeedBadgeView (80%, MUTED gray) + a countdown distance
+    // label in a vertical container, anchored DIAGONALLY at 45° to the LOWER-LEFT of the main badge (B2, owner
+    // 2026-08-19; was ~70% straight-below). Its own window (additive) so the current-limit
     // badge window is never touched. Last values remembered so a re-attach (display 1 added / re-enabled) can
     // re-show without waiting for the next VietMap emission.
     private var upcomingContainer: LinearLayout? = null
@@ -290,9 +293,10 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     }
 
     // ─── Upcoming "speed-limit ahead" badge (spec upcoming-speed-limit-badge) ──────────────────────────────
-    // A SECOND window on display 1 holding a vertical container [SpeedBadgeView ~70%] + [distance label]. It is
-    // ADDITIVE — the current-limit badge window above is never touched — and fully degrade-safe (runCatching,
-    // never throws to the caller). Gated by BOTH the master badge gate AND the "Hiện giới hạn sắp tới" toggle.
+    // A SECOND window on display 1 holding a vertical container [SpeedBadgeView 80% MUTED] + [distance label],
+    // placed DIAGONALLY at 45° to the LOWER-LEFT of the main badge (B2). It is ADDITIVE — the current-limit
+    // badge window is never touched — and fully degrade-safe (runCatching, never throws to the caller). Gated by
+    // BOTH the master badge gate AND the "Hiện giới hạn sắp tới" toggle.
 
     private fun doSetUpcoming(limitKph: Int?, distanceMeters: Int?, distanceText: String?) {
         lastUpcomingLimit = limitKph
@@ -336,7 +340,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     private fun ensureUpcomingContainer(ctx: Context): LinearLayout? {
         upcomingContainer?.let { return it }
         return runCatching {
-            val badge = SpeedBadgeView(ctx)
+            val badge = SpeedBadgeView(ctx).apply { muted = true }   // B2: gray ring + gray number (upcoming)
             val label = TextView(ctx).apply {
                 setTextColor(Color.WHITE)
                 typeface = Typeface.DEFAULT_BOLD
@@ -361,7 +365,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         }.getOrElse { Log.w(TAG, "ensureUpcomingContainer failed: ${it.message}"); null }
     }
 
-    /** Size the upcoming badge (~70% of the main) + the label text from the CURRENT badge-size pref (live). */
+    /** Size the upcoming badge (80% of the main) + the label text from the CURRENT badge-size pref (live). */
     private fun applyUpcomingMetrics() {
         val density = appContext.resources.displayMetrics.density
         val mainSizePx = (Prefs.badgeSizeDp(appContext) * density).toInt().coerceAtLeast(1)
@@ -381,19 +385,26 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     }
 
     /**
-     * Position the upcoming window directly BELOW the main badge (anchored under its persisted centre). The
-     * window is wider than the main badge ([UPCOMING_CONTAINER_W_FRAC]) so the distance text never clips, and
-     * is centred on the main badge's centre; the vertical LinearLayout centres the ~70% badge + label within it.
+     * Position the upcoming window DIAGONALLY at 45° to the LOWER-LEFT of the main badge (B2, owner 2026-08-19;
+     * was straight-below). The upcoming badge CENTRE is offset from the main badge's (clamped, on-screen) centre
+     * by an equal amount left and down ([UPCOMING_DIAG_FRAC] × main size on each axis = a 45° vector). The window
+     * is wider than the main badge ([UPCOMING_CONTAINER_W_FRAC]) so the distance text never clips; the vertical
+     * LinearLayout centres the 80% badge (at the window's top) + label, so the window x/y are derived from the
+     * badge centre: x = upcomingCx − containerW/2, y = upcomingCy − badgeSize/2.
      */
     private fun buildUpcomingLayoutParams(): WindowManager.LayoutParams {
         val density = appContext.resources.displayMetrics.density
         val mainSizePx = (Prefs.badgeSizeDp(appContext) * density).toInt().coerceAtLeast(1)
-        val (cx, cy) = BadgeLayout.clampCenter(
+        val badgeSizePx = (mainSizePx * UPCOMING_SCALE).toInt().coerceAtLeast(1)
+        // Main badge centre, clamped on-screen (same source as the main badge window).
+        val (mcx, mcy) = BadgeLayout.clampCenter(
             Prefs.badgeCenterX(appContext), Prefs.badgeCenterY(appContext), mainSizePx, clusterW, clusterH,
         )
-        val (left, top) = BadgeLayout.topLeftFromCenter(cx, cy, mainSizePx)
+        // B2: 45° LOWER-LEFT — equal offset left (−x) and down (+y) from the main badge centre.
+        val diag = (mainSizePx * UPCOMING_DIAG_FRAC).toInt()
+        val upcomingCx = mcx - diag
+        val upcomingCy = mcy + diag
         val containerW = (mainSizePx * UPCOMING_CONTAINER_W_FRAC).toInt().coerceAtLeast(mainSizePx)
-        val gapPx = (mainSizePx * UPCOMING_GAP_FRAC).toInt().coerceAtLeast(2)
         return WindowManager.LayoutParams(
             containerW,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -404,8 +415,10 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
-            x = left - (containerW - mainSizePx) / 2   // keep the container centred on the main badge centre
-            y = top + mainSizePx + gapPx               // directly below the main badge
+            // The vertical container centres the badge horizontally at its top; place that badge centre at
+            // (upcomingCx, upcomingCy) — 45° lower-left of the main badge.
+            x = upcomingCx - containerW / 2
+            y = upcomingCy - badgeSizePx / 2
         }
     }
 

@@ -4,6 +4,7 @@ import com.byd.clusternav.navigation.NavFormat
 import com.byd.clusternav.navigation.NavParse
 import com.byd.clusternav.navigation.SourceArbiter
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
+import com.byd.clusternav.modules.navaccess.NavAccessibilitySource
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -152,9 +153,15 @@ object ClusterBroadcaster {
         val frame = AmapFrameBuilder.buildGuidanceFrame(withArrow, byd, road, segOverride, hasDist) ?: return
         // LOG cự ly (bắt vụ nhảy số): thô GMaps vs nội suy vs hiển thị
         runCatching {
-            val srM = TurnDistanceInterpolator.lastRefined()
-            val srAge = if (srM >= 0 && TurnDistanceInterpolator.lastRefinedAt() > 0L)
+            // B4: mẫu đọc-màn thô + tuổi. Khi GMaps chạy NỀN, a11y scan không refresh → mẫu cũ ĐÓNG BĂNG
+            // (tuổi vọt lên hàng phút, road rỗng). Ghi -1 (INVALID) khi STALE (tuổi > SCREEN_READ_STALE_MS)
+            // HOẶC đường-đọc-màn rỗng → phân tích off-car không bị đánh lừa bởi ground-truth đóng băng
+            // (phân định thuần ở :core; fresh+valid → giữ nguyên số + tuổi thật).
+            val srRaw = TurnDistanceInterpolator.lastRefined()
+            val srAgeRaw = if (srRaw >= 0 && TurnDistanceInterpolator.lastRefinedAt() > 0L)
                 SystemClock.elapsedRealtime() - TurnDistanceInterpolator.lastRefinedAt() else -1L
+            val srM = TurnDistanceInterpolator.freshScreenRead(srRaw, srAgeRaw, NavAccessibilitySource.road)
+            val srAge = if (srM >= 0) srAgeRaw else -1L
             NavDistanceLog.record(rawMeters, rawSeg, segOverride,
                 TurnDistanceInterpolator.closingRate(), SpeedProvider.mps(), srM, srAge, s.road, lastCleanRoad + "|" + s.maneuverText)
         }

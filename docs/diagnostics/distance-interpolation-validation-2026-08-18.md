@@ -18,6 +18,8 @@ Mục tiêu (b): kiểm cự ly 2 bên đồng nhất, tìm sai lệch để pat
 - `screenRead` ground-truth nên **đánh dấu INVALID khi stale (age > ~2-3s) hoặc không có road** (GMaps nền) → tránh nhiễu phân tích + tránh refine bằng anchor rác.
 - Để validate nội suy vs màn-thật lần sau: đảm bảo **GMaps foreground + đang dẫn** khi thu (như chuyến sáng).
 
+**Fix applied (2026-08-19, B4):** đã implement — `TurnDistanceInterpolator.freshScreenRead(meters, ageMs, road)` (thuần) khiến `nav_log` ghi `screenRead_m = -1 (INVALID)` + `screenRead_age_ms = -1` khi **age > `SCREEN_READ_STALE_MS` (2500ms) HOẶC đường-đọc-màn rỗng** (wired ở `ClusterBroadcaster` qua `NavAccessibilitySource.road`); `refine(seg, nowMs, readAgeMs = 0L)` giờ **từ chối** mẫu stale (`readAgeMs > 2500ms`) hoặc invalid (`seg < 0`) — không ghi ground-truth, không snap baseline → nội suy không bị refine bằng anchor rác. Fresh+valid → hành vi GIỮ NGUYÊN. Unit test: `core/.../TurnDistanceInterpolatorTest` (+8 case, tổng 17, xanh).
+
 ## Tổng 2 goal (2026-08-18)
 - Goal 1 (mũi tên 1-1): PASS — app bắn đúng 18/18. Vòng xuyến generic của owner = OEM-render (CAN 18), không phải app. Xem `arrow-validation-teammate-2026-08-18.md`.
 - Goal 2 (nội suy): PASS — nội suy đúng (bám notif median 0; sáng 95% vs màn). "Lệch" chiều nay = screenRead stale do GMaps nền. Không patch nội suy.

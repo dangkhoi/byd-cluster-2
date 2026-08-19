@@ -20,7 +20,7 @@
 | A6 | Per-app/per-channel log analyzer (`scripts/analysis/analyze_drive_logs.py`) | ✅ | 2026-08-18 | 2026-08-18 | commit `d6de8fd` |
 | A7 | HUD-compare toolkit (navopen-v4 getraw) + guide Windows + thêm cờ 20/22/18 | ✅ | 2026-08-18 | 2026-08-18 | commit `ab56362`,`7027a21`; gửi anh em |
 | A8 | Logging/ảnh mặc định OFF + storage cap <150MB | ✅ | 2026-08-18 | 2026-08-18 | commit `11751ba`; fix tràn bộ nhớ xe |
-| A9 | Upcoming speed-limit badge (badge thứ 2 + cự ly, neo dưới badge chính) | 🔧 | 2026-08-18 | 2026-08-18 | commit `11751ba`; **CẦN CHỈNH design → xem B2** |
+| A9 | Upcoming speed-limit badge (badge thứ 2 + cự ly) | ✅ | 2026-08-18 | 2026-08-19 | commit `11751ba`; design chỉnh xong ở B2 (xám/80%/45° dưới-trái) |
 | A10 | Validate mũi tên 1-1 (18/18 đúng) + nội suy cự ly (đúng, bám notif) | ✅ | 2026-08-18 | 2026-08-19 | commit `1d2387f`; docs/diagnostics/ |
 | A11 | HUD baseline read (0x38B00030 = NOT provisioned) + write-attempt (mọi write bị từ chối → coding-locked) | ✅ | 2026-08-18 | 2026-08-18 | on-car; `~/Desktop/hud-xe-minh.txt` |
 | A12 | Push feat lên origin (public) + scrub topology | ✅ | 2026-08-19 | 2026-08-19 | `3745046`; zero IP footprint |
@@ -31,14 +31,14 @@
 
 | ID | Việc | Trạng thái | Bắt đầu | Kết thúc | Ghi chú |
 |----|------|-----------|---------|----------|---------|
-| B1 | **Auto-start VietMap khi mở app** — NẾU bật hiện speed badge thì tự mở VietMap lúc mở app mình (để widget có nguồn) | 🔲 | | | Owner note 2026-08-19 |
-| B2 | **Chỉnh design badge "giới hạn sắp tới"**: viền XÁM, số XÁM, size **80%** badge tốc độ, đặt **chéo 45° phía DƯỚI-TRÁI** badge tốc độ (hiện đang neo "thẳng dưới") | 🔲 | | | Owner note 2026-08-19; sửa A9 |
-| B3 | **Screen-capture + xử lý ảnh (học OpenBYD `WazeArrowCaptureService`)** → nguồn **Waze arrow** + **camera VietMap**. MediaProjection + PixelCopy + phân tích pixel mũi tên/icon (như ManeuverSignature) | 🔲 | | | **Feature lớn — spec trước.** 4 case bên dưới |
+| B1 | **Auto-start VietMap khi mở app** — NẾU bật hiện speed badge thì tự mở VietMap lúc mở app mình (để widget có nguồn) | ✅ | 2026-08-19 | 2026-08-19 | MainActivity.maybeAutoStartVietMap (gate badgeEnabled + installed-check, degrade-safe) |
+| B2 | **Chỉnh design badge "giới hạn sắp tới"**: viền/số XÁM, 80%, chéo 45° dưới-trái | ✅ | 2026-08-19 | 2026-08-19 | SpeedBadgeView muted flag + Overlay 45° lower-left 80%; badge chính KHÔNG đổi; spec updated |
+| B3 | **Screen-capture + xử lý ảnh (học OpenBYD `WazeArrowCaptureService`)** → nguồn **Waze arrow** + **camera VietMap**. MediaProjection + PixelCopy + phân tích pixel mũi tên/icon (như ManeuverSignature) | 🔧 | 2026-08-19 | | **SPEC viết xong (Chờ duyệt)**: `docs/specs/waze-vietmap-screen-capture.html` (4 case, grounded OpenBYD). **Impl B3.1-3.4 chờ owner duyệt spec.** |
 | B3.1 | Case 1: app dẫn đường **full màn chính** → mirror màn chính, crop vùng mũi tên | 🔲 | | | phần của B3 |
 | B3.2 | Case 2: app dẫn **1/2 màn chính** (trái HOẶC phải — màn chính chia đôi) → mirror + crop đúng nửa | 🔲 | | | phần của B3 |
 | B3.3 | Case 3: app dẫn **bên màn cụm** (đã cast) → PixelCopy từ SurfaceView cast | 🔲 | | | phần của B3 |
 | B3.4 | Case 4: app **không active đâu** → tạo mirror / chỗ để app vẫn chạy-render mà capture được (học OpenBYD virtual display) | 🔲 | | | phần của B3; khó nhất |
-| B4 | Diagnostics hygiene: đánh dấu `screenRead` INVALID khi stale (age cao) / không có road (GMaps nền) | 🔲 | | | tránh nhiễu phân tích + refine anchor rác |
+| B4 | Diagnostics hygiene: đánh dấu `screenRead` INVALID khi stale (age cao) / không có road (GMaps nền) | ✅ | 2026-08-19 | 2026-08-19 | freshScreenRead (age>2500ms/no-road→-1) + refine guard reject stale; 8 test mới |
 
 ---
 

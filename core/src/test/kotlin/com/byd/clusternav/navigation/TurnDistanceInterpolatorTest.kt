@@ -69,4 +69,68 @@ class TurnDistanceInterpolatorTest {
         assertEquals(-1, TurnDistanceInterpolator.lastRefined())
         assertEquals(0L, TurnDistanceInterpolator.lastRefinedAt())
     }
+
+    // ── B4 (2026-08-19): vệ sinh chẩn đoán — screen-read INVALID khi stale/không-đường + guard refine ──
+
+    @Test fun `freshScreenRead giữ nguyên khi tươi + có đường`() {
+        assertEquals(250, TurnDistanceInterpolator.freshScreenRead(250, 1000L, "Nguyễn Văn Linh"))
+        assertEquals(0, TurnDistanceInterpolator.freshScreenRead(0, 0L, "Đường A"))   // 0m (đã tới) vẫn là mẫu thật
+    }
+
+    @Test fun `freshScreenRead INVALID khi STALE (GMaps nền, tuổi 224s như chuyến 2026-08-18)`() {
+        assertEquals(
+            TurnDistanceInterpolator.INVALID,
+            TurnDistanceInterpolator.freshScreenRead(10, 224049L, "Nguyễn Văn Linh"),
+        )
+    }
+
+    @Test fun `freshScreenRead INVALID khi đường rỗng-hoặc-trắng`() {
+        assertEquals(TurnDistanceInterpolator.INVALID, TurnDistanceInterpolator.freshScreenRead(250, 1000L, ""))
+        assertEquals(TurnDistanceInterpolator.INVALID, TurnDistanceInterpolator.freshScreenRead(250, 1000L, "   "))
+    }
+
+    @Test fun `freshScreenRead INVALID khi chưa đọc được (meters âm) hoặc chưa có mốc (age âm)`() {
+        assertEquals(TurnDistanceInterpolator.INVALID, TurnDistanceInterpolator.freshScreenRead(-1, -1L, "road"))
+        assertEquals(TurnDistanceInterpolator.INVALID, TurnDistanceInterpolator.freshScreenRead(250, -1L, "road"))
+    }
+
+    @Test fun `freshScreenRead biên tuổi = ngưỡng là hợp lệ, vượt 1ms là INVALID`() {
+        assertEquals(
+            250,
+            TurnDistanceInterpolator.freshScreenRead(250, TurnDistanceInterpolator.SCREEN_READ_STALE_MS, "road"),
+        )
+        assertEquals(
+            TurnDistanceInterpolator.INVALID,
+            TurnDistanceInterpolator.freshScreenRead(250, TurnDistanceInterpolator.SCREEN_READ_STALE_MS + 1, "road"),
+        )
+    }
+
+    @Test fun `refine TƯƠI (mặc định readAgeMs=0) vẫn snap + ghi ground-truth như cũ`() {
+        TurnDistanceInterpolator.anchor(1000, "k", 1000L)
+        TurnDistanceInterpolator.refine(500, 2000L)                       // default fresh → snap
+        assertEquals(500, TurnDistanceInterpolator.anchorMeters())
+        assertEquals(500, TurnDistanceInterpolator.lastRefined())
+        assertEquals(2000L, TurnDistanceInterpolator.lastRefinedAt())
+    }
+
+    @Test fun `refine STALE (tuổi quá ngưỡng) bị từ chối — KHÔNG snap, KHÔNG ghi ground-truth`() {
+        TurnDistanceInterpolator.anchor(1000, "k", 1000L)
+        TurnDistanceInterpolator.refine(250, 1200L)                       // mẫu tươi → snap baseline về 250, ghi GT
+        assertEquals(250, TurnDistanceInterpolator.anchorMeters())
+        assertEquals(250, TurnDistanceInterpolator.lastRefined())
+        // GMaps chạy nền → mẫu cũ (tuổi 5000ms > 2500) → reject hẳn: baseline + ground-truth GIỮ NGUYÊN
+        TurnDistanceInterpolator.refine(999, 6000L, readAgeMs = 5000L)
+        assertEquals(250, TurnDistanceInterpolator.anchorMeters(), "stale refine không được snap baseline (anchor rác)")
+        assertEquals(250, TurnDistanceInterpolator.lastRefined(), "stale refine không được ghi ground-truth")
+        assertEquals(1200L, TurnDistanceInterpolator.lastRefinedAt(), "mốc ground-truth giữ nguyên khi bị reject")
+    }
+
+    @Test fun `refine biên tuổi = ngưỡng chấp nhận, vượt 1ms từ chối`() {
+        TurnDistanceInterpolator.anchor(1000, "k", 1000L)
+        TurnDistanceInterpolator.refine(500, 2000L, readAgeMs = TurnDistanceInterpolator.SCREEN_READ_STALE_MS)  // ==2500 → OK
+        assertEquals(500, TurnDistanceInterpolator.anchorMeters())
+        TurnDistanceInterpolator.refine(123, 3000L, readAgeMs = TurnDistanceInterpolator.SCREEN_READ_STALE_MS + 1)  // reject
+        assertEquals(500, TurnDistanceInterpolator.anchorMeters())
+        assertEquals(500, TurnDistanceInterpolator.lastRefined())
+    }
 }

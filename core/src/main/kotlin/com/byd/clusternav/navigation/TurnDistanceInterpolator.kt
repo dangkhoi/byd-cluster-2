@@ -33,6 +33,14 @@ object TurnDistanceInterpolator {
     private const val ARRIVED_M = 100      // cur ≤100m + cự-ly vọt lên = đã tới/qua rẽ → maneuver kế, snap NGAY (không chờ hysteresis)
     private const val SLEW_MIN = 12        // bước hiển thị tối thiểu/lần vẽ (m) khi correction (cho bắt kịp map)
 
+    // ── B4 (2026-08-19): vệ sinh chẩn đoán screen-read ground-truth ──────────────────────────────────
+    // Khi GMaps chạy NỀN, accessibility scan KHÔNG đọc lại được GMaps → mẫu đọc-màn cũ ĐÓNG BĂNG (tuổi vọt
+    // lên hàng phút — đo được 224s trên chuyến chiều 2026-08-18, road rỗng). Ngưỡng này phân định "mẫu còn
+    // TƯƠI" để (a) log ghi -1 (INVALID) thay vì số cũ gây nhiễu phân tích off-car, (b) refine() TỪ CHỐI snap
+    // baseline bằng anchor cũ/rác. THUẦN (không Android) → test được.
+    const val SCREEN_READ_STALE_MS = 2500L   // đọc-màn cũ hơn mốc này = STALE (không tin: không refine, log -1)
+    const val INVALID = -1                    // giá trị log cho screen-read stale / không-đường (INVALID)
+
     fun anchorMeters(): Int = baseline
     fun lastProjected(): Int = lastOut
     fun closingRate(): Double = lastSpeed * FACTOR   // tốc-độ-tiếp-cận hiệu dụng (debug/log)
@@ -40,6 +48,16 @@ object TurnDistanceInterpolator {
     fun lastRefined(): Int = lastRefineSeg
     /** J2: mốc (elapsedRealtime ms) của lần đọc-màn gần nhất; 0 nếu chưa có (để tính tuổi mẫu). */
     fun lastRefinedAt(): Long = lastRefineAt
+
+    /**
+     * B4: PHÂN ĐỊNH screen-read cho LOG (thuần, test được). Ground-truth đọc-màn CHỈ đáng tin khi: là mẫu
+     * THẬT ([meters] ≥ 0), CÒN TƯƠI (0 ≤ [ageMs] ≤ [SCREEN_READ_STALE_MS]) và CÓ ĐƯỜNG ([road] khác rỗng).
+     * Khi GMaps chạy nền, scan đóng băng mẫu cũ (tuổi vọt lên, road rỗng) — ghi số đó ra log sẽ đánh lừa phân
+     * tích và có nguy cơ refine bằng anchor rác. Trả [INVALID] (-1) cho mẫu stale / không-đường. Fresh+valid
+     * → trả nguyên [meters] (hành vi log GIỮ NGUYÊN khi mẫu tươi hợp lệ).
+     */
+    fun freshScreenRead(meters: Int, ageMs: Long, road: String): Int =
+        if (meters >= 0 && ageMs in 0..SCREEN_READ_STALE_MS && road.isNotBlank()) meters else INVALID
 
     private fun cur(): Int = if (baseline < 0) -1 else (baseline - traveled).toInt().coerceAtLeast(0)
 
@@ -89,11 +107,19 @@ object TurnDistanceInterpolator {
         return out
     }
 
-    /** Tinh chỉnh bằng cự ly ĐỌC MÀN (accessibility) = ground-truth → snap baseline (như 1 noti tươi). */
+    /**
+     * Tinh chỉnh bằng cự ly ĐỌC MÀN (accessibility) = ground-truth → snap baseline (như 1 noti tươi).
+     *
+     * B4 (2026-08-19): [readAgeMs] = tuổi mẫu đọc-màn (ms). GUARD: mẫu STALE (readAgeMs > [SCREEN_READ_STALE_MS])
+     * hoặc INVALID (seg < 0) → TỪ CHỐI hẳn: KHÔNG ghi ground-truth, KHÔNG snap (khỏi refine bằng anchor cũ/rác
+     * khi GMaps chạy nền, a11y không refresh được). Mặc định readAgeMs=0 (mẫu vừa scan = tươi) → caller đọc-màn
+     * hiện tại GIỮ NGUYÊN hành vi khi fresh+valid.
+     */
     @Synchronized
-    fun refine(seg: Int, nowMs: Long) {
-        if (seg >= 0) { lastRefineSeg = seg; lastRefineAt = nowMs }   // J2: GHI ground-truth đọc-màn cho log (kể cả khi chưa có baseline)
-        if (seg < 0 || baseline < 0) return
+    fun refine(seg: Int, nowMs: Long, readAgeMs: Long = 0L) {
+        if (seg < 0 || readAgeMs > SCREEN_READ_STALE_MS) return       // stale/invalid → reject (no ground-truth, no snap)
+        lastRefineSeg = seg; lastRefineAt = nowMs                     // J2: GHI ground-truth đọc-màn cho log (kể cả khi chưa có baseline)
+        if (baseline < 0) return
         snapTo(seg, nowMs)
     }
 

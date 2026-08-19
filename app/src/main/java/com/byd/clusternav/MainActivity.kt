@@ -290,6 +290,10 @@ class MainActivity : Activity() {
         // D5 (closeout 1.28): one-time first-launch disclaimer (no warranty / not affiliated with BYD / install
         // at your own risk). Shown once, guarded by Prefs.disclaimerShown.
         maybeShowDisclaimer()
+
+        // B1 (owner 2026-08-19): "badge bật → VietMap tự chạy để widget có nguồn" — with the speed badge enabled,
+        // start VietMap once so its home-widget (the badge's speed-limit source) has a live process. Degrade-safe.
+        maybeAutoStartVietMap()
     }
 
     override fun onResume() {
@@ -660,5 +664,42 @@ class MainActivity : Activity() {
         val flat = Settings.Secure.getString(contentResolver, "enabled_accessibility_services") ?: return false
         val expected = ComponentName(this, com.byd.clusternav.modules.navaccess.NavAccessibilityService::class.java)
         return flat.split(':').any { ComponentName.unflattenFromString(it.trim()) == expected }
+    }
+
+    /**
+     * B1 (owner 2026-08-19): "badge bật → VietMap tự chạy để widget có nguồn". When the speed-limit badge
+     * display is enabled ([Prefs.badgeEnabled], default ON) and VietMap ([VIETMAP_PACKAGE]) is installed, launch
+     * it once on app open so its home-widget — the ALERT/speed-limit source the cluster badge mirrors — has a
+     * live process feeding data. Fully degrade-safe: a missing VietMap (null launch intent, incl. not visible)
+     * or any launch failure is a silent no-op, never crashing Home. Best-effort skip when VietMap already appears
+     * foreground (don't yank it). Called at the END of [onCreate] (fresh creation only, not every resume).
+     */
+    private fun maybeAutoStartVietMap() {
+        if (!Prefs.badgeEnabled(this)) return
+        val launch = runCatching { packageManager.getLaunchIntentForPackage(VIETMAP_PACKAGE) }
+            .getOrNull() ?: return                    // not installed / not visible → no-op
+        if (isAppForeground(VIETMAP_PACKAGE)) return  // best-effort: already up → don't relaunch
+        runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { android.util.Log.w("MainActivity", "auto-start VietMap failed: ${it.message}") }
+    }
+
+    /**
+     * Best-effort foreground check with NO special permission: reads [android.app.ActivityManager]'s running
+     * processes for [pkg] at IMPORTANCE_FOREGROUND. Post-Android-10 this usually returns only our own processes,
+     * so it degrades to `false` (→ we launch), which is the intended default. Degrade-safe (runCatching → false).
+     */
+    private fun isAppForeground(pkg: String): Boolean = runCatching {
+        val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager
+            ?: return@runCatching false
+        am.runningAppProcesses?.any {
+            it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+                it.pkgList?.contains(pkg) == true
+        } ?: false
+    }.getOrDefault(false)
+
+    private companion object {
+        // B1 (owner 2026-08-19): VietMap package — auto-launched on open when the speed badge is enabled so its
+        // home-widget (the badge's speed-limit source) has a live process. Same pkg used across vietmapwidget.
+        private const val VIETMAP_PACKAGE = "vn.vietmap.live"
     }
 }
