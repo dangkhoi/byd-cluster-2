@@ -182,3 +182,22 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 - **`1` VALID** mà kính vẫn trống → **widget/coding gate `0x38B00030`** (không phải format).
 
 **Trung thực:** register/cặp/encoding = bằng chứng cứng từ decompile. Việc INVALID có THỰC SỰ chặn render hay không nằm ở **firmware MCU cụm** (ngoài nguồn Android) → **test đọc `0x420A1010` on-car là mấu chốt, CHƯA chạy**. Đây là khe tractable nhất hiện có cho "nav đầy đủ trên HUD BYD"; xe owner (HUD trắng hoàn toàn) vẫn là gate `0x38B00030` riêng.
+
+---
+
+## Cập nhật 2026-08-19 (chiều-2) — ĐƯỜNG CODING/UDS cho HUD zin xe owner (RE sâu)
+
+**ECU:** `0x38B00030` + họ (`30100030` CONFIG_STATUS, `32B1102E` SET, `38B0002E` STATUS, `34C00026` FORMAT) do **cụm đồng hồ (instrument-cluster) giữ** (`Instrument.java:534-539` → `InstrumentMapper` → `BYDAutoInstrumentDevice`; render + config store trong cụm, `libBydDataSource.so`). `-2147482648` (=`0x800003E8`) là **giá trị THẬT cụm trả**, không phải lỗi parse.
+
+**Cơ chế provisioning (phát hiện mới, có cơ sở):** `BusinessSelfStudy::vehicleCodeSelfStudyUpdate` + log *"selfstudy has completed, vehicleCode is 0x%02x"* → `BydConfigInfo`/`ConfigureManager` (config XML), **cùng lớp equipment với ADAS**. **`40d` 138=`0x8A` / 162=`0xA2`** khớp khuôn `vehicleCode` 1-byte → HUD-nav là **feature bật bằng coding equipment/vehicleCode của cụm**. (KHÔNG có bảng `0xA2→ON` trong image → giá trị bật cụ thể chưa biết.)
+
+**On-device coding — CÓ kênh nhưng KHÓA:** tồn tại UDS-thô on-device (`BYDAutoOtaDevice 0xAA000140` + `BYDAutoSettingDevice` secret-OBD `0xAA000241/0x99000241`); factory app `BydDevelopmentTools` chạy UDS chuẩn qua đó (`10 03`→`27 01/02`→`2E/31`). **Nhưng gated `sharedUserId="android.uid.system"` (platform-signed) + per-property permission.** ClusterNav (user-signed / dadb uid-2000) **KHÔNG với tới** — cần root/platform-key HOẶC drive BydDevelopmentTools. Factory tool **không có màn coding HUD** (chỉ CAN-ID mapping + đọc version).
+
+**OBD-UDS ngoài:** `10 03` + SecurityAccess `27 01/02` + `2E/31`. Thuật toán seed→key **lộ** trong `ObdDataManager.k()` — **nhưng chỉ cho GATEWAY (`0x720/0x747`), KHÔNG phải cụm.** DID coding nav-HUD **không có trong image**; key + DID của **cụm** chưa biết.
+
+**Kết luận cho xe owner (thành thật):** bật HUD-nav = **việc CODING cụm** (equipment/vehicleCode self-study), **KHÔNG sửa được bằng app/script** (kênh on-device khoá sau `android.uid.system`; app không có quyền). Đường thực tế:
+1. **Tool coding BYD dealer** (OBD-II + ODX): đọc equipment matrix cụm → bật cờ HUD-nav (key dealer) → trigger self-study → `0x38B00030=1` → test app. ⟵ chắc nhất.
+2. **On-device** chỉ khả thi nếu có **root/platform-key** + reqId/rxId + security-key + DID của **cụm** (đều chưa biết) → rủi ro cao.
+- **Bước AN TOÀN đọc-only kế (on-car):** `getraw instr 30100030` (CONFIG_STATUS) + `38B0002E` (STATUS) + thử UDS `22 <DID>` đọc — không ghi.
+
+**Điều kiện mở khoá (để owner quyết):** cần **máy chẩn đoán/coding BYD + DB equipment cụm** (giá trị vehicleCode/flag bật HUD-nav). Đây là việc **coding XE tại tiệm có tool**, không phải app.
