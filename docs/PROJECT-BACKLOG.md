@@ -51,6 +51,7 @@
 | C3 | HUD provisioning compare — anh em chạy `hud-compare.bat` (USB) → soi cờ | ✅ | 2026-08-19 | 2026-08-19 | **XONG** (compare đã chạy). ⚠ **Đính chính:** HUD anh em hiện nav là **Taobao aftermarket** (render độc lập) → **KHÔNG bác được** `0x38B00030` cho HUD zin; cờ này VẪN là nghi phạm gate (chưa bác). `40d` 138/162 = tình cờ. → `docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md` + `hud-provisioning-compare-2026-08-19.md` (sửa ADR 0002 ×2) |
 | C4 | Verify on-car: badge lifecycle over cast; VietMap a11y turn/đường khi dẫn; giá trị VMAlert (upLimit/upDist) | ⛔ | | | sau khi cài C1 |
 | C5 | Merge feat → main | ⛔ | | | CHỈ sau khi PASS exact-build on-car + owner duyệt |
+| C6 | **Chạy `hud-nav-enable-probe.sh` on-car** (đường 1-3: `0x32B1102E` _SET + 2 fusion switch + capability `getHudSupportedModes`), có rollback | ⛔ | | | script sẵn ở `scripts/vehicle/`; kỳ vọng THẬT = **chẩn đoán dứt điểm** (HUD zin có mode nav? ghi được không?), xác suất bật-được thấp; → `factory-hud-nav-RE-avenues-2026-08-19.md` |
 
 ---
 
