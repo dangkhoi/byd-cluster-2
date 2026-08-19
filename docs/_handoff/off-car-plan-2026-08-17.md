@@ -1,7 +1,7 @@
 # Phiên ON-CAR 2026-08-17 — Tổng hợp & Kế hoạch OFF-CAR
 
 > Nguyên tắc: `.kiro/steering/trace-den-tan-cung.md` — trace tận cùng, KHÔNG bỏ cuộc sớm, kết luận "không thể" phải kèm bằng chứng.
-> Xe: `<IP-xe>` (địa chỉ LAN qua hotspot, vd 172.20.10.x). main = `f7843c0` (1.0 ổn định, KHÔNG đụng). Mọi việc trên `feat/speed-limit-badge-hal-hud`.
+> Xe: `<IP-xe>` (địa chỉ LAN qua hotspot). main = `f7843c0` (1.0 ổn định, KHÔNG đụng). Mọi việc trên `feat/speed-limit-badge-hal-hud`.
 
 ---
 
