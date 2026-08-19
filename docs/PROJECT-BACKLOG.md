@@ -33,7 +33,7 @@
 |----|------|-----------|---------|----------|---------|
 | B1 | **Auto-start VietMap khi mở app** — NẾU bật hiện speed badge thì tự mở VietMap lúc mở app mình (để widget có nguồn) | ✅ | 2026-08-19 | 2026-08-19 | MainActivity.maybeAutoStartVietMap (gate badgeEnabled + installed-check, degrade-safe) |
 | B2 | **Chỉnh design badge "giới hạn sắp tới"**: viền/số XÁM, 80%, chéo 45° dưới-trái | ✅ | 2026-08-19 | 2026-08-19 | SpeedBadgeView muted flag + Overlay 45° lower-left 80%; badge chính KHÔNG đổi; spec updated |
-| B3 | **Screen-capture + xử lý ảnh (học OpenBYD `WazeArrowCaptureService`)** → nguồn **Waze arrow** + **camera VietMap**. MediaProjection + PixelCopy + phân tích pixel mũi tên/icon (như ManeuverSignature) | 🔧 | 2026-08-19 | | **SPEC viết xong (Chờ duyệt)**: `docs/specs/waze-vietmap-screen-capture.html` (4 case, grounded OpenBYD). **Impl B3.1-3.4 chờ owner duyệt spec.** |
+| B3 | **Screen-capture + xử lý ảnh (học OpenBYD `WazeArrowCaptureService`)** → nguồn **Waze arrow** + **camera VietMap**. MediaProjection + PixelCopy + phân tích pixel mũi tên/icon (như ManeuverSignature) | 🔧 | 2026-08-19 | | **Spec DUYỆT** (owner OK 2026-08-19): `docs/specs/waze-vietmap-screen-capture.html` (4 case). **Core slice ĐÃ impl off-car** (VietMapCameraMatcher + CaptureRouter + SourceArbiter channel + NavChannel; 594 core test) + app layer **partial** — **PARKED, uncommitted** (owner tạm dừng qua việc HUD; `_handoff/stage-b3-core-done.md`). Tiếp B3.1-3.4 khi quay lại. |
 | B3.1 | Case 1: app dẫn đường **full màn chính** → mirror màn chính, crop vùng mũi tên | 🔲 | | | phần của B3 |
 | B3.2 | Case 2: app dẫn **1/2 màn chính** (trái HOẶC phải — màn chính chia đôi) → mirror + crop đúng nửa | 🔲 | | | phần của B3 |
 | B3.3 | Case 3: app dẫn **bên màn cụm** (đã cast) → PixelCopy từ SurfaceView cast | 🔲 | | | phần của B3 |
@@ -46,7 +46,7 @@
 
 | ID | Việc | Trạng thái | Bắt đầu | Kết thúc | Ghi chú |
 |----|------|-----------|---------|----------|---------|
-| C1 | Cài build mới (logging-off + upcoming-badge) lên xe owner | ⛔ | | | `~/Desktop/ClusterNav2.0-nolog-upcomingbadge-20260818.apk`; khi ở xe |
+| C1 | Cài build mới (B1/B2/B4 + logging-off + upcoming-badge) lên xe owner | ⛔ | | | `~/Desktop/ClusterNav2.0-B-batch-20260819.apk`; theo `docs/diagnostics/oncar-plan-2026-08-19.md`; **ĐỪNG rebuild** (B3 đang dở trong cây) |
 | C2 | Glyph-test vòng xuyến trên cụm owner — mã CAN nào vẽ directional (15/18/20/24/24+N) trên OEM owner | ⛔ | | | bug owner: vòng xuyến generic = OEM render (app gửi đúng CAN 18); on-car only |
 | C3 | HUD provisioning compare — anh em chạy `hud-compare.bat` (USB) → soi cờ | ✅ | 2026-08-19 | 2026-08-19 | **XONG** (compare đã chạy). ⚠ **Đính chính:** HUD anh em hiện nav là **Taobao aftermarket** (render độc lập) → **KHÔNG bác được** `0x38B00030` cho HUD zin; cờ này VẪN là nghi phạm gate (chưa bác). `40d` 138/162 = tình cờ. → `docs/diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md` + `hud-provisioning-compare-2026-08-19.md` (sửa ADR 0002 ×2) |
 | C4 | Verify on-car: badge lifecycle over cast; VietMap a11y turn/đường khi dẫn; giá trị VMAlert (upLimit/upDist) | ⛔ | | | sau khi cài C1 |
