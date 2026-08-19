@@ -164,3 +164,21 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 - **Diagnostics nền:** `docs/diagnostics/hud-provisioning-compare-2026-08-19.md` (HUD Taobao anh em — **đính chính §0**: là aftermarket, render độc lập, KHÔNG bác được `0x38B00030` cho HUD zin), `docs/decisions/0002-hud-nav-coding-locked.md`.
 
 > RE-only. Không sửa code, không commit/push.
+
+---
+
+## Cập nhật 2026-08-19 (chiều) — khe "TÊN ĐƯỜNG không lên HUD" (RE tập trung)
+
+**Bối cảnh mới từ owner:** HUD "Taobao" thực chất là **HUD BYD xịn** (VN cắt ra, anh em mua gắn lại) → nói đúng protocol OEM. Qua **app ClusterNav**: HUD xe anh em lên **mũi tên + cự ly**, **CHƯA lên tên đường**. Showroom mode (OEM) thì hiện đủ cả tên đường (五一大道南).
+
+**Phát hiện (evidence decompile):**
+- Tên đường `0x43FA1008` (TARGET_NEXT_PATHNAME) là **buffer, ghép cặp với `0x420A1010` GET_ROAD_NAME_CHECK_STATE** (SDK `getRoadNameCheckState()` → VALID=1/INVALID=2). Mũi tên `0x43F01010` + cự ly là **INT, KHÔNG có check-state** → vẽ vô điều kiện. **Đây là lý do bất đối xứng** (mũi tên/cự ly lên, tên đường không).
+- **App CHƯA BAO GIỜ đọc `0x420A1010`** (grep core/app = 0) → mù việc MCU coi chuỗi VALID hay không.
+- App ghi **khác format OEM**: OEM ghi khung cuộn có dấu-cách dẫn `[32,0,'K',...]` + chữ CJK; app ghi chuỗi thô 1 lần, có thể chứa dấu tiếng Việt (font cụm chưa chứng minh phủ).
+- **Showroom KHÔNG có "chuỗi bí mật" trong Android** — demo nav do **firmware MCU cụm tự vẽ** (không qua SDK). Xác nhận MCU có widget nav + ô tên đường, nhưng không copy được đường Android.
+
+**Test rẻ (đã thêm vào `scripts/vehicle/hud-nav-enable-probe.sh` PHASE A + D):** đọc `0x420A1010` lúc app đang dẫn:
+- **`2` INVALID** → MCU từ chối chuỗi tên đường của app → thử **charset/khung**: dấu-cách dẫn, thêm NUL UTF-16LE, bỏ dấu tiếng Việt (ASCII), giữ ≤7-8 ký tự.
+- **`1` VALID** mà kính vẫn trống → **widget/coding gate `0x38B00030`** (không phải format).
+
+**Trung thực:** register/cặp/encoding = bằng chứng cứng từ decompile. Việc INVALID có THỰC SỰ chặn render hay không nằm ở **firmware MCU cụm** (ngoài nguồn Android) → **test đọc `0x420A1010` on-car là mấu chốt, CHƯA chạy**. Đây là khe tractable nhất hiện có cho "nav đầy đủ trên HUD BYD"; xe owner (HUD trắng hoàn toàn) vẫn là gate `0x38B00030` riêng.

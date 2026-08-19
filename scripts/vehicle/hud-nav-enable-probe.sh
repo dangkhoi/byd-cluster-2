@@ -58,6 +58,9 @@ setraw(){ adb_sh "$NAV setraw $1 $2 $3" 2>&1; }
 # ---------------------------------------------------------------------------
 hr; log "== PHASE A — ĐỌC context (không ghi) =="
 for pair in "instr 32B1102E:HUD_NAVIGATION_MAP_SET(_SET moi)" \
+            "instr 420A1010:ROAD_NAME_CHECK_STATE(1=VALID/2=INVALID — vi sao ten duong khong len)" \
+            "instr 30100030:HUD_NAV_MAP_CONFIG_STATUS" \
+            "setting 31E00008:EXHIBITION_MODE(showroom)" \
             "setting 8e2fcdbf:NAVIGATION_FUSION_SWITCH" \
             "setting d61b6746:SAFETY_DRIVING_AID_FUSION_SWITCH" \
             "instr 38B00030:HUD_NAV_MAP_CONFIG(da biet)" \
@@ -102,6 +105,15 @@ log ">>> Đảm bảo GMaps đang dẫn + HUD hiện speed TRƯỚC khi tiếp. 
 probe instr   32B1102E "HUD_NAVIGATION_MAP_SET" 1 2
 probe setting 8e2fcdbf "NAVIGATION_FUSION_SWITCH" 1
 probe setting d61b6746 "SAFETY_DRIVING_AID_FUSION_SWITCH" 1
+
+hr; log "== PHASE D — CHẨN ĐOÁN TÊN ĐƯỜNG (vì sao mũi tên+cự ly lên mà tên đường không) =="
+log ">>> ĐỂ APP ĐANG DẪN (GMaps qua ClusterNav, đang ghi tên đường 0x43FA1008). Enter để đọc check-state."; read -r _
+for i in 1 2 3; do
+  cs="$(val_of "$(getraw instr 420A1010)")"; log "  [lần $i] ROAD_NAME_CHECK_STATE (0x420A1010) = ${cs:-NA}"; sleep 1
+done
+log "  Diễn giải:  2 = INVALID → MCU TỪ CHỐI chuỗi tên đường của app (→ thử charset/khung: dấu-cách dẫn, NUL, bỏ dấu tiếng Việt, ≤7-8 ký tự)."
+log "              1 = VALID nhưng kính vẫn trống → widget/coding gate (0x38B00030), không phải format."
+log "              (Mũi tên/cự ly là INT không có check-state nên luôn lên — đó là lý do bất đối xứng.)"
 
 hr; log "== XONG =="
 log "Gửi lại file log này: $LOG"
