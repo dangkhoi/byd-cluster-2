@@ -31,6 +31,10 @@ object ManeuverSignature {
     private const val BITS = GRID * GRID
     private const val WORDS = (BITS + 63) / 64  // = 4 long
     private const val MAX_HAMMING = 18          // ngưỡng khớp của app gốc (wm0.d)
+    // B3.11: query có < MIN_SIG_BITS bit set = crop TRỐNG / không có glyph → KHÔNG khớp. Template thật ≥18 bit
+    // (Waze-trái=18, GMaps min=21); crop trống ~0-4. Chặn false-positive: trước đây query toàn-0 khớp nhầm
+    // template thưa (Hamming 0→template ≤18) → phát tín hiệu rẽ GIẢ (vd màn HOME khi app background).
+    private const val MIN_SIG_BITS = 10
 
     // DEBUG: tên maneuver khớp gần nhất + mã suy ra của lần chấm GẦN NHẤT BẤT KỲ LUỒNG NÀO.
     // ⚠ KHÔNG dùng để ghi dữ liệu chẩn đoán — đọc [classifyDetailed] để lấy tên đúng của CHÍNH khung mình
@@ -272,6 +276,10 @@ object ManeuverSignature {
 
     /** Khớp gần nhất theo Hamming ≤18 (port wm0.d) trên CẢ registry dựng-sẵn (38 GMaps) LẪN Waze (B3.6). null nếu không có. */
     private fun match(sig: LongArray): String? {
+        // B3.11: chữ ký QUÁ THƯA (crop trống / không có glyph) → KHÔNG khớp (chặn false-positive all-zero).
+        var setBits = 0
+        for (k in 0 until WORDS) setBits += java.lang.Long.bitCount(sig[k])
+        if (setBits < MIN_SIG_BITS) return null
         var best: String? = null; var bestD = Int.MAX_VALUE
         // B3.6: exact (d==0) short-circuit ưu tiên khớp CHÍNH XÁC bất kể registry; glyph Waze không trùng d==0
         // với GMaps (đó là lý do B3.6 tồn tại) nên rơi xuống Waze; template Waze d==0 ⇒ thắng ngay.

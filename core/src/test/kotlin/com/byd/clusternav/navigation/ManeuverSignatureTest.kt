@@ -1,6 +1,7 @@
 package com.byd.clusternav.navigation
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -25,6 +26,19 @@ class ManeuverSignatureTest {
         assertNull(ManeuverSignature.classify(null))
         assertNull(ManeuverSignature.classify(frame(4, 4) { _, _ -> true }))
         assertNull(ManeuverSignature.classifyHal(frame(7, 7) { _, _ -> true }))
+    }
+
+    @Test
+    fun `B3_11 - crop THUA (it cell sang) KHONG false-positive`() {
+        // 15x15 nền TRẮNG đục + vài cell ĐEN → chữ ký THƯA (< MIN_SIG_BITS=10). Trước đây query ~toàn-0 khớp
+        // NHẦM template thưa (Hamming 0→18 ≤ MAX_HAMMING) → tín hiệu rẽ GIẢ. Guard MIN_SIG_BITS chặn.
+        val white = setOf(2, 88, 150, 200)   // 4 cell TRẮNG trên nền ĐEN → ~4 bit sáng (thưa)
+        val f = ArrayPixelFrame(15, 15, IntArray(225) { if (it in white) 0xFFFFFFFF.toInt() else 0xFF000000.toInt() })
+        val bits = ManeuverSignature.signatureBits(f)
+        assertNotNull(bits)
+        assertTrue(bits!!.count { it == '1' } < 10, "khung phải THƯA (<10 bit); thực tế=${bits.count { it == '1' }}")
+        assertNull(ManeuverSignature.classify(f), "crop thưa KHÔNG được ra amap (false-positive)")
+        assertNull(ManeuverSignature.classifyManeuver(f))
     }
 
     @Test
