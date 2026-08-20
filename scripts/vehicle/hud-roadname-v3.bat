@@ -41,7 +41,7 @@ set "ROAD=944e004e275953905753"
 "%ADB%" %TGT% push "%NAVJAR%" /data/local/tmp/navopen.jar >nul 2>&1 && echo -- navopen pushed || ( echo [LOI] khong push duoc & pause & exit /b 1 )
 echo ### HUD TEN DUONG v3  %date% %time%> "%LOG%"
 
-echo. & echo Xac nhan xe DANG DO + TAT Nav+HUD tren app. Enter de bat dau.
+echo. & echo Xac nhan: xe DO + TAT Nav+HUD app ClusterNav + KHONG can mo GMaps/VietMap (navopen tu bom nav). Enter de bat dau.
 pause >nul
 
 echo === PRIME: navistate 2 + nav-screen 3 ===
