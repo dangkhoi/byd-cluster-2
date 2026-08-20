@@ -49,6 +49,7 @@
 |-----|----------|-----------|----------|
 | [`specs/upcoming-speed-limit-badge.html`](specs/upcoming-speed-limit-badge.html) | Vẽ "giới hạn sắp tới + cự ly" (VietMap) lên cụm (active — A9/B2) | Current | 2026-08-18 |
 | [`specs/waze-vietmap-screen-capture.html`](specs/waze-vietmap-screen-capture.html) | Screen-capture nav (Waze arrow + VietMap camera) học OpenBYD — B3, **Chờ duyệt**, 4 case | Current | 2026-08-19 |
+| [`specs/b3-full-nav-capture.html`](specs/b3-full-nav-capture.html) | **B3 FULL**: đọc mũi tên+làn+camera+text (Waze/VietMap/GMaps) + menu chọn nguồn + bắn cụm/HUD + overlay cụm (như speed badge). **Draft/chờ duyệt** | Current | 2026-08-20 |
 | [`specs/speed-limit-cluster-hud-oncar-ready.html`](specs/speed-limit-cluster-hud-oncar-ready.html) | Speed-limit cluster badge + HAL port + HUD probe (on-car ready) | Current | 2026-08-17 |
 | [`specs/speed-badge-placement-vietmap-logging.html`](specs/speed-badge-placement-vietmap-logging.html) | UI đặt vị trí badge + dời nguồn VietMap + log toàn tín hiệu | Current | 2026-08-17 |
 | [`specs/v2-accessibility-navsource-handoff.html`](specs/v2-accessibility-navsource-handoff.html) | a11y NavScreenSource đa app (GMaps/Waze/VietMap) | Current | 2026-08-17 |

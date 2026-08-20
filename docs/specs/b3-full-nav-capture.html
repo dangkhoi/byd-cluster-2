@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B3 Full — Screen-Capture Navigation (Waze/VietMap/GMaps → cụm + HUD) — ClusterNav 2.0</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--card:#f5f5f7;--accent:#0071e3;--warn:#bf5f00;--ok:#1a7f37;--code:#f2f2f7}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--fg:#f5f5f7;--muted:#98989d;--line:#2c2c2e;--card:#1c1c1e;--accent:#2997ff;--warn:#ff9f0a;--ok:#30d158;--code:#1c1c1e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:40px 24px 120px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:22px;font-weight:650;letter-spacing:-.01em;margin:44px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+h3{font-size:17px;font-weight:650;margin:24px 0 8px}
+p,li{font-size:15.5px}.muted{color:var(--muted)}
+code{background:var(--code);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,monospace;font-size:13.5px}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow:auto;font-family:"SF Mono",ui-monospace,monospace;font-size:13px;line-height:1.5}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--card);color:var(--muted);border:1px solid var(--line)}
+.pill.wait{background:rgba(191,95,0,.12);color:var(--warn);border-color:transparent}
+.pill.ok{background:rgba(26,127,55,.12);color:var(--ok);border-color:transparent}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+ul{padding-left:22px}li{margin:3px 0}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;background:var(--accent);color:#fff;margin-right:6px}
+.tag.p1{background:var(--warn)}.tag.p2{background:#8e8e93}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:16px 0}
+.fnode{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;text-align:center;font-size:13.5px;min-width:110px}
+.fnode b{display:block;font-size:14px}.fnode span{color:var(--muted);font-size:12px}
+.fnode.new{background:rgba(0,113,227,.12);border-color:var(--accent)}
+.flow .arrow{color:var(--accent);font-weight:700;font-size:18px;padding:0 2px}
+.layers{display:flex;flex-direction:column;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:16px 0}
+.layer{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;justify-content:center}
+.layer .node{flex:1 1 150px;min-width:130px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:center;font-size:13px}
+.layer .node.new{background:rgba(0,113,227,.12);border-color:var(--accent)}
+.layer .node b{display:block;font-size:13.5px}.layer .node span{color:var(--muted);font-size:11.5px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0;font-size:12.5px;color:var(--muted)}
+.legend .sw{display:inline-flex;align-items:center;gap:6px}.legend .box{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);display:inline-block}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>B3 Full — Screen-Capture Navigation</h1>
+<p class="muted">Slug: <code>b3-full-nav-capture</code> · Branch <code>feat/speed-limit-badge-hal-hud</code> · <span class="pill wait">Trạng thái: Draft / chờ duyệt</span></p>
+<p class="muted">Mở rộng B3 thành nguồn dẫn đường ĐẦY ĐỦ: đọc <b>mũi tên + làn đường + camera + text</b> từ Waze/VietMap/GMaps, có <b>menu chọn nguồn</b>, và <b>bắn lên cụm + HUD + vẽ overlay cụm</b> (như speed badge). Xây trên B3.5–B3.13 đã committed.</p>
+
+<h2>1. Changelog</h2>
+<ul>
+<li><b>Pass 0 — 2026-08-20</b>: Khởi tạo spec theo yêu cầu owner ("full B3 + menu chọn app + bắn cụm/HUD + lấy camera/làn VietMap + làn Waze + vẽ overlay cụm như speed badge"). Grounded từ code hiện tại (B3.5–B3.13 committed) + RE OpenBYD (WazeManager/BydAccessibilityService).</li>
+</ul>
+
+<h2>2. Context</h2>
+<p><b>PO / vấn đề:</b> B3 hiện mới đọc được <b>mũi tên Waze</b> (classify → <code>amap</code>) trên emulator, và đã có cơ chế đọc app khi không-foreground (B3.13). Nhưng tín hiệu B3 <b>chưa đi đâu cả</b> (ScreenCaptureSignal là "seam" chưa nối ra cụm/HUD — T7), <b>chưa đọc làn đường</b>, <b>chưa có menu chọn nguồn</b> (dữ liệu có, thiếu UI), và VietMap camera <b>chưa có template</b>. Owner muốn B3 thành nguồn nav hoàn chỉnh, hiển thị như speed badge đã làm.</p>
+
+<h3>Đã có sẵn (đọc source — TÁI DÙNG)</h3>
+<ul>
+<li><b>Pipeline capture + classify</b> (committed): <code>ScreenCaptureNavSource</code> (tick 2Hz, gate, capture transport fission+screencap fallback), <code>ManeuverSignature</code>+<code>ManeuverRegistry</code>+<code>WazeArrowRegistry</code> (mũi tên; Waze-TRÁI proven end-to-end, <code>amap=2</code>), <code>VietMapCameraMatcher</code> (camera; template RỖNG = OQ4), <code>CaptureRouter</code>/<code>CaptureBoundsHeuristic</code> (case + bounds), <code>NavWindowPicker</code> (B3.13 — chọn nav-window bất kể focus).</li>
+<li><b>Holder tín hiệu</b>: <code>ScreenCaptureSignal</code> — <code>arrow</code>(maneuver+amap) + <code>camera</code>(match). <b>Chưa có lane</b>. <b>Chưa ai đọc nó ra cụm/HUD (T7).</b></li>
+<li><b>Trọng tài nguồn</b>: <code>SourceArbiter</code> + <code>NavSourceMode</code> (AUTO=0 / PREFER_GMAPS=2 / PREFER_WAZE=3 / PREFER_VIETMAP=4) + <code>Prefs.sourceMode</code> (<code>setSourceMode</code>). <b>Thiếu UI menu.</b></li>
+<li><b>Overlay cụm</b>: <code>SpeedBadgeOverlay</code> + <code>ClusterSpeedBadgePort</code> (TYPE_APPLICATION_OVERLAY trên <b>display 1 = cụm</b>) + <code>SpeedSignPort/Output/Submission</code> — <b>pattern render overlay cụm ĐÃ CHẠY</b> (speed badge) → tái dùng cho nav overlay.</li>
+<li><b>Đầu ra HAL</b>: <code>BydHal.pushNavigation</code> đẩy mũi tên/cự-ly/pathname/trip → <b>cụm-centre + HUD</b> (domestic 0x43F + oversea 0x1F7) + SDK <code>sendSimpleGuidanceInfo</code>/<code>sendNextPathName</code>. <b>Chưa đẩy LÀN</b> (cụm CÓ register làn: <code>LANE_1_GUIDANCE_ARROW_SET 0x19802058</code>, <code>IS_LANE_n_RECOMMENDED 0x1980xx64</code>, <code>n_LANE_LINE_TYPE 0x1980xx60</code>).</li>
+</ul>
+
+<h3>OpenBYD làm gì (RE — học theo)</h3>
+<ul>
+<li><b>2 kênh</b>: (a) <b>TEXT</b> (cự ly/đường/ETA) qua a11y — <code>BydAccessibilityService</code> duyệt <code>getWindowsOnAllDisplays</code> tìm window nav (B3.13 mình đã port) → <code>WazeManager.updateNavigationTexts</code>; (b) <b>ẢNH</b> — <code>WazeArrowCaptureService</code> (MediaProjection) → <code>processArrowPixels</code> → classify.</li>
+<li><b>LÀN</b>: <code>findAccessibilityNodeInfosByViewId("com.waze:id/laneGuidanceView")</code> → lấy <b>bounds</b> → <code>updateLaneContainerBounds</code> → capture vùng đó (như mũi tên). Tức <b>làn = a11y-tìm-viewId + capture-vùng-làn + classify</b>.</li>
+</ul>
+
+<div class="card"><b>Cổng / phụ thuộc:</b>
+<ul>
+<li><span class="ok">KHÔNG bị gate</span>: đầu ra <b>cụm</b> (centre-nav + overlay display-1) app ghi được (đã chạy với speed badge + centre-nav). Mũi-tên/cự-ly <b>HUD</b> cũng chạy.</li>
+<li><span class="warn">Bị gate riêng (KHÔNG thuộc spec này)</span>: <b>tên đường trên HUD</b> = provisioning-gate MCU (C7/C8, đang dò v3). B3 chỉ đẩy mũi-tên/cự-ly ra HUD; tên đường HUD chờ C8.</li>
+<li><span class="warn">Prereq nội bộ</span>: <b>B3.11 [P1]</b> (false-positive crop trống → tín hiệu rẽ GIẢ) phải fix TRƯỚC khi nối output ra cụm (kẻo bắn nav sai). <b>B3.10</b> (arbiter dính nguồn cũ) nên fix để chuyển nguồn sạch.</li>
+</ul></div>
+
+<h2>3. Requirements</h2>
+<h3>Chức năng</h3>
+<ul>
+<li><b>R1. Trích xuất theo nguồn đang dẫn</b> (mở rộng):
+  <ul>
+  <li>R1a <b>Waze/WazeMod</b>: mũi tên maneuver <span class="ok">(có)</span> + <b>LÀN</b> (a11y <code>laneGuidanceView</code> bounds → capture → classify làn) + cự-ly/đường (a11y, B3.13).</li>
+  <li>R1b <b>VietMap</b>: <b>camera phạt nguội</b> (capture + template) + <b>LÀN</b> (a11y viewId hoặc capture — VietMap hiện lane guidance) + mũi tên (banner) + cự-ly/đường (a11y content-desc).</li>
+  <li>R1c <b>GMaps</b>: maneuver + cự-ly (notification + a11y — <b>đã có</b>); B3-capture là phụ.</li>
+  </ul></li>
+<li><b>R2. Menu chọn nguồn dẫn đường</b> — UI chọn AUTO / GMaps / Waze / VietMap → <code>Prefs.setSourceMode</code> → <code>SourceArbiter</code> tôn trọng; hiển thị nguồn đang active. (Data + arbiter có sẵn; chỉ thêm UI.)</li>
+<li><b>R3. Bắn ra CỤM</b> — mũi tên + làn + camera lên cụm: (i) <b>overlay cụm</b> (display-1, pattern SpeedBadgeOverlay) vẽ badge mũi tên/làn/camera; và/hoặc (ii) <b>register cụm gốc</b> (centre-nav qua BydHal đã chạy; làn qua <code>0x19802058…</code> — verify on-car).</li>
+<li><b>R4. Bắn ra HUD</b> — mũi tên + cự-ly ra HUD kính qua <code>BydHal</code> (đã chạy). Làn/tên-đường HUD = tuỳ (tên-đường gated C8).</li>
+<li><b>R5. Badge camera trên overlay cụm</b> — VietMap camera → badge (giống speed badge: icon + cự-ly).</li>
+<li><b>R6. Làn trên cụm</b> — vẽ dải làn (mũi tên từng làn, làn nào recommended) trên overlay cụm.</li>
+</ul>
+<h3>Phi chức năng</h3>
+<ul>
+<li>R-nf1. Classifier (arrow/lane/camera) <b>THUẦN ở :core</b> — unit-test off-car (khoá logic bằng fixture như ManeuverSignature).</li>
+<li>R-nf2. <b>Degrade-safe</b>: thiếu template/bounds/capture → bỏ frame, KHÔNG crash, KHÔNG bắn nav sai (fix B3.11 trước).</li>
+<li>R-nf3. KHÔNG phá speed-badge/Cast/centre-nav hiện có; overlay nav dùng CÙNG cơ chế display-1, không tranh chấp.</li>
+<li>R-nf4. <b>data &gt; image</b> (SourceArbiter): notification/widget (nếu có) ưu tiên hơn ảnh; B3 là fallback đọc-ảnh.</li>
+<li>R-nf5. Throttle a11y window-enum (B3.13) + tick 2Hz — không phình CPU/perf.</li>
+</ul>
+
+<h2>4. Design</h2>
+<h3>4.1 Luồng dữ liệu</h3>
+<div class="flow">
+  <div class="fnode"><b>Nav apps</b><span>Waze / VietMap / GMaps</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode"><b>a11y + capture</b><span>window-enum (B3.13)<br>+ transport chụp</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>Classify :core</b><span>arrow · <b>lane</b> · camera</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>ScreenCaptureSignal</b><span>+ lane</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>NavOutputOwner (T7)</b><span>trọng tài + đẩy</span></div>
+</div>
+<div class="flow">
+  <div class="fnode new"><b>NavOutputOwner</b></div>
+  <div class="arrow">▶</div>
+  <div class="fnode"><b>BydHal</b><span>HUD + cụm-centre<br>(+ lane reg)</span></div>
+  <div class="arrow">＋</div>
+  <div class="fnode new"><b>Cluster NavOverlay</b><span>display-1, pattern<br>SpeedBadgeOverlay</span></div>
+</div>
+<div class="legend">
+  <span class="sw"><span class="box" style="background:var(--card)"></span> khối hiện có (reuse)</span>
+  <span class="sw"><span class="box" style="background:rgba(0,113,227,.15)"></span> khối mới / mở rộng</span>
+</div>
+
+<h3>4.2 Các khối</h3>
+<div class="layers">
+  <div class="layer">
+    <div class="node"><b>Capture (có)</b><span>ScreenCaptureNavSource + transport</span></div>
+    <div class="node"><b>window-enum (B3.13)</b><span>NavWindowPicker</span></div>
+    <div class="node new"><b>Lane bounds</b><span>a11y viewId laneGuidanceView → CaptureBoundsSource(lane)</span></div>
+  </div>
+  <div class="layer">
+    <div class="node"><b>ManeuverSignature (có)</b><span>arrow → amap/maneuver</span></div>
+    <div class="node new"><b>LaneSignature (mới)</b><span>vùng làn → [làn: hướng, recommended]</span></div>
+    <div class="node"><b>VietMapCameraMatcher (có)</b><span>camera (cần template OQ4)</span></div>
+  </div>
+  <div class="layer">
+    <div class="node new"><b>ScreenCaptureSignal + lane</b><span>publishLane / laneFresh</span></div>
+    <div class="node"><b>SourceArbiter + NavSourceMode (có)</b><span>AUTO/PREFER_*</span></div>
+    <div class="node new"><b>Nav-source menu (mới)</b><span>MainActivity → Prefs.sourceMode</span></div>
+  </div>
+  <div class="layer">
+    <div class="node new"><b>NavOutputOwner (T7, mới)</b><span>gộp signal → đẩy, keep-alive, degrade</span></div>
+    <div class="node"><b>BydHal.pushNavigation (có)</b><span>+ push lane reg (mới)</span></div>
+    <div class="node new"><b>Cluster NavOverlay (mới)</b><span>reuse SpeedBadgeOverlay display-1</span></div>
+  </div>
+</div>
+
+<h3>4.3 Quyết định thiết kế</h3>
+<ul>
+<li><b>Làn</b>: học OpenBYD — a11y tìm <code>*:id/laneGuidanceView</code> (Waze) / view tương ứng VietMap → bounds → capture → <code>LaneSignature</code> (thuần) phân tích dải làn (mỗi làn: có/không, hướng mũi tên, recommended). Fallback: nếu app phơi làn qua content-desc/text thì đọc thẳng (rẻ hơn ảnh).</li>
+<li><b>Output owner (T7)</b>: 1 owner đọc <code>ScreenCaptureSignal</code> (+ nav notification hiện có) theo <code>SourceArbiter</code>, đẩy: mũi-tên/cự-ly → <code>BydHal</code> (HUD+cụm-centre, đã chạy); làn → cụm (register hoặc overlay); camera → overlay badge. Có keep-alive + clear khi hết dẫn (như HudKeepAlivePolicy đã có).</li>
+<li><b>Overlay cụm</b>: TÁI DÙNG cơ chế <code>SpeedBadgeOverlay</code>/<code>ClusterSpeedBadgePort</code> (TYPE_APPLICATION_OVERLAY display-1) — thêm view nav (mũi tên/làn/camera) cạnh badge tốc-độ, KHÔNG dựng cơ chế overlay mới.</li>
+<li><b>Menu nguồn</b>: item trong MainActivity (như selector chế-độ-hiển-thị cụm đã có) set <code>Prefs.sourceMode</code>; hiển thị <code>SourceArbiter.activeSource</code>.</li>
+<li><b>Cụm register làn vs overlay</b>: thử register gốc <code>0x19802058…</code> trước (cụm tự vẽ làn đẹp hơn); nếu không provision → overlay tự vẽ. (OQ3, verify on-car.)</li>
+<li><b>Context7</b>: chỉ dùng Android SDK (AccessibilityWindowInfo/MediaProjection/WindowManager) + BYDAuto HAL + khối nội bộ đã có → <b>không có thư viện mới → Context7 n/a</b>.</li>
+</ul>
+
+<h2>5. Tasks (DAG)</h2>
+<table>
+<tr><th>#</th><th>Task</th><th>File</th></tr>
+<tr><td>T0</td><td><span class="tag p1">P1</span>Fix <b>B3.11</b> (false-positive crop trống → chặn signature quá thưa) + <b>B3.10</b> (arbiter nhường nguồn stale) — prereq trước khi nối output</td><td><code>ManeuverSignature.kt</code>, <code>SourceArbiter.kt</code> (+test)</td></tr>
+<tr><td>T1</td><td><b>Lane extraction</b>: a11y lane-container bounds (viewId) + <code>LaneSignature</code> (:core thuần) + <code>ScreenCaptureSignal.publishLane</code> + test</td><td><code>NavAccessibilityService.kt</code>, <code>LaneSignature.kt(+Test)</code>, <code>ScreenCaptureSignal.kt</code></td></tr>
+<tr><td>T2</td><td><b>Thu template</b>: VietMap camera (OQ4) + full maneuver Waze/VietMap (drive + capture <code>signatureBits</code>, theo method emulator phiên này) → registry</td><td><code>WazeArrowRegistry.kt</code>, <code>VietMapCameraMatcher</code> templates</td></tr>
+<tr><td>T3</td><td><b>Menu chọn nguồn</b> (UI) → <code>Prefs.setSourceMode</code>; hiện active source</td><td><code>MainActivity.kt</code> (+ layout)</td></tr>
+<tr><td>T4</td><td><b>NavOutputOwner (T7)</b>: đọc signal theo arbiter → <code>BydHal</code> (HUD+cụm-centre mũi-tên/cự-ly) + push lane reg; keep-alive + clear</td><td><code>NavOutputOwner.kt(+Test)</code>, <code>BydHal.kt</code></td></tr>
+<tr><td>T5</td><td><b>Cluster NavOverlay</b>: view mũi tên/làn/camera trên display-1 (reuse SpeedBadgeOverlay); wire từ NavOutputOwner</td><td><code>NavClusterOverlay.kt</code>, <code>speedbadge/*</code> (reuse)</td></tr>
+<tr><td>T6</td><td><b>Wire + gate</b>: ScreenCaptureNavSource/notification → NavOutputOwner; bật/tắt theo Prefs; degrade-safe</td><td><code>NavNotificationListener.kt</code>, owner</td></tr>
+<tr><td>T7</td><td>Senior review + security scan + build (:core:test/:app) + <b>emulator test từng app</b> + on-car verify</td><td>—</td></tr>
+</table>
+
+<h2>6. Verification</h2>
+<ul>
+<li><b>V-unit</b>: <code>LaneSignature</code> (fixture lane → làn đúng) · <code>NavWindowPicker</code> (có) · <code>ManeuverSignature</code>/registry (có) · <code>SourceArbiter</code> (chuyển nguồn) · <code>NavOutputOwner</code> (signal → lệnh đẩy đúng, keep-alive, clear). <code>:core:test + :app:testDebugUnitTest</code> xanh.</li>
+<li><b>V-emulator</b> (method proven phiên 08-20): <code>adb root</code> + <code>wm size 960x720</code> + launch MainActivity (init verbose) + <code>emu geo fix</code> di chuyển. Cho từng app: mở dẫn → B3 đọc arrow/lane/camera → <b>overlay cụm vẽ</b> → <b>menu chuyển nguồn</b> đổi active. Log <code>arrow(image)/lane(image)/camera(image)</code> + overlay screenshot.</li>
+<li><b>V-oncar</b>: mũi-tên/cự-ly ra HUD + cụm-centre; làn ra cụm (register hoặc overlay); badge camera; chuyển nguồn; <b>reboot nút nguồn vật lý</b> nếu test yêu cầu. Waze khi cast cụm/không-foreground vẫn đọc (B3.13).</li>
+<li><b>V-lifecycle</b>: bắt đầu dẫn → overlay hiện → đổi nguồn → mất dẫn 40s → overlay clear + HAL clear (như WazeManager.checkExpiration/clearNavigation).</li>
+</ul>
+
+<h2>7. Open Questions</h2>
+<ul>
+<li>OQ1. <b>Template camera VietMap</b> (OQ4 cũ) — thu trên emulator/xe; icon camera VietMap neo-bản-đồ DI CHUYỂN → cần a11y-bounds đúng node hoặc dò động, không fixed-rect. <span class="muted">chưa</span></li>
+<li>OQ2. <b>LaneSignature</b> — đọc "mấy làn / làn nào recommended / hướng từng làn" từ vùng làn thế nào? (OpenBYD chỉ lấy bounds; chưa rõ họ classify làn ra sao). <span class="muted">cần research vùng làn thật</span></li>
+<li>OQ3. <b>Làn ra cụm</b>: register gốc <code>0x19802058/…64/…60</code> có provision trên xe owner không? (nếu không → overlay). <span class="muted">verify on-car</span></li>
+<li>OQ4. <b>Tên đường HUD</b> gated (C7/C8) — ngoài scope; B3 đẩy mũi-tên/cự-ly HUD, tên-đường chờ C8. <span class="muted">tách</span></li>
+<li>OQ5. <b>Display routing</b>: nav app trên cụm (cast) vs màn chính — capture đúng display (B3.13 cho displayId; transport chọn màn). <span class="muted">emulator 1-display hạn chế; verify on-car</span></li>
+<li>OQ6. <b>Perf</b>: window-enum + capture 2Hz + a11y flag interactive-windows — chấp nhận được trên xe? (throttle). <span class="muted">đo on-car</span></li>
+</ul>
+
+<h2>8. References</h2>
+<ul>
+<li>Commits phiên 08-20: <code>87fd1ad</code> (screencap fallback) · <code>e914642</code> (B3 core+app) · <code>ad4a454</code> (B3.5/3.7/3.9 + B3.6 Waze-trái) · <code>f33da16</code> (B3.13 window-enum) · backlog <code>93b55bd</code>.</li>
+<li>Backlog: <code>docs/PROJECT-BACKLOG.md</code> B3 + B3.1–B3.13 (B3.6/3.8/3.10/3.11 còn mở).</li>
+<li>OpenBYD (RE): <code>openbyd-2.3/…/WazeManager.java</code> (updateNavigationTexts · laneContainerBounds · processArrowPixels) · <code>BydAccessibilityService.java</code> (rootNodeForPackages · laneGuidanceView) · <code>ClusterOverlayManager.java</code>.</li>
+<li>Hiện có: <code>speedbadge/{SpeedBadgeOverlay,ClusterSpeedBadgePort,SpeedBadgeView}.kt</code> · <code>navigation/{SourceArbiter,NavSourceMode}.kt</code> · <code>modules/hal/BydHal.kt</code> · <code>navigation/screencapture/ScreenCaptureSignal.kt</code>.</li>
+<li>Diagnostics: <code>docs/diagnostics/b3-emulator-e2e-2026-08-20.md</code> (method test emulator) · spec cũ <code>waze-vietmap-screen-capture.html</code>.</li>
+</ul>
+
+<h2>9. Nhật ký triển khai (Implementation Log)</h2>
+<p class="muted"><i>(Trống — chưa implement. Điền dần khi code.)</i></p>
+
+<h2>10. Reviewer Log</h2>
+<ul><li>(chưa có pass review — spec mới draft.)</li></ul>
+
+</div></body>
+</html>
