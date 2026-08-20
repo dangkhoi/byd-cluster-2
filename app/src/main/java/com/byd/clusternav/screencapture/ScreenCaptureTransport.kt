@@ -30,27 +30,38 @@ class ScreenCaptureTransport(context: Context) {
     /**
      * Chụp display fission [fissionDisplay] → `Bitmap` (ARGB_8888) hoặc null nếu lỗi/không đọc được.
      * [fissionDisplay] = [FISSION_MAIN] (1) cho màn chính, [FISSION_CLUSTER] (0) cho cụm.
+     *
+     * Đường chính = `fission_screencap` (proven on-car). **Fallback (chỉ MÀN CHÍNH):** khi fission fail/không có
+     * (vd EMULATOR không có `fission_screencap`) → standard `screencap -p` (default display = màn chính; proven
+     * chạy trên emulator). CỤM (fission CLUSTER) KHÔNG fallback — chỉ on-car nơi fission chạy — tránh chụp nhầm
+     * display 0. Fallback này giúp B3 test end-to-end được off-car (emulator) + robust hơn on-car.
      */
-    fun captureFission(fissionDisplay: Int): Bitmap? = runCatching {
+    fun captureFission(fissionDisplay: Int): Bitmap? {
+        val viaFission = captureShell("fission_screencap -d $fissionDisplay", "fission-d$fissionDisplay")
+        if (viaFission != null) return viaFission
+        if (fissionDisplay != FISSION_MAIN) return null   // cụm: fission-only (on-car)
+        return captureShell("screencap", "screencap-main")
+    }
+
+    /** Chạy `<cmdPrefix> -p <file>` qua dadb shell → decode PNG → Bitmap; xoá file tạm. null nếu lỗi. Degrade-safe. */
+    private fun captureShell(cmdPrefix: String, tag: String): Bitmap? = runCatching {
         val dir = File(appContext.cacheDir, "screencap").apply { mkdirs() }
-        val out = File(dir, "cap-d$fissionDisplay.png")
-        // `-p <path>` là cú pháp fission proven (SegmentShotCapturer.captureFission): `-p` NHẬN path đầu ra.
-        val cmd = "fission_screencap -d $fissionDisplay -p ${out.absolutePath}"
+        val out = File(dir, "cap-$tag.png")
+        val cmd = "$cmdPrefix -p ${out.absolutePath}"
         val result = runCatching {
             SimpleCastRuntime.coordinator(appContext).executeShell(cmd)
         }.getOrNull()
         if (result == null || !result.success) {
-            Log.w(TAG, "fission_screencap -d $fissionDisplay failed exit=${result?.exitCode}")
+            Log.w(TAG, "$tag failed exit=${result?.exitCode}")
             runCatching { out.delete() }
             return@runCatching null
         }
         val bmp = runCatching { BitmapFactory.decodeFile(out.absolutePath) }.getOrNull()
-        // Xoá file tạm ngay (không giữ artefact); lưu ảnh chẩn đoán là việc RIÊNG của caller (verbose-gated).
-        runCatching { out.delete() }
-        if (bmp == null) Log.w(TAG, "decode fission -d $fissionDisplay PNG null (empty/locked screencap?)")
+        runCatching { out.delete() }   // xoá tạm ngay (không giữ artefact); diag save là việc RIÊNG của caller
+        if (bmp == null) Log.w(TAG, "decode $tag PNG null (empty/locked screencap?)")
         bmp
     }.getOrElse {
-        Log.w(TAG, "captureFission -d $fissionDisplay threw", it)
+        Log.w(TAG, "$tag threw", it)
         null
     }
 
