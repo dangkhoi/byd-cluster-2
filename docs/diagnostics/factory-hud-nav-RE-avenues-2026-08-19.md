@@ -237,3 +237,27 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 - Coding (VDS2100) **BẬT được feature có-nhưng-tắt; KHÔNG THÊM được feature firmware không có.** Nếu Seal thiếu lớp nav → **coding cũng chịu**.
 - **Caveat (chưa 100%):** có thể là lựa-chọn-nội-dung-demo hoặc firmware-có-mà-gate-hoàn-toàn. **Xác nhận cuối = C6 `getHudSupportedModes`**: không có nav-mode → HUD Seal chịu (đổi HUD loại SL6 / HUD rời); có nav-mode-tắt → còn tia coding.
 - ⇒ Ưu tiên chạy **C6 probe** khi ra xe để chốt; và **HUD-nav "lên kính Seal" gần như = đổi phần cứng HUD / HUD rời**, không phải code HUD Seal.
+
+
+---
+
+## Cập nhật 2026-08-20 (3) — KẾT QUẢ MA TRẬN tên đường (HUD BYD anh em) → Android-lever CẠN
+
+`hud-roadname-matrix.bat` chạy trên xe anh em (HUD BYD, đã lên mũi tên+cự ly qua app). Mỗi case lặp 7× (~14s):
+`frame 20 250 RD 8 5000` (guidance) → `setraw <LEVER>` → `setbytes 43FA1008 <ROAD>` (pathname); `navistate 2`
+set 1 lần đầu; đọc cụm-status; reset lever→0 giữa case. **Thứ tự + persistence đúng** (guidance active +
+lever + pathname re-assert).
+
+**Kết quả (BASELINE + L1–L7 + COMBO L1+L2+L3):**
+- `0x420A1010` ROAD_NAME_CHECK_STATE = **0 ở MỌI case** (không 1=VALID, không 2=INVALID). Tên đường **không hiện** case nào.
+- `0x38B0002E` = **-2147482648** (sentinel CHƯA-PROVISION) · `0x30100030` = **-2147482648** (chưa-provision) · `0x40C0103B`(dest) = 0.
+- 7 lever quét: L1 `SEND_DESTINATION_STATUS 0x43E00038=2` · L2 `DYNAMIC_NAVI 0x38B0002A=1` · L3 `MAP_TRANSFER 0x40500025=1` · L4 `GUIDE_ROAD_AHEAD 0x43F01030=250` · L5 `GUIDE_ADVANCED_ACTION 0x43F08030=1` · L6 `HUD_NAV_MAP_SET 0x32B1102E=2` · L7 `ARRIVAL_PASSPOINT 0x43FFF030=1` + COMBO(L1-3). **Tất cả NEGATIVE.**
+
+**Kết luận (bằng chứng):** tên đường trên HUD BYD bị **GATE bởi PROVISIONING ở MCU** — không lever Android nào (đơn lẻ hoặc combo, có guidance+pathname active) đổi được check-state khỏi 0. Củng cố: 2 register HUD-nav-config (`0x38B0002E`, `0x30100030`) đọc ra **not-provisioned**. Bất đối xứng arrow/dist (INT, vẽ vô điều kiện) vs road-name (buffer + check-state gated) khớp hoàn toàn. **Android-lever avenue = CẠN** (cộng C7 v1 cũng negative + app HAL đầy đủ vẫn không lên tên đường).
+
+**Caveat rigor (trung thực):** `.bat` che set-rc (`>nul`) → chưa xác nhận từng lever ĐÃ áp (rc=0) vs bị từ-chối-vì-not-provisioned. Lever họ `0x38B/0x32B` (L2/L6) nhiều khả năng bị từ chối = **chính là** bằng chứng provisioning-gate; lever guidance (L1/L3/L4/L5/L7) nhiều khả năng áp-được-mà-vô-hiệu. Cả hai nhánh → **không Android-activatable**. (v3 tuỳ chọn: log set-rc + đọc thêm họ `0x38B00xx` provisioning để chốt "tại sao" — nhưng gần như chắc chỉ xác nhận gate, không tìm ra lever chạy.)
+
+**Path forward (road-name trên HUD BYD):**
+1. **Provisioning/coding VDS2100** — provision HUD-nav-config (`0x38B00030` gate + họ `0x38B00xx`/`0x30100030`) rồi test lại app. Đây là nhánh khả thi nhất còn lại. (D6.)
+2. Hoặc **chấp nhận arrow+distance-only** qua app (đang chạy) + tên đường là giới hạn provisioning.
+3. Chức năng tên đường CÓ trong firmware HUD (SL6 showroom demo được) nhưng **gated** — nên là bài toán coding/provisioning, không phải app.
