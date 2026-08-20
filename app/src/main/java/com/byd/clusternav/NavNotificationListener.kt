@@ -187,6 +187,16 @@ class NavNotificationListener : NotificationListenerService() {
         // B3: service dying → stop the capture source (releases executor future + offscreen mirror).
         runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
             .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
+        // B3 T6: service dying → CLOSE the output owner (shuts down its keep-alive scheduler) + cluster overlay
+        // (unregisters its DisplayManager.DisplayListener + detaches display-1 views). onListenerDisconnected only
+        // stop()s/hide()s them (reused across bind drops); onDestroy is the real teardown, so — symmetric to the
+        // capture-source stop above — release them here or a new service instance on rebind would accumulate a
+        // stale scheduler thread + a stale DisplayListener each destroy→recreate cycle (this head unit drops its
+        // binding often). Null out so any later (re)connect on a fresh instance rebuilds cleanly. Degrade-safe.
+        runCatching { navOutputOwner?.close() }.onFailure { Log.w(TAG, "nav output owner close failed", it) }
+        runCatching { navClusterOverlay?.close() }.onFailure { Log.w(TAG, "nav overlay close failed", it) }
+        navOutputOwner = null
+        navClusterOverlay = null
         super.onDestroy()
     }
 
