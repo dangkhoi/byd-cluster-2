@@ -56,6 +56,11 @@
                 android:textColor="@color/text_secondary" android:textSize="13sp" />
             <Spinner android:id="@+id/spinner_nav_source" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
+            <!-- T3 (b3-full-nav-capture · R2): nguồn dẫn đang active (SourceArbiter.activeSource) — cập nhật ở refresh(). -->
+            <TextView android:id="@+id/txt_nav_source_active" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Đang dẫn: —"
+                android:textColor="@color/text_secondary" android:textSize="12sp"
+                android:contentDescription="Nguồn dẫn đường đang hoạt động" />
             <!-- op39 self-diagnose (docs/specs/nav-cluster-op39-selfdiagnose.html · D3): op 39 "Giữa + ETA" là
                  chế độ nav-trên-cụm DUY NHẤT (owner 2026-08-12) — bỏ nút chọn mode + nút test. Chỉ còn dòng
                  trạng thái trung thực của overlay op39. -->

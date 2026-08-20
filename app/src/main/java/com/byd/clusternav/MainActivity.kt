@@ -21,6 +21,7 @@ import com.byd.clusternav.navigation.NavigationFreshness
 import com.byd.clusternav.navigation.NavigationOutputStatus
 import com.byd.clusternav.navigation.NavigationOutputTarget
 import com.byd.clusternav.navigation.NavigationPermission
+import com.byd.clusternav.navigation.NavSourceLabels
 import com.byd.clusternav.navigation.SpeedSignOutput
 
 /**
@@ -35,6 +36,8 @@ class MainActivity : Activity() {
     private lateinit var navStatus: TextView
     private lateinit var laneStatus: TextView
     private lateinit var hudStatus: TextView
+    // T3 (b3-full-nav-capture · R2): shows SourceArbiter.activeSource (the nav source currently driving).
+    private lateinit var navSourceActive: TextView
     private val cast = MainActivityCastController(this)
     private val navClusterStatus = com.byd.clusternav.modules.clustercast.NavClusterOp39Status(this)
     // ★ Revive (2026-08-17): speed-sign owner (VietMap/Waze speed-limit signal). Port 1.21 = Noop — base research.
@@ -145,17 +148,21 @@ class MainActivity : Activity() {
         // báo (port 1.21 = Noop — base research). Xem docs/specs/waze-vietmap-signal-revival.html.
         // Navigation source selector (turn-by-turn direction)
         val navSourceSpinner = findViewById<android.widget.Spinner>(R.id.spinner_nav_source)
-        val navSources = arrayOf("Tự động (app dẫn trước)", "Google Maps", "Waze Mod")
-        val navSourceModes = intArrayOf(Prefs.AUTO, Prefs.PREFER_GMAPS, Prefs.PREFER_WAZE)
+        // T3 (b3-full-nav-capture · R2): AUTO / GMaps / Waze / VietMap → Prefs.setSourceMode (SourceArbiter honours it).
+        val navSources = arrayOf("Tự động (app dẫn trước)", "Google Maps", "Waze Mod", "VietMap")
+        val navSourceModes = intArrayOf(Prefs.AUTO, Prefs.PREFER_GMAPS, Prefs.PREFER_WAZE, Prefs.PREFER_VIETMAP)
         navSourceSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, navSources)
         val currentNavMode = Prefs.sourceMode(this)
         navSourceSpinner.setSelection(navSourceModes.indexOf(currentNavMode).coerceAtLeast(0))
         navSourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
                 Prefs.setSourceMode(this@MainActivity, navSourceModes[pos])
+                refresh()   // reflect the mode change in the active-source line immediately
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
+        // Active nav source (SourceArbiter.activeSource) — kept current by refresh().
+        navSourceActive = findViewById(R.id.txt_nav_source_active)
 
         // Speed + Alert source selector
         val speedSourceSpinner = findViewById<android.widget.Spinner>(R.id.spinner_speed_source)
@@ -355,6 +362,18 @@ class MainActivity : Activity() {
         hudStatus.text = "HUD: ${navigation.hud.status.label()}"
         findViewById<Button>(R.id.btn_reconnect_nav).visibility =
             if (permission != NavigationPermission.GRANTED) View.VISIBLE else View.GONE
+        // T3 (b3-full-nav-capture · R2): show the nav source currently driving (SourceArbiter.activeSource). The
+        // arbiter is fed the WALL clock (System.currentTimeMillis()) by the notification/screen-capture sources,
+        // so freshness is judged on the same clock. Null → "—"; a source past STALE_MS is marked "(cũ)/(stale)".
+        val nowWall = System.currentTimeMillis()
+        val activePkg = com.byd.clusternav.navigation.SourceArbiter.activeSource
+        navSourceActive.text = if (activePkg == null) {
+            Lang.t("Đang dẫn: —", "Active: —")
+        } else {
+            val label = NavSourceLabels.sourceLabel(activePkg)
+            val stale = !com.byd.clusternav.navigation.SourceArbiter.isFresh(nowWall)
+            Lang.t("Đang dẫn: ", "Active: ") + label + if (stale) Lang.t(" (cũ)", " (stale)") else ""
+        }
         navClusterStatus.refresh()
         updateVoiceKeyLabel()
     }
