@@ -100,6 +100,7 @@
 
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
+| [`diagnostics/b3-emulator-e2e-2026-08-20.md`](diagnostics/b3-emulator-e2e-2026-08-20.md) | **Test B3 end-to-end trên emulator (Waze/VietMap/GMaps dẫn thật)**: Waze rẽ-TRÁI classify ĐÚNG `amap=2` end-to-end; môi trường lặp lại (adb root/960×720/verbose); bug B3.10/B3.11/B3.12 + RESUME POINT | Current | 2026-08-20 |
 | [`diagnostics/VEHICLE-TEST-V2.md`](diagnostics/VEHICLE-TEST-V2.md) | Checklist thử trên xe + ma trận Stage 11 (execution NOT STARTED) | Current | 2026-07-26 |
 | [`diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`](diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md) | Tổng hợp MỌI đường RE để HUD **zin** hiện nav + xếp hạng khả thi×chi phí (nghi phạm `0x38B00030` chưa bác; HUD Taobao ≠ zin) | Current | 2026-08-19 |
 | [`diagnostics/hud-coding-recipe-2026-08-19.md`](diagnostics/hud-coding-recipe-2026-08-19.md) | Recipe coding HUD-nav + kết luận cuối: transport CAN-inject no-root ĐÃ mở; 3 bí mật (diag-ID/security-key/DID cụm) ở MCU firmware/ODX dealer, cần nguồn ngoài | Current | 2026-08-19 |
