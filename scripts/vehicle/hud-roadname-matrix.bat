@@ -31,7 +31,7 @@ if not "%IP%"=="" ( "%ADB%" connect %IP%:5555 >nul & set "TGT=-s %IP%:5555" )
 set "LOG=%~dp0hud-roadname-matrix.txt"
 set "TMPF=%TEMP%\navm_%RANDOM%.txt"
 set "NAVCMD=CLASSPATH=/data/local/tmp/navopen.jar app_process /system/bin com.byd.navopen.NavOpen"
-REM CJK control = 五一大道南 (UTF-16LE)
+REM CJK control = WuYiDaDaoNan (chuoi showroom), UTF-16LE hex:
 set "ROAD=944e004e275953905753"
 
 "%ADB%" %TGT% push "%NAVJAR%" /data/local/tmp/navopen.jar >nul 2>&1 && echo -- navopen pushed || ( echo [LOI] khong push duoc & pause & exit /b 1 )
