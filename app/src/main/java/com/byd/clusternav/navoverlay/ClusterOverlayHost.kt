@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import com.byd.clusternav.Prefs
 import java.util.Collections
 import java.util.IdentityHashMap
 
@@ -35,13 +36,14 @@ class ClusterOverlayHost(
 
     companion object {
         private const val TAG = "ClusterOverlayHost"
-        private const val CLUSTER_DISPLAY_ID = 1
-        // Fallback cluster size (Seal 1920×720) used only until the real display-1 extent is read.
+        // Fallback cluster size (Seal 1920×720) used only until the real display extent is read.
         private const val DEFAULT_W = 1920
         private const val DEFAULT_H = 720
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    // Target display: 1 (cụm) mặc định; Prefs cho phép 0 để TEST overlay off-car trên màn chính (prod = 1).
+    private val clusterDisplayId: Int = Prefs.overlayDisplayId(appContext)
     private var clusterWm: WindowManager? = null
     private var displayCtx: Context? = null
     // Identity set of views currently attached to display 1 (so removal/close can detach them all).
@@ -57,7 +59,7 @@ class ClusterOverlayHost(
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
-            if (displayId != CLUSTER_DISPLAY_ID) return
+            if (displayId != clusterDisplayId) return
             handler.post {
                 initOverlay()
                 if (isReady) runCatching { onReady() }.onFailure { Log.w(TAG, "onReady failed: ${it.message}") }
@@ -65,7 +67,7 @@ class ClusterOverlayHost(
         }
 
         override fun onDisplayRemoved(displayId: Int) {
-            if (displayId != CLUSTER_DISPLAY_ID) return
+            if (displayId != clusterDisplayId) return
             handler.post {
                 teardown()
                 runCatching { onLost() }.onFailure { Log.w(TAG, "onLost failed: ${it.message}") }
@@ -140,9 +142,9 @@ class ClusterOverlayHost(
         if (clusterWm != null) return
         runCatching {
             val dm = appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-            val display = dm?.getDisplay(CLUSTER_DISPLAY_ID)
+            val display = dm?.getDisplay(clusterDisplayId)
             if (display == null) {
-                Log.d(TAG, "display $CLUSTER_DISPLAY_ID not ready — staying uninitialized, will retry")
+                Log.d(TAG, "display $clusterDisplayId not ready — staying uninitialized, will retry")
                 return
             }
             val size = android.graphics.Point()
@@ -154,12 +156,12 @@ class ClusterOverlayHost(
             val ctx = appContext.createDisplayContext(display)
             val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
             if (wm == null) {
-                Log.d(TAG, "WindowManager null for display $CLUSTER_DISPLAY_ID — will retry")
+                Log.d(TAG, "WindowManager null for display $clusterDisplayId — will retry")
                 return
             }
             displayCtx = ctx
             clusterWm = wm
-            Log.i(TAG, "cluster overlay host ready for display $CLUSTER_DISPLAY_ID (${width}x$height)")
+            Log.i(TAG, "cluster overlay host ready for display $clusterDisplayId (${width}x$height)")
         }.onFailure { Log.w(TAG, "initOverlay failed: ${it.message}") }
     }
 

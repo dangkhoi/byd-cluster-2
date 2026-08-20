@@ -31,6 +31,11 @@ object Prefs {
     fun sourceMode(ctx: Context): Int = sp(ctx).getInt(K_SOURCE, AUTO)
     fun setSourceMode(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_SOURCE, v).apply()
 
+    // Display id cho NAV CLUSTER OVERLAY. Mặc định 1 (cụm đồng hồ). CHỈ để test off-car (emulator 1 display):
+    // đặt 0 để overlay render trên màn chính mà xem được — prod luôn 1 (không ai set 0 trên xe). Prod-safe.
+    private const val K_OVERLAY_DISPLAY = "overlay_display_id"
+    fun overlayDisplayId(ctx: Context): Int = sp(ctx).getInt(K_OVERLAY_DISPLAY, 1)
+
     // ★ Revive (2026-08-17): nguồn tín hiệu tốc độ/biển báo (VietMap/Waze). Speed port ở 1.21 = Noop
     // (chưa chạy) — đây là base để research/hoàn thiện. Giữ alias giá trị ở :core (NavSourceMode.SPEED_*).
     fun speedSource(ctx: Context): Int = sp(ctx).getInt(K_SPEED_SOURCE, com.byd.clusternav.navigation.NavSourceMode.SPEED_VIETMAP)

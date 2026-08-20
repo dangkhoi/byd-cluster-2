@@ -23,7 +23,12 @@ import com.byd.clusternav.modules.wazehud.WazeHudSource
 import com.byd.clusternav.modules.wazehud.WazeHudAvailability
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
 import com.byd.clusternav.screencapture.ScreenCaptureNavSource
+import android.content.Context
 import com.byd.clusternav.navigation.screencapture.CameraMatch
+import com.byd.clusternav.navigation.screencapture.ScreenCaptureSignal
+import com.byd.clusternav.navigation.Lane
+import com.byd.clusternav.navigation.LaneInfo
+import com.byd.clusternav.navigation.Maneuver
 
 /**
  * Adapter MỎNG cho notification dẫn đường (Google Maps / ReVanced). Chỉ làm:
@@ -71,6 +76,9 @@ class NavNotificationListener : NotificationListenerService() {
     // overlaySink) cập nhật overlay. @Volatile: set ở luồng lifecycle.
     @Volatile private var navOutputOwner: NavOutputOwner? = null
     @Volatile private var navClusterOverlay: com.byd.clusternav.navoverlay.NavClusterOverlay? = null
+    // DEBUG-only (BuildConfig.DEBUG → KHÔNG có trong release OTA): receiver inject 1 frame làn+camera TỔNG HỢP
+    // qua `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME` để test overlay render off-car (emulator).
+    private var debugFrameReceiver: android.content.BroadcastReceiver? = null
 
     // D4 (closeout 1.28): last-logged dist|road|eta for log-on-change on the accepted-notification log — kills
     // per-notification spam while keeping a low-rate signal. Reset at session boundaries (like lastManeuverIcon).
@@ -164,6 +172,7 @@ class NavNotificationListener : NotificationListenerService() {
             owner.overlaySink = { lane, cam, arrow, _ -> overlay.update(lane, cam, arrow) }
             owner.start()
         }.onFailure { Log.w(TAG, "nav output owner/overlay start failed", it) }
+        maybeRegisterDebugFrameReceiver()
         // QUAN TRỌNG: nav có thể ĐÃ dẫn trước khi listener bind (cài/mở app sau khi đang dẫn, hoặc xe đỗ
         // -> noti đứng yên, onNotificationPosted không kích hoạt). Quét noti hiện tại + bơm ngay.
         runCatching {
@@ -171,6 +180,45 @@ class NavNotificationListener : NotificationListenerService() {
                 if (sbn.packageName in MAPS_PACKAGES) handle(sbn)
             }
         }.onFailure { Log.e(TAG, "scan active notifications failed", it) }
+    }
+
+    /**
+     * DEBUG-only (gate `BuildConfig.DEBUG` → KHÔNG có trong release OTA): đăng ký receiver inject 1 frame nav
+     * TỔNG HỢP (làn 4 cột [← mờ · ↑ sáng · ↑ sáng · → mờ] + camera 300m + arrow LEFT) vào `ScreenCaptureSignal`
+     * khi nhận `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME`. Để test overlay render OFF-CAR: đặt pref
+     * `overlay_display_id=0` (render trên màn chính emulator) rồi broadcast → owner tick đọc signal → overlaySink
+     * → overlay vẽ dải làn + chip camera. Idempotent; degrade-safe.
+     */
+    private fun maybeRegisterDebugFrameReceiver() {
+        if (!BuildConfig.DEBUG || debugFrameReceiver != null) return
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: android.content.Intent?) {
+                val now = SystemClock.elapsedRealtime()
+                val pkg = "com.chisadin.wazemod"
+                val lanes = LaneInfo(
+                    listOf(
+                        Lane(listOf(Maneuver.TURN_LEFT), false),
+                        Lane(listOf(Maneuver.STRAIGHT), true),
+                        Lane(listOf(Maneuver.STRAIGHT), true),
+                        Lane(listOf(Maneuver.TURN_RIGHT), false),
+                    ),
+                )
+                ScreenCaptureSignal.publishLane(pkg, lanes, now)
+                ScreenCaptureSignal.publishCamera(pkg, CameraMatch(true, 1f, "debug", null, 300), now)
+                ScreenCaptureSignal.publishArrow(pkg, Maneuver.TURN_LEFT, 2, now)
+                Log.i(TAG, "DEBUG_NAV_FRAME injected (4 lanes [L dim,S bright,S bright,R dim] + camera 300m + arrow LEFT)")
+            }
+        }
+        runCatching {
+            val filter = android.content.IntentFilter("com.byd.clusternav.DEBUG_NAV_FRAME")
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(rx, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(rx, filter)
+            }
+            debugFrameReceiver = rx
+            Log.i(TAG, "DEBUG frame-inject receiver registered (debug build only)")
+        }.onFailure { Log.w(TAG, "debug frame receiver register failed", it) }
     }
 
     override fun onDestroy() {
@@ -197,6 +245,9 @@ class NavNotificationListener : NotificationListenerService() {
         runCatching { navClusterOverlay?.close() }.onFailure { Log.w(TAG, "nav overlay close failed", it) }
         navOutputOwner = null
         navClusterOverlay = null
+        // DEBUG-only: gỡ receiver inject frame nav tổng hợp (nếu đã đăng ký).
+        runCatching { debugFrameReceiver?.let { unregisterReceiver(it) } }
+        debugFrameReceiver = null
         super.onDestroy()
     }
 
