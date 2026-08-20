@@ -9,6 +9,7 @@ import com.byd.clusternav.navigation.LaneInfo
 import com.byd.clusternav.navigation.Maneuver
 import com.byd.clusternav.navigation.NavOutputDecision
 import com.byd.clusternav.navigation.screencapture.ScreenCaptureSignal
+import com.byd.clusternav.navigation.screencapture.CameraMatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
@@ -76,6 +77,13 @@ class NavOutputOwner internal constructor(
     private var hasFrame = false
     private var active = false   // log-on-change: có đang hiện frame không (đỡ spam ~4/s)
 
+    /**
+     * T6 seam: orchestrator cập nhật OVERLAY cụm mỗi tick (SONG SONG đầu ra BydHal — usecase khác, không
+     * fallback). Nhận (làn tươi, camera tươi, mũi tên tươi, có-frame). null = không có overlay. @Volatile vì
+     * set từ luồng lifecycle, đọc từ luồng scheduler.
+     */
+    @Volatile var overlaySink: ((laneInfo: LaneInfo?, camera: CameraMatch?, arrow: Maneuver?, anyFresh: Boolean) -> Unit)? = null
+
     /** Bật keep-alive: nhịp [intervalMs] gọi [tick]. Idempotent. Vòng đời do T6 gọi. */
     fun start() {
         synchronized(lifecycleLock) {
@@ -133,6 +141,15 @@ class NavOutputOwner internal constructor(
             }
         } else if (plan.clear) {
             issueClear()
+        }
+        // T6: cập nhật overlay cụm (song song BydHal). Truyền giá trị TƯƠI của mỗi kênh; anyFresh=plan.anyPush.
+        overlaySink?.let { s ->
+            val lane = ScreenCaptureSignal.laneInfo?.takeIf { ScreenCaptureSignal.laneFresh(now) && !it.isEmpty() }
+            val cam = ScreenCaptureSignal.cameraMatch?.takeIf { ScreenCaptureSignal.cameraFresh(now) }
+            val arr = if (ScreenCaptureSignal.arrowFresh(now)) {
+                ScreenCaptureSignal.arrowManeuver ?: ScreenCaptureSignal.arrowAmap?.let { Maneuver.fromAmapIcon(it) }
+            } else null
+            runCatching { s(lane, cam, arr, plan.anyPush) }.onFailure { log("overlay sink failed: ${it.message}") }
         }
     }
 

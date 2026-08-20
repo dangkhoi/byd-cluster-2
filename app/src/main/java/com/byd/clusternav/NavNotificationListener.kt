@@ -23,6 +23,7 @@ import com.byd.clusternav.modules.wazehud.WazeHudSource
 import com.byd.clusternav.modules.wazehud.WazeHudAvailability
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
 import com.byd.clusternav.screencapture.ScreenCaptureNavSource
+import com.byd.clusternav.navigation.screencapture.CameraMatch
 
 /**
  * Adapter MỎNG cho notification dẫn đường (Google Maps / ReVanced). Chỉ làm:
@@ -65,6 +66,12 @@ class NavNotificationListener : NotificationListenerService() {
     // được arrow → dùng lại hướng trước thay vì rớt straight. Reset ở ranh giới phiên (đến nơi / gỡ noti).
     @Volatile private var lastManeuverIcon: Int = -1
 
+    // B3 T6: đầu ra nguồn ẢNH (NavOutputOwner → BydHal cụm/HUD) + overlay cụm (display-1). Khởi/dừng cùng
+    // ScreenCaptureNavSource (gated Prefs.enabled). Owner tick đọc ScreenCaptureSignal → push BydHal + (qua
+    // overlaySink) cập nhật overlay. @Volatile: set ở luồng lifecycle.
+    @Volatile private var navOutputOwner: NavOutputOwner? = null
+    @Volatile private var navClusterOverlay: com.byd.clusternav.navoverlay.NavClusterOverlay? = null
+
     // D4 (closeout 1.28): last-logged dist|road|eta for log-on-change on the accepted-notification log — kills
     // per-notification spam while keeping a low-rate signal. Reset at session boundaries (like lastManeuverIcon).
     @Volatile private var lastNavLogKey: String? = null
@@ -105,6 +112,9 @@ class NavNotificationListener : NotificationListenerService() {
         // B3: binding dropped → gate closed → stop the capture source (symmetric to the signal teardown above).
         runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
             .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
+        // B3 T6: dừng đầu ra nguồn ảnh (owner keep-alive + overlay) đối xứng với capture source.
+        runCatching { navOutputOwner?.stop() }.onFailure { Log.w(TAG, "nav output owner stop failed", it) }
+        runCatching { navClusterOverlay?.hide() }.onFailure { Log.w(TAG, "nav overlay hide failed", it) }
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.UNKNOWN) }
             .onFailure { Log.e(TAG, "permission state update failed", it) }
         runCatching {
@@ -143,6 +153,17 @@ class NavNotificationListener : NotificationListenerService() {
         // capture, mirroring the WazeHudSource start above. Degrade-safe; never blocks the connect path.
         runCatching { ScreenCaptureNavSource.get(applicationContext).start() }
             .onFailure { Log.w(TAG, "screen-capture source start failed", it) }
+        // B3 T6: start OUTPUT owner (ScreenCaptureSignal → BydHal cụm/HUD payload, SONG SONG) + cluster overlay
+        // (display-1: dải làn dưới speed-badge + camera phải speed-sign). Owner tick 250ms đọc signal → push +
+        // (overlaySink) cập nhật overlay. Degrade-safe; không chặn connect. Dừng ở onListenerDisconnected.
+        runCatching {
+            val overlay = navClusterOverlay
+                ?: com.byd.clusternav.navoverlay.NavClusterOverlay(applicationContext).also { navClusterOverlay = it }
+            overlay.show()
+            val owner = navOutputOwner ?: NavOutputOwner(applicationContext).also { navOutputOwner = it }
+            owner.overlaySink = { lane, cam, arrow, _ -> overlay.update(lane, cam, arrow) }
+            owner.start()
+        }.onFailure { Log.w(TAG, "nav output owner/overlay start failed", it) }
         // QUAN TRỌNG: nav có thể ĐÃ dẫn trước khi listener bind (cài/mở app sau khi đang dẫn, hoặc xe đỗ
         // -> noti đứng yên, onNotificationPosted không kích hoạt). Quét noti hiện tại + bơm ngay.
         runCatching {
