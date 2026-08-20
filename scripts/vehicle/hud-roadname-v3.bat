@@ -1,19 +1,20 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title HUD TEN DUONG v3 - config-gate + display-content + read-map (LOG rc moi write)
+title HUD TEN DUONG v3 - re-fire L1-L7 (log rc) + config-gate + display-content + read-map
 
 echo ==================================================================
 echo   HUD TEN DUONG v3  (ClusterNav)
-echo   v1/v2/matrix: 7 lever + combo NEGATIVE, check-state 0x420A1010 ket 0,
-echo   0x38B0002E/0x30100030 = not-provisioned. v3 dao them:
-echo     * READ-MAP full ho HUD-nav config/status (xem cai gi provisioned)
-echo     * N1 = GHI CONFIG GATE 0x38B00030 (matrix chi ghi 0x32B1102E, KHAC)
-echo     * N2 = DISPLAY_CONTENT config 0x38B00042 (chon noi dung hien)
-echo     * N3 = CP_MAP_NAVIGATION_TIPS 0x40C0B026 (field text)
-echo     * N4 = OVERSEA pathname 0x1F7A1008 + guide 0x1F701010 (export SL6)
-echo     * N6 = chuoi STRICT theo thu tu (config to navi to dest to guide to pathname)
-echo   *** MOI WRITE DEU LOG rc (khac matrix che >nul). DO XE, TAT Nav+HUD app.
+echo   Matrix che rc (>nul) nen KHONG biet 7 lever da GHI (rc=0) hay bi
+echo   TU CHOI (not-provisioned = chua thuc su test). v3 khac phuc:
+echo     * READ-MAP full ho HUD-nav config/status
+echo     * BAN LAI L1-L7 (7 lever matrix) + LOG rc tung cai
+echo     * N1 GHI CONFIG GATE 0x38B00030 (matrix chi ghi 0x32B1102E, KHAC)
+echo     * N2 DISPLAY_CONTENT 0x38B00042 (chon noi dung hien)
+echo     * N3 CP_MAP_NAVIGATION_TIPS 0x40C0B026  * N4 OVERSEA 0x1F7A1008
+echo     * N6 chuoi STRICT theo thu tu
+echo   *** MOI WRITE LOG rc. Ten duong ban = 0x43FA1008 (CJK showroom).
+echo   *** DO XE, TAT Nav+HUD tren app ClusterNav.
 echo ==================================================================
 echo.
 
@@ -50,9 +51,8 @@ call :run setraw setting 4C10E015 3
 REM ============ BASELINE READ-MAP (provisioning ho HUD-nav) ============
 echo. & echo ================= BASELINE READ-MAP =================
 echo ================= BASELINE READ-MAP =================>> "%LOG%"
-echo   (gia tri -2147482648 = NOT-PROVISIONED; 0/khac = co that)
 echo   (gia tri -2147482648 = NOT-PROVISIONED)>> "%LOG%"
-call :rd 420A1010 "ROAD_NAME_CHECK_STATE (muc tieu: 0 to 1/2)"
+call :rd 420A1010 "ROAD_NAME_CHECK_STATE (muc tieu: 0 sang 1/2)"
 call :rd 38B00030 "HUD_NAV_MAP_CONFIG (gate - doc hien tai)"
 call :rd 30100030 "HUD_NAV_MAP_CONFIG_STATUS"
 call :rd 38B0002E "HUD_NAV_MAP_STATUS"
@@ -63,8 +63,20 @@ call :rd 30100015 "HUD_CONFIG_STATUS"
 call :rd 3010000D "HUD_MODE_FEEDBACK_STATUS"
 call :rd 40C0103B "GET_NAVI_DESTINATION"
 
+REM ============ BAN LAI 7 LEVER MATRIX (L1-L7) + LOG rc ============
+echo. & echo ***** RE-FIRE L1-L7 (log rc de biet ap vs bi tu choi) *****
+echo ***** RE-FIRE L1-L7 (log rc) *****>> "%LOG%"
+call :lever "L1 SEND_DESTINATION_STATUS=2" 43E00038 2
+call :lever "L2 DYNAMIC_NAVI_FUNCTION=1"   38B0002A 1
+call :lever "L3 MAP_TRANSFER_FLAG=1"       40500025 1
+call :lever "L4 GUIDE_ROAD_AHEAD_DIST=250" 43F01030 250
+call :lever "L5 GUIDE_ADVANCED_ACTION=1"   43F08030 1
+call :lever "L6 HUD_NAVIGATION_MAP_SET=2"  32B1102E 2
+call :lever "L7 ARRIVAL_PASSPOINT=1"       43FFF030 1
+echo.
+call :obs "L1-L7 (co case nao ten duong HIEN khong? xem cot rc trong log)"
+
 REM ============ N1: GHI CONFIG GATE 0x38B00030 ============
-call :seqroad
 echo. & echo ================= N1 WRITE CONFIG GATE 38B00030=1 =================
 echo ================= N1 WRITE CONFIG GATE 38B00030=1 =================>> "%LOG%"
 call :run setraw instr 38B00030 1
@@ -107,7 +119,7 @@ call :obs "N4 OVERSEA pathname+guide"
 
 REM ============ N6: chuoi STRICT theo thu tu ============
 echo. & echo ================= N6 STRICT SEQUENCE =================
-echo ================= N6 STRICT SEQUENCE (config to navi to dest to guide to dist to pathname) =================>> "%LOG%"
+echo ================= N6 STRICT SEQUENCE (config,navi,dest,guide,dist,pathname) =================>> "%LOG%"
 call :run setraw instr 38B00030 1
 call :run navistate 2
 call :run setraw instr 43E00038 2
@@ -146,6 +158,16 @@ REM :seqroad - bom 1 nhip guidance + pathname (domestic) de co du lieu danh gia
 :seqroad
 call :run frame 20 250 RD 8 5000
 call :run setbytes instr 43FA1008 %ROAD%
+goto :eof
+
+REM :lever <ten> <hexid> <val> - set lever (log rc) TRUOC roi bom guidance+pathname, doc check-state, reset
+:lever
+echo. & echo ================= %~1 =================
+echo ================= %~1 =================>> "%LOG%"
+call :run setraw instr %~2 %~3
+call :seqroad
+call :rd 420A1010 "check-state sau %~1"
+call :run setraw instr %~2 0
 goto :eof
 
 REM :obs <ten> - hoi quan sat + ghi log

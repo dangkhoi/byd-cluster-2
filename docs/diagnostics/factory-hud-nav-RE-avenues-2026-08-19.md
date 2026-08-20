@@ -274,6 +274,9 @@ ghi cổng CONFIG `0x38B00030 HUD_NAVIGATION_MAP_CONFIG`** (chỉ ĐỌC status 
 
 **`scripts/vehicle/hud-roadname-v3.bat`** (gói `~/Desktop/HUD-RoadName-v3.zip` + navopen.jar) — khác matrix ở
 chỗ **LOG rc MỌI write** (matrix che `>nul` nên không biết lever nào áp vs bị từ-chối-not-provisioned):
+- **RE-FIRE L1-L7** (7 lever matrix cũ) với **LOG rc** → biết từng lever ĐÃ ghi (rc=0, vô hiệu thật) hay BỊ
+  TỪ CHỐI (rc≠0/not-provisioned = matrix `>nul` che nên CHƯA thật sự test được). Đây là cái giải toả nghi vấn
+  "matrix negative có phải vì lever bị từ chối không".
 - **READ-MAP baseline**: đọc full họ HUD-nav config/status (`0x38B00030`/`0x30100030`/`0x38B0002E`/`0x30100031`
   /`0x38B00042`/`0x30100042`/`0x30100015`/`0x3010000D`/`0x40C0103B` + check `0x420A1010`) → thấy cái gì provisioned.
 - **N1 = GHI CONFIG GATE `0x38B00030=1`** (cổng cả cuộc điều tra nghi; matrix chưa ghi) → readback + đọc status
