@@ -195,18 +195,24 @@ class NavNotificationListener : NotificationListenerService() {
             override fun onReceive(c: Context?, i: android.content.Intent?) {
                 val now = SystemClock.elapsedRealtime()
                 val pkg = "com.chisadin.wazemod"
-                val lanes = LaneInfo(
-                    listOf(
-                        Lane(listOf(Maneuver.TURN_LEFT), false),
-                        Lane(listOf(Maneuver.STRAIGHT), true),
-                        Lane(listOf(Maneuver.STRAIGHT), true),
-                        Lane(listOf(Maneuver.TURN_RIGHT), false),
-                    ),
-                )
-                ScreenCaptureSignal.publishLane(pkg, lanes, now)
-                ScreenCaptureSignal.publishCamera(pkg, CameraMatch(true, 1f, "debug", null, 300), now)
-                ScreenCaptureSignal.publishArrow(pkg, Maneuver.TURN_LEFT, 2, now)
-                Log.i(TAG, "DEBUG_NAV_FRAME injected (4 lanes [L dim,S bright,S bright,R dim] + camera 300m + arrow LEFT)")
+                // Mỗi broadcast = 1 frame SẠCH: clear hết rồi publish theo extras (review UX từng cấu hình).
+                ScreenCaptureSignal.clear()
+                // --es lanes "L:0,S:1,S+R:1,R:0"  (mỗi cell = khoá[+khoá]:rec) — rỗng ⇒ không có làn
+                val laneSpec = i?.getStringExtra("lanes")?.trim().orEmpty()
+                if (laneSpec.isNotEmpty()) {
+                    val lanes = laneSpec.split(",").map { cell ->
+                        val parts = cell.split(":")
+                        val arrows = parts[0].split("+").mapNotNull { debugManeuver(it.trim()) }
+                        Lane(arrows, parts.getOrNull(1)?.trim() == "1")
+                    }
+                    ScreenCaptureSignal.publishLane(pkg, LaneInfo(lanes), now)
+                }
+                // --ei cam N : >0 icon+cự ly · 0 icon-only · <0/absent = không camera
+                val cam = i?.getIntExtra("cam", -1) ?: -1
+                if (cam >= 0) {
+                    ScreenCaptureSignal.publishCamera(pkg, CameraMatch(true, 1f, "debug", null, if (cam > 0) cam else null), now)
+                }
+                Log.i(TAG, "DEBUG_NAV_FRAME lanes='$laneSpec' cam=$cam")
             }
         }
         runCatching {
@@ -219,6 +225,25 @@ class NavNotificationListener : NotificationListenerService() {
             debugFrameReceiver = rx
             Log.i(TAG, "DEBUG frame-inject receiver registered (debug build only)")
         }.onFailure { Log.w(TAG, "debug frame receiver register failed", it) }
+    }
+
+    /** DEBUG: khoá ngắn → Maneuver cho receiver review overlay (L/R/S/SL/SR/HL/HR/U/UR/RA/D/W/C/M). */
+    private fun debugManeuver(k: String): Maneuver? = when (k.uppercase()) {
+        "L", "TURN_LEFT" -> Maneuver.TURN_LEFT
+        "R", "TURN_RIGHT" -> Maneuver.TURN_RIGHT
+        "S", "STRAIGHT" -> Maneuver.STRAIGHT
+        "SL" -> Maneuver.SLIGHT_LEFT
+        "SR" -> Maneuver.SLIGHT_RIGHT
+        "HL" -> Maneuver.SHARP_LEFT
+        "HR" -> Maneuver.SHARP_RIGHT
+        "U" -> Maneuver.UTURN
+        "UR" -> Maneuver.UTURN_RIGHT
+        "RA" -> Maneuver.ROUNDABOUT
+        "D" -> Maneuver.DESTINATION
+        "W" -> Maneuver.WAYPOINT
+        "C" -> Maneuver.CONTINUE
+        "M" -> Maneuver.MERGE
+        else -> null
     }
 
     override fun onDestroy() {
