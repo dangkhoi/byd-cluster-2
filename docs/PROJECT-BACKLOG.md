@@ -52,7 +52,7 @@
 | C4 | Verify on-car: badge lifecycle over cast; VietMap a11y turn/đường khi dẫn; giá trị VMAlert (upLimit/upDist) | ⛔ | | | sau khi cài C1 |
 | C5 | Merge feat → main | ⛔ | | | CHỈ sau khi PASS exact-build on-car + owner duyệt |
 | C6 | **Chạy `hud-nav-enable-probe.sh` on-car** (đường 1-3: `0x32B1102E` _SET + 2 fusion switch + capability `getHudSupportedModes`), có rollback | ⛔ | | | script sẵn ở `scripts/vehicle/`; kỳ vọng THẬT = **chẩn đoán dứt điểm** (HUD zin có mode nav? ghi được không?), xác suất bật-được thấp; → `factory-hud-nav-RE-avenues-2026-08-19.md` |
-| C7 | **Anh em chạy `hud-roadname-test.bat`** trên xe có HUD BYD (đã lên mũi tên+cự ly) — thử **6 encoding tên đường** (`setbytes 0x43FA1008`) + đọc `0x420A1010` check-state | ⛔ | | | tìm encoding HIỆN được / xác định INVALID(charset) vs VALID(coding). **Control C = CJK `五一大道南`** (chuỗi showroom) tách font vs cổng. Gói `.bat`+`navopen-v4.jar` gửi anh em |
+| C7 | **Anh em chạy `hud-roadname-test.bat`** trên xe có HUD BYD (đã lên mũi tên+cự ly) — thử **6 encoding tên đường** (`setbytes 0x43FA1008`) + đọc `0x420A1010` check-state | 🔧 | 2026-08-19 | 2026-08-20 | **ĐÃ CHẠY** (log `hud-roadname-test_1.txt`): 6/6 **không hiện**; `0x420A1010`=**0** (chưa tới validation, không phải 1/2); **control CJK `五一大道南` cũng không hiện → LOẠI lỗi charset/font**. Tên đường không vào pipeline MCU bằng setbytes đơn lẻ (khớp app). → **probe v2:** `SEND_DESTINATION_STATUS 0x43E00038=2` + guidance đúng thứ tự rồi đọc lại check-state (0→1/2? = kích hoạt; vẫn 0 = gate provisioning D6). Chi tiết: `factory-hud-nav-RE-avenues` §08-20 |
 
 ---
 

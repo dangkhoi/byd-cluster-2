@@ -201,3 +201,23 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 - **Bước AN TOÀN đọc-only kế (on-car):** `getraw instr 30100030` (CONFIG_STATUS) + `38B0002E` (STATUS) + thử UDS `22 <DID>` đọc — không ghi.
 
 **Điều kiện mở khoá (để owner quyết):** cần **máy chẩn đoán/coding BYD + DB equipment cụm** (giá trị vehicleCode/flag bật HUD-nav). Đây là việc **coding XE tại tiệm có tool**, không phải app.
+
+---
+
+## Cập nhật 2026-08-20 — KẾT QUẢ C7 (test tên đường trên HUD BYD anh em)
+
+`hud-roadname-test.bat` chạy trên xe anh em (HUD BYD, đã lên mũi tên+cự ly). Log: `hud-roadname-test_1.txt`.
+
+**Kết quả (bằng chứng):**
+- **Sanity = co** (mũi tên + cự ly lên → setup + nav frame OK). `38B00030 = -2147482648` (như mọi xe).
+- **6/6 biến thể `khong-hien`** tên đường.
+- **`0x420A1010` ROAD_NAME_CHECK_STATE = 0** ở mọi biến thể (KHÔNG phải 1=VALID, KHÔNG phải 2=INVALID) → MCU **chưa hề đánh giá** tên đường.
+- `getbytes 0x43FA1008 = <4B> 00000000` (register `_SET`, đọc-ngược trả 4-byte default → inconclusive về write).
+
+**Kết luận (control CJK cho kết quả sạch):**
+- **Biến thể C = đúng chuỗi showroom `五一大道南` CŨNG không hiện → LOẠI lỗi font/charset/độ-dài.** Vấn đề KHÔNG ở nội dung/mã hoá.
+- `check-state=0` (chưa tới validation; nếu sai nội dung phải ra 2=INVALID) → tên đường **không vào được pipeline** MCU bằng `setbytes 0x43FA1008` đơn lẻ.
+- **Khớp app** (app có `sendNextPathName`+setbytes vẫn không lên tên đường trên HUD anh em) → không phải lỗi navopen riêng.
+- ⇒ (a) cần **chuỗi kích hoạt OEM** — `SEND_DESTINATION_STATUS 0x43E00038=2` + guidance đúng thứ tự (status→dest→guidance→pathname) mà cả app lẫn test CHƯA làm; hoặc (b) ô tên-đường **gate provisioning riêng** (arrow+dist = element cơ bản; road-name cần thêm).
+
+**Probe v2 (đề xuất):** thêm `SEND_DESTINATION_STATUS 0x43E00038=2` (+ có thể `sendNextPathName` qua callm) vào đúng thứ tự TRƯỚC pathname, rồi đọc lại `0x420A1010`: nếu **0→1/2** = đã kích hoạt pipeline (đi tiếp theo VALID/INVALID); nếu **vẫn 0** = gate provisioning (về nhánh D6/VDS2100).
