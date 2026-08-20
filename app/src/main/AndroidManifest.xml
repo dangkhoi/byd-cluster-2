@@ -45,6 +45,17 @@
             android:exported="false"
             android:label="Dữ liệu VietMap" />
 
+        <!-- B3 (screen-capture nav): MediaProjection consent scaffold for CASE 4 (offscreen). exported=false is
+             MANDATORY (R-nf6 — release APK exposes NO test/consent surface). Not auto-launched in this slice;
+             it exists so the MediaProjection path has a consent entry when enabled on-car (or replaced by the
+             OQ1 dadb auto-grant). Translucent + no-history so it never flashes a UI. -->
+        <activity
+            android:name=".screencapture.CaptureRequestActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name=".modules.clustercast.ClusterBlackActivity"
             android:exported="true"

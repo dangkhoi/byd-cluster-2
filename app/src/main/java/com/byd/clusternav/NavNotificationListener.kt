@@ -22,6 +22,7 @@ import com.byd.clusternav.vietmapwidget.VietMapWidgetOwner
 import com.byd.clusternav.modules.wazehud.WazeHudSource
 import com.byd.clusternav.modules.wazehud.WazeHudAvailability
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
+import com.byd.clusternav.screencapture.ScreenCaptureNavSource
 
 /**
  * Adapter MỎNG cho notification dẫn đường (Google Maps / ReVanced). Chỉ làm:
@@ -101,6 +102,9 @@ class NavNotificationListener : NotificationListenerService() {
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
         }.onFailure { Log.e(TAG, "signal teardown on disconnect failed", it) }
+        // B3: binding dropped → gate closed → stop the capture source (symmetric to the signal teardown above).
+        runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
+            .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.UNKNOWN) }
             .onFailure { Log.e(TAG, "permission state update failed", it) }
         runCatching {
@@ -134,6 +138,11 @@ class NavNotificationListener : NotificationListenerService() {
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.GRANTED) }
             .onFailure { Log.e(TAG, "coordinator connect failed", it) }
         Log.i(TAG, "listener connected -> authoritative coordinator ready")
+        // B3 (screen-capture nav): gate is now open (master Nav+HUD ON + listener bound) → start the capture
+        // source. Its per-tick self-gate (SourceArbiter.isFresh || a11y foreground) decides whether to actually
+        // capture, mirroring the WazeHudSource start above. Degrade-safe; never blocks the connect path.
+        runCatching { ScreenCaptureNavSource.get(applicationContext).start() }
+            .onFailure { Log.w(TAG, "screen-capture source start failed", it) }
         // QUAN TRỌNG: nav có thể ĐÃ dẫn trước khi listener bind (cài/mở app sau khi đang dẫn, hoặc xe đỗ
         // -> noti đứng yên, onNotificationPosted không kích hoạt). Quét noti hiện tại + bơm ngay.
         runCatching {
@@ -154,6 +163,9 @@ class NavNotificationListener : NotificationListenerService() {
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
         }.onFailure { Log.e(TAG, "signal teardown on destroy failed", it) }
+        // B3: service dying → stop the capture source (releases executor future + offscreen mirror).
+        runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
+            .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
         super.onDestroy()
     }
 

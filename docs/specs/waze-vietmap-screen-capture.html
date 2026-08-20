@@ -61,6 +61,7 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 <h2>1. Changelog</h2>
 <p class="muted">Mỗi pass = 1 dòng, mới nhất trên cùng.</p>
 <ul>
+<li><b>Pass 1 — 2026-08-19</b>: Triển khai lát cắt THUẦN <code>:core</code> (phần off-car-lockable, R-nf5): <code>CaptureRouter</code> (4 case + bounds 3 tầng + offset/clamp nửa), <code>VietMapCameraMatcher</code> (grid+NCC, no false-positive), <code>PixelFrameOps.crop</code>, tích hợp <code>SourceArbiter</code> data&gt;image (<code>NavChannel</code>). Gate <code>:core:test</code> xanh (594 tests, +34 mới). Chi tiết + lệch-spec ở §9. Phần <code>:app</code>/on-car (MediaProjection/VD/PixelCopy/dadb, OQ1-6) vẫn CHỜ.</li>
 <li><b>Pass 0 — 2026-08-19</b>: Khởi tạo spec B3 từ owner note (PROJECT-BACKLOG B3.1–B3.4). Học <code>OpenBYD/WazeArrowCaptureService</code> (MediaProjection + ImageReader + AUTO_MIRROR VirtualDisplay + PixelCopy + <code>processArrowPixels</code>). Thiết kế cho 4 case hiển thị + tận dụng đường dadb <code>fission_screencap</code> đã proven trong <code>SegmentShotCapturer</code>. <b>Chưa implement</b> — chờ owner duyệt.</li>
 </ul>
 
@@ -368,7 +369,31 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 
 <h2>9. Nhật ký triển khai (Implementation Log)</h2>
 <p class="muted">Ghi NGAY khi code — phản ánh code THỰC TẾ (gồm chỗ lệch spec). Nếu là quyết định KIẾN TRÚC xuyên suốt ⇒ mở ADR ở <code>docs/decisions/</code> và link vào đây.</p>
-<p class="muted"><i>(Trống — chưa implement. Spec đang CHỜ DUYỆT.)</i></p>
+
+<h3>Pass 1 — 2026-08-19 · lát cắt THUẦN <code>:core</code> (off-car-lockable, R-nf5) — DONE, xanh off-car</h3>
+<p>Chỉ triển khai phần khoá-được-off-car (quyết định case + bounds + classify), KHÔNG đụng MediaProjection/VirtualDisplay/PixelCopy/dadb (các phần đó là stage <code>:app</code> sau, vẫn CHỜ verify on-car). Gate <code>./gradlew :core:test</code> = <b>594 tests, 0 fail</b> (34 test mới).</p>
+<p><b>File mới</b> (package <code>com.byd.clusternav.navigation.screencapture</code> + 1 file ở <code>navigation</code>):</p>
+<ul>
+<li><code>CaptureModels.kt</code> — <code>CaptureCase</code>{FULL_MAIN·HALF_MAIN_SPLIT·CLUSTER_CAST·NOT_ACTIVE}, <code>AppLocation</code>, <code>DisplayGeometry</code>, <code>CropRect</code> (Rect thuần), <code>CaptureBounds</code>, <code>CaptureTarget</code>{ARROW·CAMERA}, <code>BoundsSource</code>, <code>CapturePlan</code>.</li>
+<li><code>CaptureRouter.kt</code> — <code>route()</code>/<code>selectCase()</code>/<code>computeBounds()</code>/<code>halfOffsetX()</code>/<code>appRegion()</code> + <code>CaptureCalibration</code> (bảng rect cố định).</li>
+<li><code>VietMapCameraMatcher.kt</code> — matcher template-match (grid+NCC) + <code>CameraTemplate</code> + <code>CameraMatch</code>.</li>
+<li><code>PixelFrameOps.kt</code> — <code>crop(PixelFrame, CropRect)</code> thuần (chuỗi crop→classify test được).</li>
+<li><code>NavChannel.kt</code> — enum {DATA, IMAGE}.</li>
+<li><b>Sửa</b> <code>SourceArbiter.kt</code> — thêm overload <code>shouldFeed(pkg, mode, now, channel=DATA)</code> + <code>isDataFresh()</code>; <code>clear()</code> reset map data.</li>
+</ul>
+<p><b>Quyết định / lệch spec (ghi để owner soi):</b></p>
+<ul>
+<li><b>Tái dùng <code>ClusterSlotSide</code></b> (module clustercast, đã ở <code>:core</code>) thay vì đẻ enum SlotSide mới — DRY, khớp <code>AppMover.fitToCluster</code> (nghĩa <code>leftPercent</code>: vách = W·lp/100, trái=[0,vách), phải=[vách,W)). <code>slotSide=null</code> = không split.</li>
+<li><b><code>route()</code> trả <code>null</code> CHỈ khi gate đóng</b> (<code>navFresh=false</code>) — đây là điểm khoá V-gate "không capture khi nav stale". Còn lại luôn trả <code>CapturePlan</code>; <code>bounds.isEmpty()</code> ⇒ caller bỏ frame.</li>
+<li><b>Case-4 vs foreground:</b> <code>foreground=false</code> ⇒ <code>NOT_ACTIVE</code> bất kể displayId. Foreground trên display phụ KHÁC cụm ⇒ coi như <code>CLUSTER_CAST</code> (chụp thẳng display đó).</li>
+<li><b>Bounds 3 tầng:</b> a11y-động (nếu <code>now−capturedAt ≤ freshMs</code>, mặc định <code>A11Y_FRESH_MS=1500</code>, tham-số-hoá để test bằng <code>now</code> thuần) → cố-định-hiệu-chỉnh (offset +W·lp/100 cho Case-2 nửa phải, clamp về nửa app) → lane-seg <b>HOÃN</b> (trả EMPTY+NONE). Tầng freshness do <code>:app</code> quyết bằng cách publish/không-publish, ở <code>:core</code> chỉ chấm bằng <code>now</code>.</li>
+<li><b>Seed calibration:</b> <code>WAZE_ARROW_OPENBYD=CropRect(26,218,208,298)</code> (nguyên OpenBYD) + <code>VIETMAP_CAMERA_SEED=CropRect(0,120,160,280)</code> (placeholder — rect thật OQ2/OQ4 tune on-car).</li>
+<li><b>VietMapCameraMatcher:</b> KHÔNG gọi được <code>ManeuverSignature.signature()</code> (private, trả bit hướng rẽ) → tự viết grid+NCC CÙNG kỹ thuật. Đặc trưng ô = trung bình (luminance×alpha/255) ⇒ khung TRỐNG có phương sai 0 ⇒ <code>CameraMatch.NONE</code> (không false-positive). Ngưỡng <code>DEFAULT_MIN_SCORE=0.62</code>. <code>BUILTIN=emptyList()</code> (template thật OQ4).</li>
+<li><b>SourceArbiter data&gt;image:</b> overload thêm tham số <code>channel</code> mặc định <code>DATA</code> ⇒ mọi caller cũ (HLP/1, widget, a11y) giữ nguyên hành vi + tự ghi mốc data; nguồn ảnh gọi <code>IMAGE</code> và bị chặn khi <code>isDataFresh(pkg, now)</code> (≤ <code>STALE_MS</code>=6s). Ảnh bị chặn KHÔNG chiếm khoá nguồn (activeSeen giữ nguyên).</li>
+<li><b>Arrow:</b> KHÔNG viết lại — test <code>crop-classify</code> nhúng glyph registry vào frame lớn → route→crop→<code>ManeuverSignature.classify</code> ra đúng mã (xác nhận chuỗi compile+chạy).</li>
+</ul>
+<p><b>Pure-testable (đã khoá) vs on-car (còn nợ):</b> khoá được off-car = chọn case, tính bounds 3 tầng, offset/clamp nửa, template-match camera (fixture tổng hợp), data&gt;image, chuỗi crop→classify. Còn on-car = giá trị rect thật (OQ2), template camera thật (OQ4), transport A/B + auto-grant MediaProjection (OQ1), nhịp/perf (OQ3), Case-4 4b khả thi (OQ5), a11y bounds trên cụm (OQ2). Handoff: <code>docs/_handoff/stage-b3-core-done.md</code>.</p>
+<p class="muted">Trạng thái tổng: spec vẫn CHỜ DUYỆT cho phần <code>:app</code>/on-car; chỉ lát <code>:core</code> thuần đã land + xanh off-car.</p>
 
 <h2>10. Reviewer Log</h2>
 <p class="muted">Append-only. Mỗi pass thêm <code>Pass N — YYYY-MM-DD</code>; tag finding <code>[P0]–[P3]</code>; verdict APPROVED/INCOMPLETE.</p>

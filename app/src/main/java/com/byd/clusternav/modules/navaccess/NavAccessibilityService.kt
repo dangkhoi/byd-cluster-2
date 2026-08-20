@@ -18,6 +18,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.byd.clusternav.NavAccessLog
 import com.byd.clusternav.NavLog
 import com.byd.clusternav.Prefs
+import com.byd.clusternav.navigation.screencapture.CaptureBoundsHeuristic
+import com.byd.clusternav.navigation.screencapture.CaptureBoundsSource
+import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
+import com.byd.clusternav.navigation.screencapture.CaptureTarget
+import com.byd.clusternav.navigation.screencapture.CropRect
 import com.byd.clusternav.modules.voicekey.AssistantLauncher
 import com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus
 import com.byd.clusternav.voicekey.VoiceKeyAction
@@ -55,6 +60,10 @@ class NavAccessibilityService : AccessibilityService() {
     // package so we don't re-walk the tree on every event. Touched only on the a11y (main) callback thread → no
     // lock. Bounded (≤ navPackages). The event.text fast-path is NOT throttled, so GMaps stays unaffected.
     private val lastDescWalkAt = HashMap<String, Long>(8)
+
+    // B3 (screen-capture nav): per-package throttle for the arrow/camera bounds subtree walk. VietMap/Waze fire
+    // TYPE_WINDOW_CONTENT_CHANGED densely; the walk is bounded + throttled so it never stalls the main thread.
+    private val lastBoundsWalkAt = HashMap<String, Long>(8)
 
     // T3: nút vật lý → trợ lý giọng nói. Matcher thuần ở :core; service chỉ map KeyEvent + phóng intent.
     private val voiceKeyMatcher = VoiceKeyMatcher()
@@ -116,6 +125,16 @@ class NavAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg !in navPackages) return
         if (!Prefs.enabled(applicationContext) || !Prefs.accBooster(applicationContext)) return
+
+        // B3 (screen-capture nav, spec waze-vietmap-screen-capture §4.4): for ANY nav package publish (a) the
+        // foreground package for ScreenCaptureNavSource's gate, and (b) a best-effort arrow/camera node bounds
+        // for CaptureRouter's a11y-dynamic tier. ADDITIVE + degrade-safe — runs BEFORE the GMaps-only
+        // distance-scan below and never touches it. ⚠ VERIFY-ON-CAR (OQ2): correct node identification +
+        // bounds stability on-car is unproven; off-car only the publish/pick logic is locked (pure tests).
+        val b3Now = SystemClock.elapsedRealtime()
+        CaptureForegroundSource.publish(pkg, b3Now)
+        runCatching { maybePublishCaptureBounds(event, pkg, b3Now) }
+            .onFailure { Log.w(TAG, "capture bounds publish failed", it) }
 
         // MULTI-SOURCE capture (telemetry, verbose-gated in NavAccessLog): log the announced / window-content
         // voice-guidance text tagged by SOURCE package, so GMaps / VietMap / Waze / WazeMod rows are
@@ -216,6 +235,60 @@ class NavAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * B3 (screen-capture nav): best-effort walk of the nav app's subtree to find the arrow (Waze) / camera
+     * (VietMap) node and publish its `getBoundsInScreen` to [CaptureBoundsSource] (CaptureRouter tier-1). The
+     * NODE-PICK decision is pure ([CaptureBoundsHeuristic], unit-tested off-car); here we only gather bounded
+     * candidates + recycle nodes exactly like [collect]/[gatherDescriptions]. Throttled per package, degrade-safe
+     * (any failure → nothing published → router falls back to the fixed-calibrated tier). ⚠ VERIFY-ON-CAR (OQ2).
+     */
+    private fun maybePublishCaptureBounds(event: AccessibilityEvent, pkg: String, now: Long) {
+        if (now - (lastBoundsWalkAt[pkg] ?: 0L) < BOUNDS_WALK_THROTTLE_MS) return
+        lastBoundsWalkAt[pkg] = now
+        val source = event.source ?: runCatching { rootInActiveWindow }.getOrNull() ?: return
+        val target = CaptureTarget.forPackage(pkg)
+        val candidates = ArrayList<CaptureBoundsHeuristic.Candidate>(64)
+        gatherCaptureCandidates(source, candidates, 0)
+        runCatching { source.recycle() }
+        if (candidates.isEmpty()) return
+        // region = union of observed node bounds (this app's window); the router additionally clamps the picked
+        // rect to the app's half when split, so a loose union here is safe.
+        var l = Int.MAX_VALUE; var t = Int.MAX_VALUE; var r = Int.MIN_VALUE; var b = Int.MIN_VALUE
+        for (c in candidates) {
+            if (c.rect.left < l) l = c.rect.left
+            if (c.rect.top < t) t = c.rect.top
+            if (c.rect.right > r) r = c.rect.right
+            if (c.rect.bottom > b) b = c.rect.bottom
+        }
+        val region = CropRect(l, t, r, b)
+        if (region.isEmpty()) return
+        val pick = CaptureBoundsHeuristic.pick(target, candidates, region) ?: return
+        CaptureBoundsSource.publish(pick.left, pick.top, pick.right, pick.bottom, now)
+    }
+
+    /** Bounded recursive collection of (className, contentDescription, screen-bounds) for [CaptureBoundsHeuristic]. */
+    private fun gatherCaptureCandidates(
+        node: AccessibilityNodeInfo?,
+        out: ArrayList<CaptureBoundsHeuristic.Candidate>,
+        depth: Int,
+    ) {
+        node ?: return
+        if (out.size >= MAX_NODES || depth > MAX_DEPTH) return
+        val cls = node.className?.toString().orEmpty()
+        val desc = node.contentDescription?.toString().orEmpty()
+        if (cls.isNotEmpty() || desc.isNotEmpty()) {
+            val r = Rect(); node.getBoundsInScreen(r)
+            if (r.width() > 0 && r.height() > 0) {
+                out.add(CaptureBoundsHeuristic.Candidate(cls, desc, CropRect(r.left, r.top, r.right, r.bottom)))
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val c = node.getChild(i) ?: continue
+            gatherCaptureCandidates(c, out, depth + 1)
+            runCatching { c.recycle() }
+        }
+    }
+
+    /**
      * Gom mọi node có text + toạ độ rồi giao phần QUYẾT ĐỊNH cho [NavScreenScan] trong `:core`.
      *
      * Trước 2026-07-27 heuristic chia dải trên/đáy, chọn token cự ly và chọn tên đường nằm ngay tại đây,
@@ -288,6 +361,8 @@ class NavAccessibilityService : AccessibilityService() {
         // Min gap between content-desc SUBTREE walks per package (VietMap/Waze fallback only). The event.text
         // fast-path is never throttled, so GMaps is unaffected.
         private const val DESC_WALK_THROTTLE_MS = 150L
+        // B3: min gap between arrow/camera bounds subtree walks per package (dense TYPE_WINDOW_CONTENT_CHANGED).
+        private const val BOUNDS_WALK_THROTTLE_MS = 250L
         private const val MAX_NODES = 250
         private const val MAX_DEPTH = 40
     }

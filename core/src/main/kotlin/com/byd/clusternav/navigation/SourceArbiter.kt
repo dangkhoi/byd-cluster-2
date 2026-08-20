@@ -20,9 +20,22 @@ object SourceArbiter {
     @Volatile var activeSource: String? = null; private set
     @Volatile private var activeSeen: Long = 0L
     private val lastSeenByPkg = ConcurrentHashMap<String, Long>()
+    private val lastDataByPkg = ConcurrentHashMap<String, Long>()
 
-    fun shouldFeed(pkg: String, mode: Int, now: Long): Boolean {
+    /**
+     * Có nên nuôi cụm bằng khung [pkg] không.
+     *
+     * Hai tầng gate:
+     *   1. NGUỒN (app): AUTO giữ-khoá-app-dẫn-trước / PREFER_* ưu tiên nhóm (hành vi cũ, không đổi).
+     *   2. KÊNH (B3, R6): kênh [NavChannel.IMAGE] (screen-capture) bị CHẶN khi kênh [NavChannel.DATA] của
+     *      CÙNG app còn tươi (≤ [STALE_MS]) — data-channel luôn thắng ảnh; ảnh chỉ lên khi data im.
+     *
+     * [channel] mặc định [NavChannel.DATA] để caller cũ (HLP/1, widget, a11y) giữ nguyên hành vi + tự ghi
+     * mốc data. Nguồn ảnh gọi với [NavChannel.IMAGE].
+     */
+    fun shouldFeed(pkg: String, mode: Int, now: Long, channel: NavChannel = NavChannel.DATA): Boolean {
         lastSeenByPkg[pkg] = now
+        if (channel == NavChannel.DATA) lastDataByPkg[pkg] = now
         val allow = when (mode) {
             NavSourceMode.PREFER_GMAPS -> pkg in GMAPS_PKGS || !isGroupFresh(GMAPS_PKGS, now)
             NavSourceMode.PREFER_WAZE -> pkg in WAZE_PKGS || !isGroupFresh(WAZE_PKGS, now)
@@ -32,8 +45,17 @@ object SourceArbiter {
                 h == null || h == pkg || now - activeSeen > STALE_MS
             }
         }
-        if (allow) { activeSource = pkg; activeSeen = now }
-        return allow
+        if (!allow) return false
+        // Tầng kênh: ảnh là FALLBACK — data tươi của cùng app thì bỏ frame ảnh (KHÔNG chiếm khoá nguồn).
+        if (channel == NavChannel.IMAGE && isDataFresh(pkg, now)) return false
+        activeSource = pkg; activeSeen = now
+        return true
+    }
+
+    /** Kênh DATA của [pkg] còn tươi không (≤ [STALE_MS]) — UI/nguồn ảnh hỏi để biết data có đang thắng. */
+    fun isDataFresh(pkg: String, now: Long): Boolean {
+        val t = lastDataByPkg[pkg] ?: return false
+        return t > 0 && now - t <= STALE_MS
     }
 
     /** Gọi khi noti dẫn đường của [pkg] bị gỡ. true nếu [pkg] đang giữ khoá (caller nên dừng cụm). */
@@ -43,7 +65,7 @@ object SourceArbiter {
     }
 
     /** Nhả khoá hoàn toàn (vd nav stale -> idle). */
-    fun clear() { activeSource = null; activeSeen = 0L }
+    fun clear() { activeSource = null; activeSeen = 0L; lastDataByPkg.clear() }
 
     /** Nguồn đang giữ còn tươi không (UI hiện trạng thái). */
     fun isFresh(now: Long): Boolean {

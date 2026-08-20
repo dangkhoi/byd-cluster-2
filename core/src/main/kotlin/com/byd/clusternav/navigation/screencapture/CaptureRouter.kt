@@ -1,0 +1,167 @@
+package com.byd.clusternav.navigation.screencapture
+
+/**
+ * Bảng rect CỐ ĐỊNH đã hiệu chỉnh (tầng 2 của §4.4) — keyed theo (app target, geometry). Seed từ giá trị
+ * OpenBYD proven; giá trị THẬT phải hiệu chỉnh trên xe (OQ2). Toạ độ trong không gian display FULL (origin
+ * góc trên-trái); router tự offset cho Case-2 nửa phải.
+ *
+ * ⚠ Đây là HẰNG SỐ HIỆU CHỈNH, không phải chân lý: OpenBYD's `getArrowBounds()=Rect(26,218,208,298)` là cho
+ * geometry của HỌ. Ta giữ làm seed để tinh chỉnh; khi có bảng theo (app,WxH) thật thì thêm vào [TABLE].
+ */
+object CaptureCalibration {
+
+    /**
+     * Rect mũi tên Waze của OpenBYD (`WazeArrowCaptureService.getArrowBounds`) — seed để tune on-car.
+     * Left=26, Top=218, Right=208, Bottom=298 (182×80) trong không gian màn của họ.
+     */
+    val WAZE_ARROW_OPENBYD = CropRect(26, 218, 208, 298)
+
+    /**
+     * Seed icon camera VietMap — CHƯA có template/rect thật (OQ4). Đặt tạm ở góc trên-phải vùng chỉ đường
+     * (nơi VietMap hay vẽ cảnh báo). Giá trị phải hiệu chỉnh trên xe; ở đây chỉ để pipeline có bounds hợp lệ.
+     */
+    val VIETMAP_CAMERA_SEED = CropRect(0, 120, 160, 280)
+
+    /** Khoá bảng: target + (tuỳ chọn) geometry cụ thể. null geometry = mặc định cho mọi WxH của target đó. */
+    private data class Key(val target: CaptureTarget, val displayW: Int?, val displayH: Int?)
+
+    private val TABLE: Map<Key, CropRect> = mapOf(
+        Key(CaptureTarget.ARROW, null, null) to WAZE_ARROW_OPENBYD,
+        Key(CaptureTarget.CAMERA, null, null) to VIETMAP_CAMERA_SEED,
+    )
+
+    /**
+     * Rect cố định cho ([target], [geom]) — ưu tiên khớp geometry cụ thể, rồi mới mặc định target. null nếu
+     * không có seed nào (target lạ) → caller coi như không có tầng 2.
+     */
+    fun fixedBounds(target: CaptureTarget, geom: DisplayGeometry): CropRect? =
+        TABLE[Key(target, geom.displayW, geom.displayH)]
+            ?: TABLE[Key(target, null, null)]
+}
+
+/**
+ * Trọng tài THUẦN cho nguồn screen-capture (T1 spec §4.3/§4.4). Hai việc:
+ *   (a) [selectCase] — app dẫn đang ở 1 trong 4 [CaptureCase] (dựa trên [AppLocation] + [DisplayGeometry]).
+ *   (b) [computeBounds] — vùng crop theo 3 tầng ưu tiên: a11y-động (nếu tươi) → cố-định-hiệu-chỉnh →
+ *       (lane-seg: HOÃN, chưa vòng này).
+ *
+ * KHÔNG Android, KHÔNG I/O, KHÔNG thời gian ngầm — mọi thứ là hàm của tham số (kể cả [now]) nên unit-test
+ * off-car khoá được toàn bộ quyết định (V-unit). Lớp :app chỉ lo capture transport + a11y read.
+ */
+object CaptureRouter {
+
+    /**
+     * Bounds a11y coi là "tươi" trong bao lâu (tầng 1). Nhịp capture ~2–4 Hz nên bound cũ hơn ~1.5 s là lỗi
+     * thời — nhường tầng cố định. Tham số hoá ở [route] để tune; đây chỉ là mặc định.
+     */
+    const val A11Y_FRESH_MS = 1500L
+
+    /**
+     * Định tuyến 1 frame. Trả:
+     *   - null  ⇒ GATE ĐÓNG (navFresh=false) — KHÔNG capture (V-gate). Đây là cửa duy nhất trả null.
+     *   - [CapturePlan] ⇒ case + target + crop bounds + tầng bounds. bounds.isEmpty() ⇒ caller bỏ frame.
+     *
+     * @param loc       app dẫn ở đâu + trạng thái.
+     * @param geom      kích thước + phân loại display app đang ở.
+     * @param a11y      bounds động do a11y publish (null = không có).
+     * @param now       đồng hồ đơn điệu (ms) để chấm tươi a11y. Mặc định 0 (khi caller không có a11y).
+     * @param freshMs   ngưỡng tươi a11y (mặc định [A11Y_FRESH_MS]).
+     */
+    fun route(
+        loc: AppLocation,
+        geom: DisplayGeometry,
+        a11y: CaptureBounds? = null,
+        now: Long = 0L,
+        freshMs: Long = A11Y_FRESH_MS,
+    ): CapturePlan? {
+        if (!loc.navFresh) return null                       // gate đóng → không capture
+        val case = selectCase(loc, geom)
+        val target = CaptureTarget.forPackage(loc.pkg)
+        val (bounds, src) = computeBounds(case, loc, geom, target, a11y, now, freshMs)
+        return CapturePlan(case, target, bounds, src)
+    }
+
+    /**
+     * (a) Chọn case theo §4.3:
+     *   - nav tươi nhưng KHÔNG foreground ở đâu → [CaptureCase.NOT_ACTIVE] (Case 4).
+     *   - foreground trên display CỤM → [CaptureCase.CLUSTER_CAST] (Case 3).
+     *   - foreground trên màn chính, fullscreen → [CaptureCase.FULL_MAIN] (Case 1); split → [HALF_MAIN_SPLIT] (Case 2).
+     *   - foreground trên display khác (không chính, không cụm) → coi như Case 3 cast (chụp display đó).
+     *
+     * (Giả định gate đã mở — caller vào đây sau khi navFresh=true.)
+     */
+    fun selectCase(loc: AppLocation, geom: DisplayGeometry): CaptureCase {
+        if (!loc.foreground) return CaptureCase.NOT_ACTIVE
+        return when {
+            loc.displayId == geom.clusterDisplayId -> CaptureCase.CLUSTER_CAST
+            loc.displayId == geom.mainDisplayId ->
+                if (loc.isFullscreen) CaptureCase.FULL_MAIN else CaptureCase.HALF_MAIN_SPLIT
+            // Foreground trên một display phụ khác cụm chính: chụp thẳng display đó như một biến thể cast.
+            else -> CaptureCase.CLUSTER_CAST
+        }
+    }
+
+    /**
+     * (b) 3 tầng bounds (§4.4). Trả (rect, tầng):
+     *   1. a11y động nếu có & còn tươi (now - capturedAt ≤ freshMs) → clamp vào NỬA app (Case 2/3 split) để
+     *      loại nhiễu app kia. Toạ độ a11y đã tuyệt đối nên tự đúng, chỉ cần clamp.
+     *   2. rect cố định hiệu chỉnh theo (target, geom); Case-2 nửa PHẢI thì offset +W*leftPercent/100.
+     *   3. lane-seg: HOÃN (chưa vòng này) → nếu cả 1&2 trượt, trả EMPTY + [BoundsSource.NONE].
+     */
+    fun computeBounds(
+        case: CaptureCase,
+        loc: AppLocation,
+        geom: DisplayGeometry,
+        target: CaptureTarget,
+        a11y: CaptureBounds?,
+        now: Long,
+        freshMs: Long,
+    ): Pair<CropRect, BoundsSource> {
+        // Tầng 1 — a11y động, còn tươi.
+        if (a11y != null && !a11y.rect.isEmpty() && now - a11y.capturedAtMs <= freshMs) {
+            val clamped = a11y.rect.clampTo(appRegion(case, loc, geom))
+            if (!clamped.isEmpty()) return clamped to BoundsSource.A11Y_DYNAMIC
+        }
+        // Tầng 2 — cố định hiệu chỉnh.
+        val fixed = CaptureCalibration.fixedBounds(target, geom)
+        if (fixed != null && !fixed.isEmpty()) {
+            val offset = halfOffsetX(case, loc, geom)
+            val shifted = if (offset != 0) fixed.offsetX(offset) else fixed
+            val clamped = shifted.clampTo(appRegion(case, loc, geom))
+            if (!clamped.isEmpty()) return clamped to BoundsSource.FIXED_CALIBRATED
+        }
+        // Tầng 3 — lane-seg HOÃN.
+        return CropRect.EMPTY to BoundsSource.NONE
+    }
+
+    /**
+     * Offset ngang cho Case-2 (split màn chính) nửa PHẢI = displayW * leftPercent / 100 (mép trái nửa phải).
+     * Nửa trái / không split / case khác → 0. (Case 3 cast split cũng dùng cùng công thức nếu chia đôi cụm.)
+     */
+    fun halfOffsetX(case: CaptureCase, loc: AppLocation, geom: DisplayGeometry): Int =
+        if ((case == CaptureCase.HALF_MAIN_SPLIT || case == CaptureCase.CLUSTER_CAST) &&
+            loc.slotSide == CaptureSlotSide.RIGHT
+        ) {
+            geom.displayW * loc.leftPercent / 100
+        } else {
+            0
+        }
+
+    /**
+     * Vùng của app dẫn trong không gian display (để clamp, loại nhiễu app kia khi split):
+     *   - split LEFT  → [0, W*lp/100)
+     *   - split RIGHT → [W*lp/100, W)
+     *   - còn lại     → toàn display.
+     * (Nghĩa leftPercent khớp `AppMover.fitToCluster`.)
+     */
+    fun appRegion(case: CaptureCase, loc: AppLocation, geom: DisplayGeometry): CropRect {
+        val split = case == CaptureCase.HALF_MAIN_SPLIT || case == CaptureCase.CLUSTER_CAST
+        val side = loc.slotSide
+        if (!split || side == null) return geom.fullRect
+        val divider = geom.displayW * loc.leftPercent / 100
+        return when (side) {
+            CaptureSlotSide.LEFT -> CropRect(0, 0, divider, geom.displayH)
+            CaptureSlotSide.RIGHT -> CropRect(divider, 0, geom.displayW, geom.displayH)
+        }
+    }
+}
