@@ -127,7 +127,11 @@ class ScreenCaptureNavSource private constructor(context: Context) {
         val fgFresh = CaptureForegroundSource.isFresh(now) || NavAccessibilitySource.foreground(now)
         if (!dataFresh && !fgFresh) return
 
-        val pkg = SourceArbiter.activeSource ?: CaptureForegroundSource.pkg ?: return
+        // B3.10: CAPTURE route theo app ĐANG HIỂN THỊ (CaptureForegroundSource — B3.13 window-enum) khi còn
+        // tươi, KHÔNG theo activeSource (nguồn giữ-khoá-CỤM có thể là app cũ đã nền/tắt mà vẫn "tươi" qua poll
+        // → route SAI ARROW/CAMERA + crop nhầm pkg). Fallback: activeSource → bất kỳ foreground pkg.
+        val pkg = CaptureForegroundSource.pkg?.takeIf { CaptureForegroundSource.isFresh(now) }
+            ?: SourceArbiter.activeSource ?: CaptureForegroundSource.pkg ?: return
 
         // Dựng AppLocation từ `am stack list` (đường THUẦN CaptureLocationResolver test off-car).
         val amOut = runCatching {
