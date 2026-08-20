@@ -23,6 +23,10 @@ import com.byd.clusternav.navigation.screencapture.CaptureBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
 import com.byd.clusternav.navigation.screencapture.CaptureTarget
 import com.byd.clusternav.navigation.screencapture.CropRect
+import com.byd.clusternav.navigation.screencapture.NavWindowPicker
+import android.os.Build
+import android.util.SparseArray
+import android.view.accessibility.AccessibilityWindowInfo
 import com.byd.clusternav.navigation.screencapture.ForegroundWindowFilter
 import com.byd.clusternav.modules.voicekey.AssistantLauncher
 import com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus
@@ -65,6 +69,10 @@ class NavAccessibilityService : AccessibilityService() {
     // B3 (screen-capture nav): per-package throttle for the arrow/camera bounds subtree walk. VietMap/Waze fire
     // TYPE_WINDOW_CONTENT_CHANGED densely; the walk is bounded + throttled so it never stalls the main thread.
     private val lastBoundsWalkAt = HashMap<String, Long>(8)
+
+    // B3.13: throttle window enumeration (flagRetrieveInteractiveWindows có cost) — chỉ enum tối đa ~1/s.
+    private var lastWindowEnumAt = 0L
+    private val WINDOW_ENUM_THROTTLE_MS = 800L
 
     // T3: nút vật lý → trợ lý giọng nói. Matcher thuần ở :core; service chỉ map KeyEvent + phóng intent.
     private val voiceKeyMatcher = VoiceKeyMatcher()
@@ -142,6 +150,12 @@ class NavAccessibilityService : AccessibilityService() {
             runCatching { maybePublishCaptureBounds(event, pkg, b3Now) }
                 .onFailure { Log.w(TAG, "capture bounds publish failed", it) }
         }
+        // B3.13: NGOÀI event-path (chỉ bắt app đang focus), duyệt TẤT CẢ window (getWindows /
+        // getWindowsOnAllDisplays) tìm nav app BẤT KỂ foreground (như OpenBYD `rootNodeForPackages`) → mở gate
+        // + đặt pkg khi Waze/VietMap CÒN HIỂN THỊ nhưng KHÔNG phải app trên cùng. Throttled (~1/s) để hạn chế
+        // cost của flagRetrieveInteractiveWindows. Degrade-safe (mọi lỗi → bỏ qua).
+        runCatching { resolveNavWindowRegardlessOfFocus(b3Now) }
+            .onFailure { Log.w(TAG, "window-enum nav resolve failed", it) }
 
         // MULTI-SOURCE capture (telemetry, verbose-gated in NavAccessLog): log the announced / window-content
         // voice-guidance text tagged by SOURCE package, so GMaps / VietMap / Waze / WazeMod rows are
@@ -278,6 +292,45 @@ class NavAccessibilityService : AccessibilityService() {
         return ForegroundWindowFilter.shouldPublishForeground(
             winType, active, focused, isStateChange, sameAsCurrent, fromActiveWin,
         )
+    }
+
+    /**
+     * B3.13 — duyệt MỌI window (`getWindows()` + `getWindowsOnAllDisplays()` API30) tìm nav app BẤT KỂ
+     * foreground → [CaptureForegroundSource].publish(pkg) → mở gate B3 + đặt pkg khi nav app CÒN hiển thị
+     * nhưng KHÔNG phải app trên cùng (đây là cách OpenBYD đọc Waze lúc không active). Quyết định (pick) THUẦN ở
+     * [NavWindowPicker]; ở đây chỉ gom window → WinInfo. Throttled + degrade-safe.
+     */
+    private fun resolveNavWindowRegardlessOfFocus(now: Long) {
+        if (now - lastWindowEnumAt < WINDOW_ENUM_THROTTLE_MS) return
+        lastWindowEnumAt = now
+        val wins = ArrayList<NavWindowPicker.WinInfo>(16)
+        runCatching { windows?.forEach { addWinInfo(wins, it) } }
+        if (Build.VERSION.SDK_INT >= 30) {
+            runCatching {
+                val m = AccessibilityService::class.java.getMethod("getWindowsOnAllDisplays")
+                @Suppress("UNCHECKED_CAST")
+                (m.invoke(this) as? SparseArray<List<AccessibilityWindowInfo>>)?.let { sp ->
+                    for (i in 0 until sp.size()) sp.valueAt(i)?.forEach { addWinInfo(wins, it) }
+                }
+            }
+        }
+        val pick = NavWindowPicker.pick(wins, navPackages)
+        if (NavLog.verbose) Log.i(TAG, "nav-window-enum nWin=${wins.size} [${wins.joinToString { "${it.pkg}:t${it.type}:${it.bounds.width}x${it.bounds.height}:${if (it.focused) "F" else "-"}" }}] pick=${pick?.pkg}")
+        pick ?: return
+        CaptureForegroundSource.publish(pick.pkg, now)
+    }
+
+    /** Map 1 [AccessibilityWindowInfo] → [NavWindowPicker.WinInfo] (degrade-safe; bỏ nếu thiếu pkg). */
+    private fun addWinInfo(out: MutableList<NavWindowPicker.WinInfo>, w: AccessibilityWindowInfo?) {
+        w ?: return
+        val root = runCatching { w.root }.getOrNull() ?: return
+        val pkg = runCatching { root.packageName?.toString() }.getOrNull()
+        runCatching { root.recycle() }
+        pkg ?: return
+        val r = Rect(); runCatching { w.getBoundsInScreen(r) }
+        val disp = if (Build.VERSION.SDK_INT >= 30) runCatching { w.displayId }.getOrDefault(0) else 0
+        val focused = runCatching { w.isFocused }.getOrDefault(false)
+        out.add(NavWindowPicker.WinInfo(pkg, w.type, CropRect(r.left, r.top, r.right, r.bottom), disp, focused))
     }
 
     /**
