@@ -136,8 +136,13 @@ class NavOutputOwner internal constructor(
             if (pushed) {
                 synchronized(stateLock) {
                     hasFrame = true
-                    if (!active) { active = true; log("nav output ACTIVE (arrow=${plan.pushArrow} lane=${plan.pushLane} camera=${plan.pushCamera})") }
                 }
+            }
+            // Log-on-change theo QUYẾT ĐỊNH (anyPush), KHÔNG theo sink-success: trên emulator/off-car HAL null
+            // → sink no-op (pushed=false) nhưng ta VẪN thấy owner đã tiêu thụ signal + quyết định bắn. sink=
+            // pushed cho biết HAL có nhận không (true trên xe, false off-car).
+            synchronized(stateLock) {
+                if (!active) { active = true; log("nav output ACTIVE decided(arrow=${plan.pushArrow} lane=${plan.pushLane} camera=${plan.pushCamera}) sink=$pushed") }
             }
         } else if (plan.clear) {
             issueClear()
