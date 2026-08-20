@@ -82,10 +82,10 @@ for /l %%i in (1,1,7) do (
 )
 call :status
 echo.
-set "OBS=" & set /p "OBS=   ten duong HIEN? + ghi 420A1010 (vd 'khong-hien 420A=0' / 'HIEN!'): "
+set "OBS=" & set /p "OBS=   ten duong co HIEN khong? + ghi 420A1010 (vd 'khong-hien 420A=0' / 'co-hien'): "
 echo    [quan sat %~1]: !OBS!>> "%LOG%"
 REM cach ly: reset lever ve 0 truoc case sau (navistate 4 cuoi don sach nav)
-if not "%LDEV%"=="-" ( "%ADB%" %TGT% shell "%NAVCMD% setraw %LDEV% %LID% 0" >nul 2>&1 & echo    [reset %LID% -^> 0]>> "%LOG%" )
+if not "%LDEV%"=="-" ( "%ADB%" %TGT% shell "%NAVCMD% setraw %LDEV% %LID% 0" >nul 2>&1 & echo    [reset %LID% = 0]>> "%LOG%" )
 goto :eof
 
 :combo
