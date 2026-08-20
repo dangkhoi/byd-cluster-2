@@ -58,8 +58,9 @@ class ScreenCaptureNavSource private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val transport = ScreenCaptureTransport(appContext)
     private val offscreen = OffscreenMirrorCapturer(appContext)
-    // BUILTIN rỗng (template thật OQ4 trên xe) ⇒ camera match luôn NONE ở production → an toàn, không false-positive.
-    private val cameraMatcher = VietMapCameraMatcher(VietMapCameraMatcher.BUILTIN)
+    // BUILTIN + template nạp lúc chạy (OQ4 trên xe). Rỗng ở production ⇒ camera match luôn NONE → an toàn, không
+    // false-positive. Dùng fromRegistry() để nếu orchestrator nạp template camera thật (trước khi start) thì honor.
+    private val cameraMatcher = VietMapCameraMatcher.fromRegistry()
 
     private val lifecycleLock = Any()
     @Volatile private var executor: ScheduledExecutorService? = null
@@ -146,16 +147,23 @@ class ScreenCaptureNavSource private constructor(context: Context) {
 
         // Geometry THẬT = kích thước ảnh chụp (đúng không gian bounds).
         val geom = DisplayGeometry(bmp.width, bmp.height)
-        val plan = CaptureRouter.route(loc, geom, CaptureBoundsSource.snapshot(), now) ?: return
-        if (plan.bounds.isEmpty()) return
-
-        val cropped = cropToFrame(bmp, plan.bounds) ?: return
-        when (plan.target) {
-            CaptureTarget.ARROW -> handleArrow(pkg, cropped, now, nowWall)
-            CaptureTarget.CAMERA -> handleCamera(pkg, cropped, now, nowWall)
+        // B3.8: VietMap khi dẫn phơi CẢ banner mũi tên (top-left) LẪN icon camera trên bản đồ → routePlans trả 1
+        // plan MỖI target (VietMap = [ARROW, CAMERA]; Waze/WazeMod/GMaps = [ARROW] — tương đương hành vi cũ). Rỗng
+        // ⇒ gate đóng. Chụp display MỘT lần (ở trên) rồi crop+classify theo TỪNG target; mỗi target bọc runCatching
+        // RIÊNG (degrade-safe R-nf1: một target lỗi/không-bounds KHÔNG rớt target kia trong cùng nhịp).
+        val plans = CaptureRouter.routePlans(loc, geom, CaptureBoundsSource.snapshot(), now)
+        if (plans.isEmpty()) return
+        for (plan in plans) {
+            runCatching {
+                if (plan.bounds.isEmpty()) return@runCatching       // target này không có vùng hợp lệ → bỏ, giữ target kia
+                val cropped = cropToFrame(bmp, plan.bounds) ?: return@runCatching
+                when (plan.target) {
+                    CaptureTarget.ARROW -> handleArrow(pkg, cropped, now, nowWall)
+                    CaptureTarget.CAMERA -> handleCamera(pkg, cropped, now, nowWall)
+                }
+                if (NavLog.verbose) saveDiag(bmp, plan, now)
+            }.onFailure { Log.w(TAG, "target ${plan.target} threw (dropped frame)", it) }
         }
-
-        if (NavLog.verbose) saveDiag(bmp, plan, now)
     }
 
     /** Transport theo case: 1/2 = màn chính (fission -d1), 3 = cụm (fission -d0), 4 = offscreen MediaProjection. */
@@ -180,6 +188,12 @@ class ScreenCaptureNavSource private constructor(context: Context) {
 
     private fun handleArrow(pkg: String, frame: PixelFrame, now: Long, nowWall: Long) {
         // TÁI DÙNG NGUYÊN ManeuverSignature (đây chính là processArrowPixels của OpenBYD).
+        // B3.6 CALIBRATE AID (verbose): in chữ ký 225-bit MỖI frame arrow (kể cả khi đang khớp SAI template
+        // GMaps gần nhất) để dựng template glyph Waze/VietMap ĐÚNG NHÃN cho WazeArrowRegistry (off-car/on-car).
+        if (NavLog.verbose) {
+            val sig = runCatching { ManeuverSignature.signatureBits(frame) }.getOrNull()
+            Log.i(TAG, "arrow-sig pkg=$pkg ${frame.width}x${frame.height} sig=$sig")
+        }
         val maneuver = runCatching { ManeuverSignature.classifyManeuver(frame) }.getOrNull()
         val amap = runCatching { ManeuverSignature.classify(frame) }.getOrNull()
         if (maneuver == null && amap == null) return             // không đọc được mũi tên → bỏ frame

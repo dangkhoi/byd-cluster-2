@@ -79,3 +79,70 @@ object CaptureForegroundSource {
         lastEventAt = 0L
     }
 }
+
+/**
+ * B3.7 — quyết THUẦN (không Android): một AccessibilityEvent có được phép (RE)ĐỊNH nghĩa package dẫn đang
+ * FOREGROUND (ghi vào [CaptureForegroundSource]) không, hay nó chỉ đến từ một cửa sổ NỔI/overlay/hệ thống
+ * và KHÔNG được đè lên app foreground THẬT?
+ *
+ * Bối cảnh (multi-app overlay contamination): khi WazeMod vẽ overlay NỔI đè lên trong lúc VietMap mới là app
+ * foreground thật, các event nội-dung/announcement của overlay (packageName = WazeMod) từng CHIẾM tín hiệu
+ * foreground → B3 định tuyến VietMap sang ARROW thay vì CAMERA. Sửa: overlay/hệ-thống KHÔNG bao giờ là
+ * foreground; cửa sổ APP chỉ tính khi hệ thống đánh dấu active/focused.
+ *
+ * ⚠ Window info (type/active/focused) chỉ có khi service bật `flagRetrieveInteractiveWindows` — cờ này ĐANG
+ * TẮT vì lý do hiệu năng (xem `nav_accessibility_config.xml`: nó bắt system_server theo dõi MỌI cửa sổ trên
+ * MỌI display, gấp đôi khi đang chiếu). Vì vậy trên xe [windowType] thường = [TYPE_UNKNOWN] và quyết định RỚT
+ * về NGỮ NGHĨA EVENT: một `TYPE_WINDOW_STATE_CHANGED` là chuyển-foreground thật; ngoài ra chỉ LÀM TƯƠI lại
+ * đúng package đang là foreground (keep-alive) — nên overlay của package KHÁC không thể cướp qua cập-nhật
+ * nội-dung thụ động. Nhánh window-info vẫn ĐÚNG nếu sau này bật cờ (đã unit-test cả hai nhánh).
+ */
+object ForegroundWindowFilter {
+
+    /** Window info không đọc được (cờ interactive-windows tắt) → dùng ngữ nghĩa event. */
+    const val TYPE_UNKNOWN = -1
+
+    // Trùng giá trị AccessibilityWindowInfo.TYPE_* (API) để :app truyền thẳng `window.type` vào đây.
+    const val TYPE_APPLICATION = 1
+    const val TYPE_INPUT_METHOD = 2
+    const val TYPE_SYSTEM = 3
+    const val TYPE_ACCESSIBILITY_OVERLAY = 4
+    const val TYPE_SPLIT_SCREEN_DIVIDER = 5
+    const val TYPE_MAGNIFICATION_OVERLAY = 6
+
+    /**
+     * @param windowType                AccessibilityWindowInfo.type, hoặc [TYPE_UNKNOWN] khi không đọc được.
+     * @param isActive                  window.isActive (chỉ có nghĩa khi windowType != UNKNOWN).
+     * @param isFocused                 window.isFocused (chỉ có nghĩa khi windowType != UNKNOWN).
+     * @param isWindowStateChange       event.eventType == TYPE_WINDOW_STATE_CHANGED (chuyển foreground thật).
+     * @param isSameAsCurrentForeground event.packageName == package [CaptureForegroundSource] đang giữ.
+     * @param isFromActiveWindow        event.packageName == package của `rootInActiveWindow` (cửa sổ ACTIVE
+     *                                  thật = app foreground; overlay KHÔNG phải active window). Đây là tín
+     *                                  hiệu foreground THẬT ở đường UNKNOWN (không cần chờ WINDOW_STATE_CHANGED)
+     *                                  → BOOTSTRAP đúng ngay cả khi ClusterNav khởi động lúc nav app đã mở sẵn.
+     */
+    fun shouldPublishForeground(
+        windowType: Int,
+        isActive: Boolean,
+        isFocused: Boolean,
+        isWindowStateChange: Boolean,
+        isSameAsCurrentForeground: Boolean,
+        isFromActiveWindow: Boolean = false,
+    ): Boolean {
+        // 1) Cửa sổ overlay/hệ thống (IME · system · a11y-overlay · divider · magnifier) KHÔNG bao giờ là
+        //    foreground app — đây là ca WazeMod overlay khi CÓ window info.
+        if (isKnownNonAppWindow(windowType)) return false
+        // 2) Cửa sổ APP thật: chỉ có thẩm quyền khi hệ thống đánh dấu active HOẶC focused. Overlay báo
+        //    TYPE_APPLICATION nhưng không active/không focused → loại.
+        if (windowType == TYPE_APPLICATION) return isActive || isFocused
+        // 3) Không có window info (UNKNOWN — đường hiệu-năng trên xe/emulator). Tin cửa sổ ACTIVE thật
+        //    ([isFromActiveWindow]) nếu đọc được → bootstrap + loại overlay (overlay ≠ active window). Rớt về
+        //    ngữ nghĩa event khi không đọc được: WINDOW_STATE_CHANGED (chuyển foreground) hoặc keep-alive
+        //    đúng package đang giữ (overlay package KHÁC không cướp được).
+        return isWindowStateChange || isFromActiveWindow || isSameAsCurrentForeground
+    }
+
+    private fun isKnownNonAppWindow(t: Int): Boolean =
+        t == TYPE_INPUT_METHOD || t == TYPE_SYSTEM || t == TYPE_ACCESSIBILITY_OVERLAY ||
+            t == TYPE_SPLIT_SCREEN_DIVIDER || t == TYPE_MAGNIFICATION_OVERLAY
+}

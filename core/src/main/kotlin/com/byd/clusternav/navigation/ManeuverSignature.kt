@@ -39,14 +39,42 @@ object ManeuverSignature {
     @Volatile var lastName: String = "-"; private set
     @Volatile var lastAmap: Int = -1; private set
 
+    /**
+     * Đóng gói chuỗi 225-bit → LongArray(WORDS) (MSB-first per-word, y như ki0.a). Tách riêng để registry
+     * dựng-sẵn ([registry]) và Waze ([wazePackedRegistry]) đóng gói CÙNG cách (DRY, B3.6).
+     */
+    private fun packBits(bits: String): LongArray {
+        val s = LongArray(WORDS)
+        for (i in bits.indices) if (bits[i] == '1') s[i ushr 6] = s[i ushr 6] or (1L shl (63 - (i and 63)))
+        return s
+    }
+
+    /** Grayscale 0/1 của chuỗi bit (cho NCC). Dùng chung registry dựng-sẵn + Waze (DRY, B3.6). */
+    private fun grayBits(bits: String): FloatArray = FloatArray(bits.length) { if (bits[it] == '1') 1f else 0f }
+
     /** Registry dựng sẵn: chuỗi 225-bit -> LongArray(4) (đóng gói MSB-first y như ki0.a). */
     private val registry: List<Pair<LongArray, String>> by lazy {
-        ManeuverRegistry.RAW.map { (bits, name) ->
-            val s = LongArray(WORDS)
-            for (i in bits.indices) if (bits[i] == '1') s[i ushr 6] = s[i ushr 6] or (1L shl (63 - (i and 63)))
-            s to name
-        }
+        ManeuverRegistry.RAW.map { (bits, name) -> packBits(bits) to name }
     }
+
+    // ── B3.6: template mũi tên Waze/VietMap ([WazeArrowRegistry]) — đóng gói LAZY, đóng-gói-lại KHI registry đổi
+    //    (theo WazeArrowRegistry.version). Production registry RỖNG ⇒ hai list rỗng ⇒ 0 chi phí thêm. Khớp CÙNG
+    //    đường Hamming (match) / NCC (matchNCC) như 38 mục GMaps ⇒ TÊN Waze đi qua nameToAmap/Hal/Maneuver y hệt.
+    @Volatile private var wazeVersion = -1
+    @Volatile private var wazePacked: List<Pair<LongArray, String>> = emptyList()
+    @Volatile private var wazeGray: List<Pair<FloatArray, String>> = emptyList()
+
+    private fun syncWaze() {
+        val v = WazeArrowRegistry.version
+        if (v == wazeVersion) return
+        val raw = WazeArrowRegistry.raw()
+        wazePacked = raw.map { (bits, name) -> packBits(bits) to name }
+        wazeGray = raw.map { (bits, name) -> grayBits(bits) to name }
+        wazeVersion = v
+    }
+
+    private fun wazePackedRegistry(): List<Pair<LongArray, String>> { syncWaze(); return wazePacked }
+    private fun wazeGrayRegistry(): List<Pair<FloatArray, String>> { syncWaze(); return wazeGray }
 
     /**
      * Kết quả MỘT lần khớp, trả TƯỜNG MINH cùng nhau.
@@ -107,6 +135,26 @@ object ManeuverSignature {
         val s = signature(bmp) ?: return null
         val name = match(s.bits) ?: matchNCC(s.fill) ?: return null   // #3: NCC fallback (như classify/classifyHal)
         return nameToManeuver(name)
+    }
+
+    /**
+     * Chữ ký 225-bit của [frame] dưới dạng chuỗi '0'/'1' — ĐÚNG format [ManeuverRegistry].RAW lưu (per-word
+     * MSB-first). B3.6: PUBLIC + test được để orchestrator sinh template Waze/VietMap THẬT từ ảnh PNG crop rồi
+     * nạp vào [WazeArrowRegistry]. TÁI DÙNG [signature] (KHÔNG đổi math của nó) rồi giải-đóng-gói bit về chuỗi.
+     *
+     * Trả null nếu ảnh quá nhỏ (<8×8, cùng guard [classify]) / mờ (contrast<30 → [signature] null) / không đọc
+     * được pixel. Cùng khung [frame] → cùng chuỗi (tất định); nạp CHÍNH chuỗi này vào [WazeArrowRegistry] rồi
+     * classify lại khung đó ⇒ Hamming=0 ⇒ khớp (xem WazeArrowRegistryTest).
+     */
+    fun signatureBits(frame: PixelFrame): String? {
+        if (frame.width < 8 || frame.height < 8) return null
+        val s = signature(frame) ?: return null
+        val sb = StringBuilder(BITS)
+        for (i in 0 until BITS) {
+            val set = (s.bits[i ushr 6] ushr (63 - (i and 63))) and 1L
+            sb.append(if (set == 1L) '1' else '0')
+        }
+        return sb.toString()
     }
 
     // ── chữ ký 225-bit (port wm0.c -> wm0.b với f=1.0, z=false) ──
@@ -188,7 +236,7 @@ object ManeuverSignature {
     // bằng normalized cross-correlation giữa tỉ-lệ-lấp-ô (grayscale) và 38 template (bit 0/1) → suy giảm dần thay vì null.
     private class Sig(val bits: LongArray, val fill: FloatArray)   // gói bits+fill, truyền tường minh (bỏ field ngầm → thread-safe)
     private val grayRegistry: List<Pair<FloatArray, String>> by lazy {
-        ManeuverRegistry.RAW.map { (bits, name) -> FloatArray(bits.length) { if (bits[it] == '1') 1f else 0f } to name }
+        ManeuverRegistry.RAW.map { (bits, name) -> grayBits(bits) to name }
     }
     private const val NCC_MIN = 0.45f              // ngưỡng khớp mềm (thực nghiệm; dưới = coi như không ra)
 
@@ -197,14 +245,17 @@ object ManeuverSignature {
         var vq = 0f; for (v in q) { val dq = v - mq; vq += dq * dq }
         if (vq < 1e-6f) return null
         var best: String? = null; var bestNcc = NCC_MIN
-        for ((t, name) in grayRegistry) {
-            if (t.size != q.size) continue
-            var mt = 0f; for (v in t) mt += v; mt /= t.size
-            var cov = 0f; var vt = 0f
-            for (i in q.indices) { val dq = q[i] - mq; val dt = t[i] - mt; cov += dq * dt; vt += dt * dt }
-            if (vt < 1e-6f) continue
-            val ncc = cov / kotlin.math.sqrt(vq * vt)
-            if (ncc > bestNcc) { bestNcc = ncc; best = name }
+        // B3.6: 38 mục GMaps ([grayRegistry]) + template Waze/VietMap ([wazeGrayRegistry]) — CÙNG công thức NCC.
+        for (reg in arrayOf(grayRegistry, wazeGrayRegistry())) {
+            for ((t, name) in reg) {
+                if (t.size != q.size) continue
+                var mt = 0f; for (v in t) mt += v; mt /= t.size
+                var cov = 0f; var vt = 0f
+                for (i in q.indices) { val dq = q[i] - mq; val dt = t[i] - mt; cov += dq * dt; vt += dt * dt }
+                if (vt < 1e-6f) continue
+                val ncc = cov / kotlin.math.sqrt(vq * vt)
+                if (ncc > bestNcc) { bestNcc = ncc; best = name }
+            }
         }
         return best
     }
@@ -219,14 +270,18 @@ object ManeuverSignature {
         return 0
     }
 
-    /** Khớp gần nhất theo Hamming ≤18 (port wm0.d). null nếu không có. */
+    /** Khớp gần nhất theo Hamming ≤18 (port wm0.d) trên CẢ registry dựng-sẵn (38 GMaps) LẪN Waze (B3.6). null nếu không có. */
     private fun match(sig: LongArray): String? {
         var best: String? = null; var bestD = Int.MAX_VALUE
-        for ((reg, name) in registry) {
-            var d = 0
-            for (k in 0 until WORDS) d += java.lang.Long.bitCount(sig[k] xor reg[k])
-            if (d == 0) return name
-            if (d <= MAX_HAMMING && d < bestD) { bestD = d; best = name }
+        // B3.6: exact (d==0) short-circuit ưu tiên khớp CHÍNH XÁC bất kể registry; glyph Waze không trùng d==0
+        // với GMaps (đó là lý do B3.6 tồn tại) nên rơi xuống Waze; template Waze d==0 ⇒ thắng ngay.
+        for (reg in arrayOf(registry, wazePackedRegistry())) {
+            for ((r, name) in reg) {
+                var d = 0
+                for (k in 0 until WORDS) d += java.lang.Long.bitCount(sig[k] xor r[k])
+                if (d == 0) return name
+                if (d <= MAX_HAMMING && d < bestD) { bestD = d; best = name }
+            }
         }
         return best
     }

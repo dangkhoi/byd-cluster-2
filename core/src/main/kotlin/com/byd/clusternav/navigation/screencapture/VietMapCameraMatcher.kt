@@ -100,6 +100,40 @@ class VietMapCameraMatcher(
         /** Registry dựng sẵn — RỖNG (template thật thu trên xe, OQ4). Lớp :app nạp thêm khi có. */
         val BUILTIN: List<CameraTemplate> = emptyList()
 
+        // ── B3.6: registry NẠP-ĐƯỢC lúc chạy (song song [com.byd.clusternav.navigation.WazeArrowRegistry]) —
+        //    template camera THẬT thu trên xe (OQ4) nạp vào đây sau; production RỖNG ⇒ [fromRegistry] khớp NONE
+        //    (an toàn, không false-positive). Thread-safe: ghi `@Synchronized`; đọc [loadedTemplates] trả snapshot.
+        @Volatile private var loaded: List<CameraTemplate> = emptyList()
+
+        /** Snapshot bất biến các template hiện có = [BUILTIN] + đã nạp. */
+        fun loadedTemplates(): List<CameraTemplate> = if (loaded.isEmpty()) BUILTIN else BUILTIN + loaded
+
+        /** Thêm MỘT template (bỏ qua nếu trùng y hệt). Dùng cho orchestrator/ test nạp template thu được. */
+        @Synchronized
+        fun register(template: CameraTemplate) {
+            if (template in loaded) return
+            loaded = loaded + template
+        }
+
+        /** Nạp nguyên bộ (thay thế tập đã-nạp; [BUILTIN] luôn giữ). */
+        @Synchronized
+        fun load(templates: List<CameraTemplate>) {
+            loaded = templates.toList()
+        }
+
+        /** Xoá tập đã-nạp về rỗng (chủ yếu cho test, tránh rò template tổng hợp sang test khác). */
+        @Synchronized
+        fun clearLoaded() {
+            loaded = emptyList()
+        }
+
+        /**
+         * Dựng matcher trên registry NẠP-ĐƯỢC ([loadedTemplates] = BUILTIN + đã nạp) — cách orchestrator/ :app
+         * lấy matcher tôn trọng template thật nạp sau (OQ4). Production (chưa nạp) ⇒ rỗng ⇒ match luôn NONE.
+         */
+        fun fromRegistry(minScore: Float = DEFAULT_MIN_SCORE): VietMapCameraMatcher =
+            VietMapCameraMatcher(loadedTemplates(), minScore)
+
         /**
          * Chữ ký lưới [GRID]² của [frame]: mỗi ô = trung bình (luminance × alpha/255). null nếu frame
          * null / nhỏ hơn [MIN_SIDE] / argb() null.

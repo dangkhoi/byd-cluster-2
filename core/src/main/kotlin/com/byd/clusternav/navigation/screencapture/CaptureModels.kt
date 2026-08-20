@@ -39,7 +39,25 @@ enum class CaptureTarget {
     companion object {
         private val VIETMAP_PKGS = setOf("vn.vietmap.live")
 
-        /** VietMap → CAMERA; còn lại (Waze/WazeMod/GMaps) → ARROW (mặc định an toàn). */
+        /**
+         * TẤT CẢ target cần thử cho [pkg] trong MỘT nhịp (B3.8). VietMap khi dẫn hiện CẢ HAI: banner mũi tên
+         * lệnh-kế ở TOP-LEFT (như Waze) VÀ icon camera phạt nguội neo trên bản đồ ⇒ [ARROW, CAMERA]. Waze/
+         * WazeMod/GMaps chỉ có mũi tên ⇒ [ARROW]. Thứ tự ARROW-trước cho phép lát a11y (một holder rect duy
+         * nhất) ưu tiên mũi tên khi cùng frame; router tính bounds RIÊNG mỗi target (§4.4).
+         *
+         * ĐÂY là API đa-target mà [CaptureRouter.routePlans] + `ScreenCaptureNavSource.tick` dùng. Giữ [forPackage]
+         * (đơn) RIÊNG vì đường a11y (`NavAccessibilityService` → `CaptureBoundsHeuristic.pick`) cần MỘT bộ từ
+         * khoá target và các file đó thuộc agent khác — không đổi chữ ký [forPackage] để chúng vẫn biên dịch.
+         */
+        fun targetsForPackage(pkg: String): List<CaptureTarget> =
+            if (pkg in VIETMAP_PKGS) listOf(ARROW, CAMERA) else listOf(ARROW)
+
+        /**
+         * Target ĐƠN "chính" cho [pkg] — đường chọn-node a11y (`NavAccessibilityService` → `CaptureBoundsHeuristic`)
+         * cần đúng MỘT bộ từ khoá. VietMap → CAMERA (icon widget/data không phơi được); còn lại → ARROW. Giữ
+         * ĐƠN (kiểu trả không đổi) để đường a11y + heuristic — do agent khác sở hữu — vẫn tương thích nguồn; định
+         * tuyến ĐA-target dùng [targetsForPackage].
+         */
         fun forPackage(pkg: String): CaptureTarget =
             if (pkg in VIETMAP_PKGS) CAMERA else ARROW
     }
@@ -140,8 +158,9 @@ data class AppLocation(
 data class CaptureBounds(val rect: CropRect, val capturedAtMs: Long)
 
 /**
- * Kết quả của [CaptureRouter.route]: case đã chọn + vùng crop + tầng bounds dùng + target (arrow/camera).
- * [bounds].isEmpty() ⇒ caller bỏ frame (không có vùng hợp lệ). route() trả null khi gate đóng (navFresh=false).
+ * Kết quả của [CaptureRouter.route] (đơn) / [CaptureRouter.routePlans] (đa-target, B3.8): case đã chọn + vùng
+ * crop + tầng bounds dùng + target (arrow/camera). [bounds].isEmpty() ⇒ caller bỏ frame CHO TARGET ĐÓ (không
+ * có vùng hợp lệ). [CaptureRouter.route] trả null / [CaptureRouter.routePlans] trả rỗng khi gate đóng (navFresh=false).
  */
 data class CapturePlan(
     val case: CaptureCase,

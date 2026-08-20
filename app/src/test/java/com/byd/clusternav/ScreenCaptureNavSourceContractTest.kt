@@ -28,8 +28,8 @@ class ScreenCaptureNavSourceContractTest {
                 source.contains("NavAccessibilitySource.foreground(now)"),
             "R5(b): foreground gate",
         )
-        // navFresh flows into the router which returns null when the gate is closed.
-        assertTrue(source.contains("CaptureRouter.route("), "router drives capture decision")
+        // navFresh flows into the router which returns an empty plan list when the gate is closed.
+        assertTrue(source.contains("CaptureRouter.routePlans("), "router drives capture decision (one plan per target)")
     }
 
     @Test
@@ -57,6 +57,22 @@ class ScreenCaptureNavSourceContractTest {
         // Publish only AFTER the arbiter allows (data > image): shouldFeed guard precedes publish for both targets.
         val arrowGuard = source.indexOf("SourceArbiter.shouldFeed(pkg, Prefs.sourceMode(appContext), nowWall, NavChannel.IMAGE)) return")
         assertTrue(arrowGuard >= 0, "arbiter guard present before publish")
+    }
+
+    @Test
+    fun `routes and classifies EACH requested target in one tick (B3-8 multi-target, degrade-safe per target)`() {
+        // VietMap needs BOTH the top-left arrow banner AND the map camera icon → routePlans returns one plan per
+        // target; the source captures the display ONCE then iterates and crops/classifies each, guarded per target
+        // so one target failing (or having no bounds) never drops the other.
+        assertTrue(source.contains("CaptureRouter.routePlans("), "multi-target routing (one plan per target)")
+        assertTrue(source.contains("for (plan in plans)"), "iterates every requested target in one tick")
+        assertTrue(source.contains("CaptureTarget.ARROW -> handleArrow"), "arrow target handled")
+        assertTrue(source.contains("CaptureTarget.CAMERA -> handleCamera"), "camera target handled")
+        // per-target runCatching so a failure in one target does not abort the other.
+        val loopIdx = source.indexOf("for (plan in plans)")
+        assertTrue(loopIdx >= 0, "multi-target loop present")
+        val loopBody = source.substring(loopIdx, (loopIdx + 500).coerceAtMost(source.length))
+        assertTrue(loopBody.contains("runCatching {"), "each target guarded by runCatching (degrade-safe)")
     }
 
     @Test

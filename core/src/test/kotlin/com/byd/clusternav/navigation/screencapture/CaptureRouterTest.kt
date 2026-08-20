@@ -116,6 +116,79 @@ class CaptureRouterTest {
         assertEquals(CaptureTarget.ARROW, CaptureRouter.route(loc(pkg = "com.waze"), geom)!!.target)
     }
 
+    @Test
+    fun `CaptureTarget — forPackage DON (a11y) vs targetsForPackage DA (routing)`() {
+        // forPackage GIỮ ĐƠN (đường a11y NavAccessibilityService/CaptureBoundsHeuristic — agent khác sở hữu).
+        assertEquals(CaptureTarget.CAMERA, CaptureTarget.forPackage("vn.vietmap.live"))
+        assertEquals(CaptureTarget.ARROW, CaptureTarget.forPackage("com.waze"))
+        // targetsForPackage = ĐA target cho routing (B3.8).
+        assertEquals(listOf(CaptureTarget.ARROW, CaptureTarget.CAMERA), CaptureTarget.targetsForPackage("vn.vietmap.live"))
+        assertEquals(listOf(CaptureTarget.ARROW), CaptureTarget.targetsForPackage("com.waze"))
+        assertEquals(listOf(CaptureTarget.ARROW), CaptureTarget.targetsForPackage("com.google.android.apps.maps"))
+    }
+
+    // ── B3.8: routePlans — MỘT plan MỖI target (VietMap = arrow + camera; còn lại = arrow) ─────────────
+
+    @Test
+    fun `routePlans — VietMap ra HAI plan ARROW va CAMERA, moi cai bounds rieng`() {
+        val plans = CaptureRouter.routePlans(loc(pkg = "vn.vietmap.live", fullscreen = true), geom)
+        assertEquals(2, plans.size)
+        val targets = plans.map { it.target }.toSet()
+        assertEquals(setOf(CaptureTarget.ARROW, CaptureTarget.CAMERA), targets)
+        // ARROW dùng rect mũi tên hiệu chỉnh; CAMERA dùng seed camera → hai vùng KHÁC nhau.
+        val arrow = plans.first { it.target == CaptureTarget.ARROW }
+        val camera = plans.first { it.target == CaptureTarget.CAMERA }
+        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, arrow.bounds)
+        assertEquals(CaptureCalibration.VIETMAP_CAMERA_SEED, camera.bounds)
+        assertEquals(BoundsSource.FIXED_CALIBRATED, arrow.boundsSource)
+        assertEquals(BoundsSource.FIXED_CALIBRATED, camera.boundsSource)
+    }
+
+    @Test
+    fun `routePlans — Waze ra MOT plan ARROW (tuong duong route cu)`() {
+        val plans = CaptureRouter.routePlans(loc(pkg = "com.waze", fullscreen = true), geom)
+        assertEquals(1, plans.size)
+        assertEquals(CaptureTarget.ARROW, plans.single().target)
+        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, plans.single().bounds)
+    }
+
+    @Test
+    fun `routePlans — GMaps ra MOT plan ARROW`() {
+        val plans = CaptureRouter.routePlans(loc(pkg = "com.google.android.apps.maps"), geom)
+        assertEquals(listOf(CaptureTarget.ARROW), plans.map { it.target })
+    }
+
+    @Test
+    fun `routePlans — gate dong (navFresh=false) tra RONG (KHONG capture)`() {
+        assertTrue(CaptureRouter.routePlans(loc(pkg = "vn.vietmap.live", navFresh = false), geom).isEmpty())
+        assertTrue(CaptureRouter.routePlans(loc(pkg = "com.waze", navFresh = false), geom).isEmpty())
+    }
+
+    @Test
+    fun `routePlans — moi plan giu case da chon (VietMap split RIGHT)`() {
+        val plans = CaptureRouter.routePlans(
+            loc(pkg = "vn.vietmap.live", fullscreen = false, slot = CaptureSlotSide.RIGHT, leftPercent = 50), geom,
+        )
+        assertEquals(2, plans.size)
+        assertTrue(plans.all { it.case == CaptureCase.HALF_MAIN_SPLIT })
+        // ARROW nửa phải: (26,218,208,298) +960 → (986,218,1168,298).
+        val arrow = plans.first { it.target == CaptureTarget.ARROW }
+        assertEquals(CropRect(986, 218, 1168, 298), arrow.bounds)
+    }
+
+    @Test
+    fun `routePlans — a11y tuoi ap cho MOI target (holder rect chung, clamp nua app)`() {
+        val a11yRect = CropRect(100, 100, 220, 200)
+        val plans = CaptureRouter.routePlans(
+            loc(pkg = "vn.vietmap.live", fullscreen = true), geom,
+            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L), now = 1_100L, freshMs = 1500L,
+        )
+        assertEquals(2, plans.size)
+        // Cùng holder a11y (một rect) → cả hai target tầng-1 dùng nó (VERIFY-ON-CAR: holder đơn, OQ2).
+        assertTrue(plans.all { it.boundsSource == BoundsSource.A11Y_DYNAMIC })
+        assertTrue(plans.all { it.bounds == a11yRect })
+    }
+
     // ── Case-2 offset nửa L/R ──────────────────────────────────────────────────────────
 
     @Test

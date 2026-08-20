@@ -91,4 +91,51 @@ class VietMapCameraMatcherTest {
         assertNull(r.speedKmh)
         assertNull(r.distanceMeters)
     }
+
+    // ── B3.6: registry NẠP-ĐƯỢC lúc chạy (orchestrator thêm template camera thật OQ4 sau) ──────────────
+
+    @org.junit.jupiter.api.AfterEach
+    fun clearLoaded() {
+        VietMapCameraMatcher.clearLoaded()   // registry loaded là object toàn cục → dọn để không rò sang test khác
+    }
+
+    @Test
+    fun `fromRegistry — rong (production) thi match NONE, khong false-positive`() {
+        assertTrue(VietMapCameraMatcher.loadedTemplates().isEmpty())
+        assertEquals(CameraMatch.NONE, VietMapCameraMatcher.fromRegistry().match(cameraLike))
+    }
+
+    @Test
+    fun `register — template nap runtime duoc fromRegistry nhan va khop`() {
+        val tmpl = VietMapCameraMatcher.templateFrom("cam_loaded", cameraLike)!!
+        VietMapCameraMatcher.register(tmpl)
+        assertEquals(listOf(tmpl), VietMapCameraMatcher.loadedTemplates())
+        val r = VietMapCameraMatcher.fromRegistry().match(cameraLike)
+        assertTrue(r.hasCamera, "template nạp phải khớp fixture của nó")
+        assertEquals("cam_loaded", r.templateName)
+    }
+
+    @Test
+    fun `load — thay the ca bo template da nap`() {
+        VietMapCameraMatcher.register(VietMapCameraMatcher.templateFrom("old", cameraLike)!!)
+        val fresh = VietMapCameraMatcher.templateFrom("cam_fixed", cameraLike)!!
+        VietMapCameraMatcher.load(listOf(fresh))
+        assertEquals(listOf(fresh), VietMapCameraMatcher.loadedTemplates())
+        assertEquals("cam_fixed", VietMapCameraMatcher.fromRegistry().match(cameraLike).templateName)
+    }
+
+    @Test
+    fun `register — trung y het khong them lan hai`() {
+        val tmpl = VietMapCameraMatcher.templateFrom("cam", cameraLike)!!
+        VietMapCameraMatcher.register(tmpl)
+        VietMapCameraMatcher.register(tmpl)
+        assertEquals(1, VietMapCameraMatcher.loadedTemplates().size)
+    }
+
+    @Test
+    fun `clearLoaded — ve rong (BUILTIN)`() {
+        VietMapCameraMatcher.register(VietMapCameraMatcher.templateFrom("cam", cameraLike)!!)
+        VietMapCameraMatcher.clearLoaded()
+        assertTrue(VietMapCameraMatcher.loadedTemplates().isEmpty())
+    }
 }

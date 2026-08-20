@@ -23,6 +23,7 @@ import com.byd.clusternav.navigation.screencapture.CaptureBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
 import com.byd.clusternav.navigation.screencapture.CaptureTarget
 import com.byd.clusternav.navigation.screencapture.CropRect
+import com.byd.clusternav.navigation.screencapture.ForegroundWindowFilter
 import com.byd.clusternav.modules.voicekey.AssistantLauncher
 import com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus
 import com.byd.clusternav.voicekey.VoiceKeyAction
@@ -132,9 +133,15 @@ class NavAccessibilityService : AccessibilityService() {
         // distance-scan below and never touches it. ⚠ VERIFY-ON-CAR (OQ2): correct node identification +
         // bounds stability on-car is unproven; off-car only the publish/pick logic is locked (pure tests).
         val b3Now = SystemClock.elapsedRealtime()
-        CaptureForegroundSource.publish(pkg, b3Now)
-        runCatching { maybePublishCaptureBounds(event, pkg, b3Now) }
-            .onFailure { Log.w(TAG, "capture bounds publish failed", it) }
+        // B3.7 (multi-app overlay contamination): only a REAL foreground-app window may (re)define the
+        // foreground nav package. A floating/overlay window — e.g. WazeMod's HUD drawn over VietMap — must
+        // NOT hijack the signal, or B3 routes VietMap to the ARROW target instead of CAMERA. The pure
+        // decision lives in [ForegroundWindowFilter]; here we only read the (often unavailable) window info.
+        if (isEventFromForegroundApp(event, pkg)) {
+            CaptureForegroundSource.publish(pkg, b3Now)
+            runCatching { maybePublishCaptureBounds(event, pkg, b3Now) }
+                .onFailure { Log.w(TAG, "capture bounds publish failed", it) }
+        }
 
         // MULTI-SOURCE capture (telemetry, verbose-gated in NavAccessLog): log the announced / window-content
         // voice-guidance text tagged by SOURCE package, so GMaps / VietMap / Waze / WazeMod rows are
@@ -235,6 +242,45 @@ class NavAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * B3.7 — decide whether [event] comes from the REAL foreground-app window (so it may update the foreground
+     * nav package) or from a floating/overlay window that must not hijack it. The DECISION is pure
+     * ([ForegroundWindowFilter], unit-tested off-car); here we only read the AccessibilityWindowInfo.
+     *
+     * ⚠ Window info (type / isActive / isFocused) needs `flagRetrieveInteractiveWindows`, deliberately OFF for
+     * perf (see nav_accessibility_config.xml → it makes system_server track every window on every display,
+     * doubled while casting). So on-car `event.source?.window` is usually null → [ForegroundWindowFilter.TYPE_UNKNOWN]
+     * → the pure filter degrades to event semantics (WINDOW_STATE_CHANGED, or same-pkg keep-alive). Degrade-safe.
+     */
+    private fun isEventFromForegroundApp(event: AccessibilityEvent, pkg: String): Boolean {
+        val isStateChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        val sameAsCurrent = CaptureForegroundSource.pkg == pkg
+        var winType = ForegroundWindowFilter.TYPE_UNKNOWN
+        var active = false
+        var focused = false
+        val node = runCatching { event.source }.getOrNull()
+        val win = runCatching { node?.window }.getOrNull()
+        if (win != null) {
+            winType = win.type
+            active = win.isActive
+            focused = win.isFocused
+        }
+        runCatching { node?.recycle() }
+        // B3.7 fix: `rootInActiveWindow` = cửa sổ ACTIVE thật (app foreground); overlay nổi KHÔNG phải active
+        // window. So khớp package → nhận diện foreground THẬT ở đường UNKNOWN (interactive-windows tắt), nên
+        // BOOTSTRAP đúng ngay cả khi ClusterNav khởi động lúc nav app đã mở sẵn (không cần chờ WINDOW_STATE_CHANGED),
+        // mà overlay của package KHÁC vẫn bị loại (nó không phải active window).
+        val fromActiveWin = runCatching {
+            val r = rootInActiveWindow
+            val match = r?.packageName?.toString() == pkg
+            runCatching { r?.recycle() }
+            match
+        }.getOrDefault(false)
+        return ForegroundWindowFilter.shouldPublishForeground(
+            winType, active, focused, isStateChange, sameAsCurrent, fromActiveWin,
+        )
+    }
+
+    /**
      * B3 (screen-capture nav): best-effort walk of the nav app's subtree to find the arrow (Waze) / camera
      * (VietMap) node and publish its `getBoundsInScreen` to [CaptureBoundsSource] (CaptureRouter tier-1). The
      * NODE-PICK decision is pure ([CaptureBoundsHeuristic], unit-tested off-car); here we only gather bounded
@@ -277,7 +323,9 @@ class NavAccessibilityService : AccessibilityService() {
         val desc = node.contentDescription?.toString().orEmpty()
         if (cls.isNotEmpty() || desc.isNotEmpty()) {
             val r = Rect(); node.getBoundsInScreen(r)
-            if (r.width() > 0 && r.height() > 0) {
+            // B3.5: skip obvious noise (sub-icon slivers) here so the bounded candidate list + the region union
+            // aren't polluted by 1–11px nodes; the real size gate (MIN_ICON_*) still lives in the pure heuristic.
+            if (r.width() >= GATHER_MIN_PX && r.height() >= GATHER_MIN_PX) {
                 out.add(CaptureBoundsHeuristic.Candidate(cls, desc, CropRect(r.left, r.top, r.right, r.bottom)))
             }
         }
@@ -363,6 +411,9 @@ class NavAccessibilityService : AccessibilityService() {
         private const val DESC_WALK_THROTTLE_MS = 150L
         // B3: min gap between arrow/camera bounds subtree walks per package (dense TYPE_WINDOW_CONTENT_CHANGED).
         private const val BOUNDS_WALK_THROTTLE_MS = 250L
+        // B3.5: gather floor — nodes smaller than this in either dimension are sub-icon noise (not the arrow
+        // banner / camera icon) and are dropped before scoring; the authoritative size gate is in the heuristic.
+        private const val GATHER_MIN_PX = 12
         private const val MAX_NODES = 250
         private const val MAX_DEPTH = 40
     }

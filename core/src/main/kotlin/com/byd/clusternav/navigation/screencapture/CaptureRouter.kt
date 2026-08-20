@@ -17,12 +17,12 @@ object CaptureCalibration {
     val WAZE_ARROW_OPENBYD = CropRect(26, 218, 208, 298)
 
     /**
-     * ĐO THẬT trên emulator WazeMod @960×720 (2026-08-20, Waze đang dẫn): banner maneuver ở TOP-LEFT,
-     * mũi tên ~x50-100,y50-98 + text cự ly bên phải. Cùng KÍCH THƯỚC 182×80 như seed OpenBYD nhưng
-     * ĐÚNG Y (top=20, không phải 218 — layout OpenBYD khác). ⚠ Cần xác nhận màn chính trên XE khớp
-     * layout WazeMod 960×720 này; nếu xe khác resolution/layout thì thêm entry (app,WxH) vào [TABLE].
+     * ĐO THẬT trên emulator WazeMod @960×720 (2026-08-20, Waze đang dẫn): **CROP SÁT glyph mũi tên**
+     * (không lấy cả banner) để mũi tên LẤP ĐẦY lưới 15×15 của ManeuverSignature → chữ ký dày, khớp được
+     * (crop cả banner 182×80 làm mũi tên nét-mảnh biến mất khi hạ mẫu → chữ ký ~toàn 0). Glyph ở top-left
+     * banner, ~82×72. ⚠ Xác nhận màn chính XE khớp layout WazeMod 960×720 này; khác → thêm entry (app,WxH).
      */
-    val WAZE_ARROW_WAZEMOD_960x720 = CropRect(26, 20, 208, 100)
+    val WAZE_ARROW_WAZEMOD_960x720 = CropRect(38, 38, 120, 110)
 
     /**
      * Seed icon camera VietMap — CHƯA có template/rect thật (OQ4). Đặt tạm ở góc trên-phải vùng chỉ đường
@@ -68,9 +68,12 @@ object CaptureRouter {
     const val A11Y_FRESH_MS = 1500L
 
     /**
-     * Định tuyến 1 frame. Trả:
+     * Định tuyến 1 frame → MỘT [CapturePlan] cho target ĐƠN "chính" ([CaptureTarget.forPackage]). Trả:
      *   - null  ⇒ GATE ĐÓNG (navFresh=false) — KHÔNG capture (V-gate). Đây là cửa duy nhất trả null.
      *   - [CapturePlan] ⇒ case + target + crop bounds + tầng bounds. bounds.isEmpty() ⇒ caller bỏ frame.
+     *
+     * BACK-COMPAT: giữ nguyên cho caller đơn-target (test resolver). Đường ĐA-target (B3.8, VietMap = mũi tên +
+     * camera) dùng [routePlans].
      *
      * @param loc       app dẫn ở đâu + trạng thái.
      * @param geom      kích thước + phân loại display app đang ở.
@@ -87,7 +90,46 @@ object CaptureRouter {
     ): CapturePlan? {
         if (!loc.navFresh) return null                       // gate đóng → không capture
         val case = selectCase(loc, geom)
-        val target = CaptureTarget.forPackage(loc.pkg)
+        return planFor(case, loc, geom, CaptureTarget.forPackage(loc.pkg), a11y, now, freshMs)
+    }
+
+    /**
+     * Định tuyến 1 frame → MỘT [CapturePlan] cho MỖI target cần thử ([CaptureTarget.targetsForPackage]) — B3.8.
+     * VietMap → 2 plan (ARROW + CAMERA, mỗi cái bounds RIÊNG: ARROW = arrow rect hiệu chỉnh; CAMERA = seed/a11y);
+     * Waze/WazeMod/GMaps → 1 plan (ARROW) — tương đương hành vi [route] cũ. Trả:
+     *   - RỖNG   ⇒ GATE ĐÓNG (navFresh=false) — KHÔNG capture (V-gate). Đây là cửa duy nhất trả rỗng.
+     *   - danh sách [CapturePlan] (1 mỗi target). plan.bounds.isEmpty() ⇒ caller bỏ frame CHO TARGET ĐÓ.
+     *
+     * Cùng tham số như [route]. Caller (`ScreenCaptureNavSource.tick`) chụp display MỘT lần rồi crop+classify
+     * theo từng plan, mỗi target bọc runCatching riêng (degrade-safe: một target lỗi không rớt target kia).
+     */
+    fun routePlans(
+        loc: AppLocation,
+        geom: DisplayGeometry,
+        a11y: CaptureBounds? = null,
+        now: Long = 0L,
+        freshMs: Long = A11Y_FRESH_MS,
+    ): List<CapturePlan> {
+        if (!loc.navFresh) return emptyList()                // gate đóng → không capture
+        val case = selectCase(loc, geom)
+        return CaptureTarget.targetsForPackage(loc.pkg).map { target ->
+            planFor(case, loc, geom, target, a11y, now, freshMs)
+        }
+    }
+
+    /**
+     * Dựng [CapturePlan] cho MỘT [target] cụ thể (case đã chọn). Tách riêng để [route] (đơn) và [routePlans]
+     * (đa) dùng CHUNG logic tính bounds — DRY, cùng 3 tầng của [computeBounds] (§4.4).
+     */
+    fun planFor(
+        case: CaptureCase,
+        loc: AppLocation,
+        geom: DisplayGeometry,
+        target: CaptureTarget,
+        a11y: CaptureBounds?,
+        now: Long,
+        freshMs: Long,
+    ): CapturePlan {
         val (bounds, src) = computeBounds(case, loc, geom, target, a11y, now, freshMs)
         return CapturePlan(case, target, bounds, src)
     }
