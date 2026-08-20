@@ -221,3 +221,19 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 - ⇒ (a) cần **chuỗi kích hoạt OEM** — `SEND_DESTINATION_STATUS 0x43E00038=2` + guidance đúng thứ tự (status→dest→guidance→pathname) mà cả app lẫn test CHƯA làm; hoặc (b) ô tên-đường **gate provisioning riêng** (arrow+dist = element cơ bản; road-name cần thêm).
 
 **Follow-up = MA TRẬN probe** (`scripts/vehicle/hud-roadname-matrix.bat`, gói `~/Desktop/HUD-RoadName-Matrix.zip`): quét **BASELINE + 7 lever** — L1 `SEND_DESTINATION_STATUS 0x43E00038=2` · L2 `DYNAMIC_NAVI_FUNCTION 0x38B0002A` · L3 `MAP_TRANSFER_FLAG 0x40500025` · L4 `GUIDE_ROAD_AHEAD 0x43F01030` · L5 `GUIDE_ADVANCED_ACTION 0x43F08030` · L6 `HUD_NAVIGATION_MAP_SET 0x32B1102E` · L7 `ARRIVAL_PASSPOINT 0x43FFF030` — **+ COMBO(L1-3)**. Mỗi case: bơm nav frame + lever + tên đường (CJK control) → **đọc cụm-status** (`420A1010` check · `38B0002E` navmap · `30100030` cfg · `40C0103B` dest) → quan sát kính → reset lever→0 (cách ly). **Tìm case đổi `420A1010` 0→1/2 hoặc hiện tên đường** = đột phá (+ fix app: thêm lever đó vào `BydHal`); tất cả vẫn 0 = **gate provisioning** → nhánh D6/VDS2100.
+
+---
+
+## Cập nhật 2026-08-20 (2) — SHOWROOM COMPARE: HUD Seal owner NHIỀU KHẢ NĂNG KHÔNG CÓ chức năng nav
+
+**Quan sát owner (2 xe, showroom/demo mode):**
+- **SL6 anh em** ở showroom → **demo nav + tên đường, đẹp** → firmware HUD SL6 **CÓ** lớp nav (present+provisioned).
+- **Seal owner** ở showroom → **chỉ km/h + ADAS, KHÔNG có demo nav** → firmware HUD Seal **KHÔNG có/không provision** lớp nav.
+
+**Vì sao mạnh:** showroom = OEM tự chạy demo do **firmware MCU/cụm vẽ** (RE §chiều-1 xác định không có Android driver) → exercise đúng cái firmware hỗ trợ. Seal không demo nav = firmware không có lớp nav. **Khớp `0x38B00030 = -2147482648` (not provisioned, A11).**
+
+**Kết luận (hiệu chỉnh, hạ hy vọng coding cho Seal):**
+- Bằng chứng **mạnh**: HUD Seal owner **không có chức năng dẫn đường** ở tầng firmware (render speed/ADAS/call, không render nav).
+- Coding (VDS2100) **BẬT được feature có-nhưng-tắt; KHÔNG THÊM được feature firmware không có.** Nếu Seal thiếu lớp nav → **coding cũng chịu**.
+- **Caveat (chưa 100%):** có thể là lựa-chọn-nội-dung-demo hoặc firmware-có-mà-gate-hoàn-toàn. **Xác nhận cuối = C6 `getHudSupportedModes`**: không có nav-mode → HUD Seal chịu (đổi HUD loại SL6 / HUD rời); có nav-mode-tắt → còn tia coding.
+- ⇒ Ưu tiên chạy **C6 probe** khi ra xe để chốt; và **HUD-nav "lên kính Seal" gần như = đổi phần cứng HUD / HUD rời**, không phải code HUD Seal.
