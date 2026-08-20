@@ -1,6 +1,7 @@
 package com.byd.clusternav.navigation.screencapture
 
 import com.byd.clusternav.navigation.Maneuver
+import com.byd.clusternav.navigation.LaneInfo
 
 /**
  * Kết quả nguồn ẢNH đã QUA trọng tài (`SourceArbiter.shouldFeed(..., NavChannel.IMAGE)` = true ⇒ data không
@@ -41,10 +42,24 @@ object ScreenCaptureSignal {
     fun cameraFresh(now: Long, staleMs: Long = STALE_MS): Boolean =
         cameraAtMs > 0L && now - cameraAtMs <= staleMs
 
+    // ── LANE (dải lane-guidance Waze/VietMap) ───────────────────────────────────
+    @Volatile var lanePkg: String? = null; private set
+    @Volatile var laneInfo: LaneInfo? = null; private set
+    @Volatile var laneAtMs: Long = 0L; private set
+
+    /** Publish dải làn đã đọc (đã qua trọng tài). [info] TRÁI→PHẢI; rỗng ⇒ không có lane-guidance. */
+    fun publishLane(pkg: String, info: LaneInfo, now: Long) {
+        lanePkg = pkg; laneInfo = info; laneAtMs = now
+    }
+
+    fun laneFresh(now: Long, staleMs: Long = STALE_MS): Boolean =
+        laneAtMs > 0L && now - laneAtMs <= staleMs
+
     /** Xoá khi nav idle / nguồn dừng. */
     fun clear() {
         arrowPkg = null; arrowManeuver = null; arrowAmap = null; arrowAtMs = 0L
         cameraPkg = null; cameraMatch = null; cameraAtMs = 0L
+        lanePkg = null; laneInfo = null; laneAtMs = 0L
     }
 
     /** Cùng ngưỡng tươi với `SourceArbiter.STALE_MS`. */
