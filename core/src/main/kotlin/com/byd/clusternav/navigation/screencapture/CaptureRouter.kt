@@ -11,10 +11,18 @@ package com.byd.clusternav.navigation.screencapture
 object CaptureCalibration {
 
     /**
-     * Rect mũi tên Waze của OpenBYD (`WazeArrowCaptureService.getArrowBounds`) — seed để tune on-car.
-     * Left=26, Top=218, Right=208, Bottom=298 (182×80) trong không gian màn của họ.
+     * Rect mũi tên Waze của OpenBYD (`WazeArrowCaptureService.getArrowBounds`) — seed gốc.
+     * Left=26, Top=218, Right=208, Bottom=298 (182×80) trong không gian màn của HỌ. GIỮ để tham chiếu.
      */
     val WAZE_ARROW_OPENBYD = CropRect(26, 218, 208, 298)
+
+    /**
+     * ĐO THẬT trên emulator WazeMod @960×720 (2026-08-20, Waze đang dẫn): banner maneuver ở TOP-LEFT,
+     * mũi tên ~x50-100,y50-98 + text cự ly bên phải. Cùng KÍCH THƯỚC 182×80 như seed OpenBYD nhưng
+     * ĐÚNG Y (top=20, không phải 218 — layout OpenBYD khác). ⚠ Cần xác nhận màn chính trên XE khớp
+     * layout WazeMod 960×720 này; nếu xe khác resolution/layout thì thêm entry (app,WxH) vào [TABLE].
+     */
+    val WAZE_ARROW_WAZEMOD_960x720 = CropRect(26, 20, 208, 100)
 
     /**
      * Seed icon camera VietMap — CHƯA có template/rect thật (OQ4). Đặt tạm ở góc trên-phải vùng chỉ đường
@@ -26,6 +34,9 @@ object CaptureCalibration {
     private data class Key(val target: CaptureTarget, val displayW: Int?, val displayH: Int?)
 
     private val TABLE: Map<Key, CropRect> = mapOf(
+        // Geometry-specific: đo thật trên WazeMod @960×720 (banner ở top-left). geom = kích thước bitmap chụp.
+        Key(CaptureTarget.ARROW, 960, 720) to WAZE_ARROW_WAZEMOD_960x720,
+        // Default (geometry khác): seed OpenBYD — vẫn cần calibrate trên xe.
         Key(CaptureTarget.ARROW, null, null) to WAZE_ARROW_OPENBYD,
         Key(CaptureTarget.CAMERA, null, null) to VIETMAP_CAMERA_SEED,
     )
