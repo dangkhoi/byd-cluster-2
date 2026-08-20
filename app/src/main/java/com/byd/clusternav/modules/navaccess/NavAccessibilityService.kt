@@ -82,14 +82,72 @@ class NavAccessibilityService : AccessibilityService() {
         NavAccessibilitySource.connected = true
         voiceKeyMatcher.reset()
         Log.i(TAG, "accessibility booster connected")
+        if (com.byd.clusternav.BuildConfig.DEBUG) registerDebugWindowDump()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         NavAccessibilitySource.connected = false
+        runCatching { debugWinReceiver?.let { unregisterReceiver(it) } }
+        debugWinReceiver = null
         return super.onUnbind(intent)
     }
 
     override fun onInterrupt() {}
+
+    // ─── DEBUG-only (BuildConfig.DEBUG → không có trong release OTA): dump node text/content-desc của MỌI
+    //     window (getWindows + getWindowsOnAllDisplays) qua `am broadcast -a com.byd.clusternav.DEBUG_DUMP_WINDOWS`.
+    //     Để KIỂM TRA: overlay VietMap nền có phơi a11y node (text) hay là Canvas (rỗng) — đọc-không-cần-chụp.
+    private var debugWinReceiver: android.content.BroadcastReceiver? = null
+
+    private fun registerDebugWindowDump() {
+        if (debugWinReceiver != null) return
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                runCatching { debugDumpWindows() }.onFailure { Log.w(TAG, "debug win dump failed", it) }
+            }
+        }
+        runCatching {
+            val f = android.content.IntentFilter("com.byd.clusternav.DEBUG_DUMP_WINDOWS")
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(rx, f, android.content.Context.RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(rx, f)
+            }
+            debugWinReceiver = rx
+            Log.i(TAG, "DEBUG window-dump receiver registered")
+        }.onFailure { Log.w(TAG, "debug win receiver register failed", it) }
+    }
+
+    private fun debugDumpWindows() {
+        val all = ArrayList<android.view.accessibility.AccessibilityWindowInfo>()
+        runCatching { windows?.let { all.addAll(it) } }
+        runCatching {
+            val m = AccessibilityService::class.java.getMethod("getWindowsOnAllDisplays")
+            @Suppress("UNCHECKED_CAST")
+            val sp = m.invoke(this) as? android.util.SparseArray<List<android.view.accessibility.AccessibilityWindowInfo>>
+            if (sp != null) for (i in 0 until sp.size()) sp.valueAt(i)?.let { all.addAll(it) }
+        }
+        Log.i(TAG, "DEBUG-WIN-DUMP windows=${all.size}")
+        for (w in all) {
+            val root = runCatching { w.root }.getOrNull()
+            val pkg = root?.packageName?.toString() ?: "?"
+            val texts = ArrayList<String>()
+            if (root != null) collectNodeTexts(root, texts, 0)
+            val type = runCatching { w.type }.getOrDefault(-1)
+            Log.i(TAG, "DEBUG-WIN pkg=$pkg type=$type nodes=${texts.size} texts=[${texts.take(14).joinToString(" | ")}]")
+        }
+    }
+
+    private fun collectNodeTexts(n: android.view.accessibility.AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
+        if (depth > 40 || out.size > 60) return
+        val t = n.text?.toString()?.trim()
+        val d = n.contentDescription?.toString()?.trim()
+        if (!t.isNullOrEmpty()) out.add("T:$t")
+        if (!d.isNullOrEmpty()) out.add("D:$d")
+        for (i in 0 until n.childCount) {
+            runCatching { n.getChild(i) }.getOrNull()?.let { collectNodeTexts(it, out, depth + 1) }
+        }
+    }
 
     /**
      * T3 — nút vật lý → trợ lý giọng nói. Chỉ chạy khi service được cấp quyền hỗ trợ + config
