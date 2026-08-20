@@ -44,7 +44,7 @@ echo === PRIME: navistate 2 + nav-screen 3 ===
 call :run navistate 2
 call :run setraw setting 4C10E015 3
 
-REM ===== BASELINE (khong lever, chi road) — tai lap v1 lam doi chung =====
+REM ===== BASELINE (khong lever, chi road) - tai lap v1 lam doi chung =====
 call :case "BASELINE (chi road, khong lever)" - - -
 REM ===== quet tung LEVER (dev id val) =====
 call :case "L1 SEND_DESTINATION_STATUS=2" instr 43E00038 2
@@ -69,7 +69,7 @@ pause >nul
 del "%TMPF%" >nul 2>&1
 exit /b 0
 
-REM :case <ten> <dev|-> <id|-> <val|->  — set lever (neu co) + road, doc status, quan sat, rollback
+REM :case <ten> <dev|-> <id|-> <val|->  - set lever (neu co) + road, doc status, quan sat, rollback
 :case
 echo. & echo ================= %~1 =================
 echo ================= %~1 =================>> "%LOG%"
