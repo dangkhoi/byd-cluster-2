@@ -11,6 +11,7 @@ import com.byd.clusternav.asPixelFrame
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
 import com.byd.clusternav.modules.navaccess.NavAccessibilitySource
 import com.byd.clusternav.navigation.ManeuverSignature
+import com.byd.clusternav.navigation.LaneSignature
 import com.byd.clusternav.navigation.NavChannel
 import com.byd.clusternav.navigation.PixelFrame
 import com.byd.clusternav.navigation.SourceArbiter
@@ -18,6 +19,7 @@ import com.byd.clusternav.navigation.screencapture.CaptureBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureCase
 import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
 import com.byd.clusternav.navigation.screencapture.CaptureLocationResolver
+import com.byd.clusternav.navigation.screencapture.LaneBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureRouter
 import com.byd.clusternav.navigation.screencapture.CaptureTarget
 import com.byd.clusternav.navigation.screencapture.CapturePlan
@@ -168,6 +170,23 @@ class ScreenCaptureNavSource private constructor(context: Context) {
                 if (NavLog.verbose) saveDiag(bmp, plan, now)
             }.onFailure { Log.w(TAG, "target ${plan.target} threw (dropped frame)", it) }
         }
+        // B3 T1b: LÀN — nếu a11y có bounds view lane-guidance còn tươi → crop bmp → LaneSignature → publishLane
+        // (kênh riêng, song song arrow/camera). Degrade-safe; không có bounds/làn → bỏ.
+        runCatching {
+            val lb = LaneBoundsSource.snapshot()
+            if (lb != null && now - lb.capturedAtMs <= LaneBoundsSource.FRESH_MS) {
+                cropToFrame(bmp, lb.rect)?.let { laneCrop ->
+                    LaneSignature.classify(laneCrop, LaneBoundsSource.laneCount.takeIf { it > 0 })
+                        ?.takeIf { !it.isEmpty() }
+                        ?.let { info ->
+                            if (SourceArbiter.shouldFeed(pkg, Prefs.sourceMode(appContext), nowWall, NavChannel.IMAGE)) {
+                                ScreenCaptureSignal.publishLane(pkg, info, now)
+                                if (NavLog.verbose) Log.i(TAG, "lane(image) pkg=$pkg lanes=${info.count} rec=${info.lanes.count { it.recommended }}")
+                            }
+                        }
+                }
+            }
+        }.onFailure { Log.w(TAG, "lane classify threw (dropped)", it) }
     }
 
     /** Transport theo case: 1/2 = màn chính (fission -d1), 3 = cụm (fission -d0), 4 = offscreen MediaProjection. */

@@ -21,6 +21,7 @@ import com.byd.clusternav.Prefs
 import com.byd.clusternav.navigation.screencapture.CaptureBoundsHeuristic
 import com.byd.clusternav.navigation.screencapture.CaptureBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
+import com.byd.clusternav.navigation.screencapture.LaneBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureTarget
 import com.byd.clusternav.navigation.screencapture.CropRect
 import com.byd.clusternav.navigation.screencapture.NavWindowPicker
@@ -149,6 +150,9 @@ class NavAccessibilityService : AccessibilityService() {
             CaptureForegroundSource.publish(pkg, b3Now)
             runCatching { maybePublishCaptureBounds(event, pkg, b3Now) }
                 .onFailure { Log.w(TAG, "capture bounds publish failed", it) }
+            // B3 T1b: bounds view lane-guidance (viewId) → LaneBoundsSource → ScreenCaptureNavSource crop → làn.
+            runCatching { maybePublishLaneBounds(b3Now) }
+                .onFailure { Log.w(TAG, "lane bounds publish failed", it) }
         }
         // B3.13: NGOÀI event-path (chỉ bắt app đang focus), duyệt TẤT CẢ window (getWindows /
         // getWindowsOnAllDisplays) tìm nav app BẤT KỂ foreground (như OpenBYD `rootNodeForPackages`) → mở gate
@@ -331,6 +335,33 @@ class NavAccessibilityService : AccessibilityService() {
         val disp = if (Build.VERSION.SDK_INT >= 30) runCatching { w.displayId }.getOrDefault(0) else 0
         val focused = runCatching { w.isFocused }.getOrDefault(false)
         out.add(NavWindowPicker.WinInfo(pkg, w.type, CropRect(r.left, r.top, r.right, r.bottom), disp, focused))
+    }
+
+    /** B3 T1b: viewId của view lane-guidance. Waze/WazeMod (repackaged thường GIỮ id gốc `com.waze`). VietMap/khác = OQ. */
+    private val laneViewIds = listOf("com.waze:id/laneGuidanceView", "com.waze:id/laneGuidanceContainer")
+
+    /**
+     * B3 T1b: tìm view lane-guidance qua viewId → publish bounds (không gian màn) + số làn (childCount) →
+     * [LaneBoundsSource] để `ScreenCaptureNavSource` crop vùng làn → LaneSignature. Degrade-safe; không thấy → bỏ.
+     */
+    private fun maybePublishLaneBounds(now: Long) {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
+        try {
+            for (id in laneViewIds) {
+                val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(id) }.getOrNull()
+                val node = nodes?.firstOrNull() ?: continue
+                val r = android.graphics.Rect()
+                runCatching { node.getBoundsInScreen(r) }
+                val lanes = runCatching { node.childCount }.getOrDefault(0)
+                runCatching { nodes.forEach { it.recycle() } }
+                if (r.width() > 0 && r.height() > 0) {
+                    LaneBoundsSource.publish(r.left, r.top, r.right, r.bottom, lanes, now)
+                    return
+                }
+            }
+        } finally {
+            runCatching { root.recycle() }
+        }
     }
 
     /**
