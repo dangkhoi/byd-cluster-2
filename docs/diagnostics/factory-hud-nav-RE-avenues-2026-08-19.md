@@ -261,3 +261,32 @@ lever + pathname re-assert).
 1. **Provisioning/coding VDS2100** — provision HUD-nav-config (`0x38B00030` gate + họ `0x38B00xx`/`0x30100030`) rồi test lại app. Đây là nhánh khả thi nhất còn lại. (D6.)
 2. Hoặc **chấp nhận arrow+distance-only** qua app (đang chạy) + tên đường là giới hạn provisioning.
 3. Chức năng tên đường CÓ trong firmware HUD (SL6 showroom demo được) nhưng **gated** — nên là bài toán coding/provisioning, không phải app.
+
+
+---
+
+## Cập nhật 2026-08-20 (4) — v3 PROBE: config-gate + display-content + read-map (dao them, gui anh em)
+
+Sau matrix negative (§08-20(3)), RE thêm bản đồ register đầy đủ (`jadx-DiCarServer/.../instrument/Instrument.java`
+= name→hex thật) tìm avenue CHƯA thử. **Phát hiện: matrix ghi `0x32B1102E HUD_NAVIGATION_MAP_SET` chứ CHƯA HỀ
+ghi cổng CONFIG `0x38B00030 HUD_NAVIGATION_MAP_CONFIG`** (chỉ ĐỌC status `0x38B0002E`/`0x30100030`). Và có
+`0x38B00042 DISPLAY_CONTENT_SET_FUNCTION_CONFIG` (chọn NỘI DUNG hiển thị) chưa thử.
+
+**`scripts/vehicle/hud-roadname-v3.bat`** (gói `~/Desktop/HUD-RoadName-v3.zip` + navopen.jar) — khác matrix ở
+chỗ **LOG rc MỌI write** (matrix che `>nul` nên không biết lever nào áp vs bị từ-chối-not-provisioned):
+- **READ-MAP baseline**: đọc full họ HUD-nav config/status (`0x38B00030`/`0x30100030`/`0x38B0002E`/`0x30100031`
+  /`0x38B00042`/`0x30100042`/`0x30100015`/`0x3010000D`/`0x40C0103B` + check `0x420A1010`) → thấy cái gì provisioned.
+- **N1 = GHI CONFIG GATE `0x38B00030=1`** (cổng cả cuộc điều tra nghi; matrix chưa ghi) → readback + đọc status
+  (`0x30100030`/`0x38B0002E` còn -2147482648 không?) → nếu status lật khỏi not-provisioned = ĐỘT PHÁ.
+- **N2 = `0x38B00042 DISPLAY_CONTENT_FUNCTION_CONFIG` = 1/2/3** (chọn nội dung HUD; đọc status `0x30100042`).
+- **N3 = `0x40C0B026 CP_MAP_NAVIGATION_TIPS`** (setbytes — field text tips, thử nhét tên đường).
+- **N4 = OVERSEA `0x1F7A1008` pathname + `0x1F701010` guide** (SL6 export có thể đọc họ 0x1F7).
+- **N6 = chuỗi STRICT theo thứ tự** `0x38B00030=1` → navistate 2 → `0x43E00038=2` (dest) → `0x43F01010` (guide)
+  → `0x43F01018` (dist) → `0x43FA1008` (pathname) → đọc check-state (matrix set lever rời + reset, chưa thử
+  chuỗi liền mạch có config-gate mở trước).
+- Mỗi case rollback config về 0. `.bat` pure ASCII + CRLF (verify), self-contained navopen.jar (Windows anh em).
+
+**Kỳ vọng:** N1/N2 là mạnh nhất (ghi đúng cổng CONFIG thay vì SET/status). Nếu `0x38B00030=1` được nhận (rc=0)
++ `0x30100030` lật khỏi -2147482648 → provisioning bật được từ Android (không cần VDS2100). Nếu bị từ chối
+(rc≠0) hoặc status vẫn not-provisioned dù mọi write rc=0 → khẳng định **provisioning-gate cứng** → VDS2100/D6.
+Dù kết quả nào, v3 (có log rc) sẽ CHỐT dứt điểm "Android bật được không".
