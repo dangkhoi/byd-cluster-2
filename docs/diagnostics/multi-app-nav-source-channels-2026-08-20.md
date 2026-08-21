@@ -49,3 +49,12 @@
 ## 7. Code phiên này (đã commit, nhánh `feat/speed-limit-badge-hal-hud`, chưa push)
 - Full-B3 T1b/T3/T4/T5/T6/T7 + P0 fix w960dp + senior review [P2] onDestroy-leak; data-flow doc `docs/specs/b3-data-flow.html`; overlay display-id override (`Prefs.overlayDisplayId`) + **debug frame-inject** (`DEBUG_NAV_FRAME`, tham số hoá) + **debug window-dump** (`DEBUG_DUMP_WINDOWS`) — cả hai gated `BuildConfig.DEBUG` (loại khỏi release OTA).
 - **Overlay render PROVEN trên display 0** (inject frame → dải làn + chip camera vẽ đúng).
+
+## 8. On-car ground truth (2026-08-21, read-only qua adb network, shell uid 2000 không root)
+- Xe **BYD AUTO, Android 10**; app `com.byd.clusternav2` = **1.1** (OTA release — CHƯA có full-B3 feat).
+- **Display 0 (màn chính IVI): 1920×1080** (density 240). **Display 1 (CỤM): 1920×720** (density 320) — cụm là **virtual `fission` surface** (`com.xdja.containerservice`) → khớp transport `fission -d0/-d1` trong code.
+- ⚠️ **CALIB GAP**: crop rect mũi tên **B3.9 = 960×720 SAI cho xe** (cụm 1920×720, chính 1920×1080). Phải **recalib theo kích thước thật**. `ClusterOverlayHost` default **1920×720 KHỚP cụm** ✓.
+- **Setup THẬT của owner (xác nhận qua ảnh)**: **GMaps cast lên CỤM** (cửa sổ có min/max/close + letterbox, KHÔNG full 1920×720) · màn chính = home + **speed badge ClusterNav (VietMap-fed) CHẠY TỐT** (góc trên-phải: "0 km/h" + biển "50" + ô upcoming "—").
+- GMaps-cast trên cụm là **WINDOWED/letterbox** → khi dẫn thật, mũi tên/làn nằm trong khung GMaps có **offset chrome+letterbox** → recalib phải trừ offset này.
+- **screencap qua network-adb-shell (không root) CHỤP được CẢ 2 display** (ghi /sdcard → pull) — dùng được để recalib/test off nhanh; app tự chạy vẫn cần dadb-root cho cache app-private.
+- Apps trên xe: vietmap.live, com.waze, com.chisadin.wazemod, google maps, here, `com.example.amapservice` (nav cụm AMAP).
