@@ -58,3 +58,14 @@
 - GMaps-cast trên cụm là **WINDOWED/letterbox** → khi dẫn thật, mũi tên/làn nằm trong khung GMaps có **offset chrome+letterbox** → recalib phải trừ offset này.
 - **screencap qua network-adb-shell (không root) CHỤP được CẢ 2 display** (ghi /sdcard → pull) — dùng được để recalib/test off nhanh; app tự chạy vẫn cần dadb-root cho cache app-private.
 - Apps trên xe: vietmap.live, com.waze, com.chisadin.wazemod, google maps, here, `com.example.amapservice` (nav cụm AMAP).
+
+## 9. On-car test RECIPE + gotchas (08-21) — đọc trước khi test HUD/cụm lần sau
+- **CHỐNG HANG (quan trọng)**: dùng **`../apks/navopen-v3.jar` (hoặc v4)** — bản có `Runtime.halt()` + watchdog 9s ⇒ **tự thoát, KHÔNG treo adb shell**. TUYỆT ĐỐI KHÔNG dùng `app/src/main/assets/navopen.jar` (bản CŨ, thiếu halt → binder-thread giữ pipe → adb shell treo 5 phút; NÓ CŨNG bỏ qua arg getraw + tự ghi OPEN+FRAME). Bọc mọi `adb shell` bằng watchdog local `( adb ... ) & B=$!; ( sleep 7; kill -9 $B ) &; wait $B`. Với write app_process cũ: chạy nền → file trên xe rồi `exit` (đừng để pipe mở).
+- **navopen-v3 lệnh** (source `../NavOpen/src/com/byd/navopen/NavOpen.java`): `getraw/mget` (ĐỌC, an toàn) · `setraw/multi` (ghi) · `open/close/full/frame` · `ac <id> <sub> <str>` (sendInfo) · `probe-hud` · `probe`.
+- **Bắn Giữa+ETA lên CỤM cần 3 thứ (KHÔNG chỉ ghi HAL 0x43F)** — đây là lý do navopen ghi rc=0 mà cụm trống:
+  1. **BROADCAST AUTONAVI** cho OEM AmapService: action `AUTONAVI_STANDARD_BROADCAST_SEND`, extras `KEY_TYPE=10001 TYPE=1 EXTRA_STATE=1 NEW_ICON=<0..28> SEG_REMAIN_DIS=<m> NEXT_ROAD_NAME=<str> ...` (xem `AmapFrameBuilder.buildGuidanceFrame`). AmapService nhận → ghi CAN cụm.
+  2. **op39** raise overlay: `service call AutoContainer 2 i32 1000 i32 39 s16 ""` (adb thuần, `ClusterNavLaneWidget`).
+  3. **Cast master OFF** (op39 bị gate khi Cast ON) + **keep-alive ~400ms** (OEM centre time-out).
+  → Off-car TODO: thêm mode "render loop" cho navopen (open+broadcast+op39+keep-alive N giây) HOẶC test bằng GMaps dẫn thật (app tự làm đủ). navopen HAL-write đơn lẻ = KHÔNG render.
+- **C6 HUD verdict (08-21)**: `0x38B00030 HUD_NAV_MAP_CONFIG = -2147482648 NOT_PROVISIONED` → HUD nav gated MCU, **bất khả qua Android**. Xe có HUD W-mode (`0x38B00015=1`). Unlock = VDS2100 coding / HUD Taobao (D6).
+- **Kích thước display xe**: chính 1920×1080 (d0) · cụm 1920×720 (d1, fission virtual). Crop calib B3.9 (960×720) sai → B3.23.
