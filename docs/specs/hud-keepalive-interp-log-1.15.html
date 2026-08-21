@@ -249,5 +249,8 @@ Verified in git: historical <code>versionName</code>s were <code>0.28 / 0.31 / 0
 <code>JAVA_HOME=openjdk@17 ./gradlew :core:test :app:testDebugUnitTest --rerun-tasks</code> → <b>BUILD SUCCESSFUL</b> (36 tasks executed). JUnit XML: <b>:core 759/0/0</b> (91 suites), <b>:app 371/0/0</b> (52 suites) = <b>1130 tests, 0 failures, 0 errors</b>. Changed suites: <code>HudKeepAlivePolicyTest</code> 6/0, <code>TurnDistanceInterpolatorTest</code> 9/0, <code>HudKeepAliveWiringTest</code> 3/0, <code>PhysicalHudOwnershipTest</code> 2/0. <code>:app:assembleRelease</code> → <b>BUILD SUCCESSFUL</b> (<code>lintVitalRelease</code> + <code>validateSigningRelease</code> + <code>packageRelease</code>), signed <code>app-release.apk</code> produced. Analysis script verified on synthetic new/old/empty CSVs. No commit/push performed.</div>
 
 </div>
+
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
 </body>
 </html>

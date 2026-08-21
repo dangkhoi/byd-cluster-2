@@ -166,5 +166,8 @@ Tính năng "Nút vật lý → Trợ lý" (1.13→1.18) khó dùng: (a) ô Cử
 <p class="small">Senior review (sub-agent) = <b>APPROVED</b>, 0 P0/P1. Scope R1–R6 ✅; boundary shapes (a–e) khớp. Patch: [P2] rò rỉ Activity — <code>onDestroy</code> clear <code>VoiceKeyLearnBus.setListener(null)</code>; [P3] hợp nhất sentinel (<code>AssistantLauncher.TARGET_* = Prefs.VK_TARGET_*</code>); [P3] bỏ chữ "+ cử chỉ" cũ trong 2 layout. Build lại xanh (VoiceKeyMatcherTest 6/6, assembleRelease vc119, no TEST_* surface). Chưa commit — chờ on-car + security scan.</p>
 
 </div>
+
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
 </body>
 </html>

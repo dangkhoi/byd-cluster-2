@@ -327,4 +327,7 @@ adb shell dumpsys appwidget &gt; &lt;evidence&gt;/appwidget-after-bind.txt</code
 <div class="review"><h3>Pass 2 — 2026-08-04 · Technology and grantbind planning</h3><p>Verified current AGP/Gradle/Kotlin/JUnit/dadb lines and AGP built-in Kotlin migration. Context7 Android query was incomplete, so the current official Android widget-host guide was checked directly. Platform command help confirmed <code>appwidget grantbind --package &lt;PACKAGE&gt; --user &lt;USER_ID&gt;|current</code> and reversible <code>revokebind</code>. The design keeps official consent, makes grant manual/parked/reversible, and forbids app self-grant.</p></div>
 <div class="review"><h3>Pass 3 — pending · Implementation review</h3><p>To be appended after approval and implementation; must include scope checklist, technology freshness, boundary-shape trace, fixes, tests and zero-finding verdict.</p></div>
 </section>
-</div></body></html>
+</div>
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
+</body></html>

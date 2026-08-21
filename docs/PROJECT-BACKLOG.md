@@ -96,8 +96,8 @@
 | E0 | Rule Documentation & Backlog (steering, bắt buộc 100%) | ✅ | 2026-08-19 | 2026-08-19 | `.kiro/steering/documentation-and-backlog.md` |
 | E1 | **Refactor docs theo rule**: tạo `docs/README.md` INDEX + header mọi doc current + archive doc cũ + đúng 9-loại taxonomy | ✅ | 2026-08-19 | 2026-08-19 | INDEX + header (12 doc) + 9-loại; archive=0 (bảo thủ, chủ đích); docs off-car, **committed c7409b8** |
 | E2 | Tạo `.kiro/steering/project-context.md` (kiến trúc + bản đồ nguồn nav + HAL/CAN facts + map file + trạng thái) | ✅ | 2026-08-19 | 2026-08-19 | 43 dòng (<150); khớp diagnostics+backlog; **committed c7409b8**; nhớ `git add -f` (.kiro gitignored) |
-| E3 | Index knowledge base: `docs/` (Best) + `core/`+`app/` source (Fast) | ✅ | 2026-08-19 | 2026-08-19 | 3 KB: byd-clusternav-docs + code-core + code-app (indexing background); tra thay vì đọc lại |
-| E4 | Thêm §Nhật ký triển khai vào spec template + specs hiện có; tạo `docs/decisions/` (ADR) | 🔧 | 2026-08-19 | 2026-08-19 | template `_template.html` (§9) + `decisions/` (README+3 ADR) DONE; **back-fill §Nhật ký vào 38 specs hiện có = DEFERRED** (task riêng); committed c7409b8 |
+| E3 | Index knowledge base: `docs/` (Best) + `core/`+`app/` source (Fast) | ✅ | 2026-08-19 | 2026-08-19 | 3 KB: byd-clusternav-docs + code-core + code-app. **08-21 DEDUP**: gộp worktree gây trùng 2× mỗi context → xoá 6, add lại đúng 3 từ path `byd-cluster-2` (sạch: 1 ecc + 3 byd) |
+| E4 | Thêm §Nhật ký triển khai vào spec template + specs hiện có; tạo `docs/decisions/` (ADR) | ✅ | 2026-08-19 | 2026-08-21 | template `_template.html` (§9) + `decisions/` (README+3 ADR) DONE (c7409b8). **08-21 BACK-FILL XONG**: 39 spec thiếu §Nhật ký được thêm honest stub (spec lịch sử → trỏ git/backlog/diagnostics, không bịa); 0 spec còn thiếu. → **E hoàn tất 100%** |
 
 ## Ghi chú nguồn nav (tổng hợp — để tham chiếu khi làm B3)
 - **GMaps**: notif (nav đầy đủ, chạy NỀN) + arrow bitmap. ✅ đang dùng.

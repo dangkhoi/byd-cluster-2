@@ -247,5 +247,8 @@ export PATH="$JAVA_HOME/bin:$PATH"
 <div class="review"><h3>Pass 9 — 2026-07-25 · Narrow 0.71 successor amendment</h3><p>Documentation-only amendment recorded after the owner approved <code>docs/specs/cluster-cast-v071-product-completion.html</code>. R11's “lifecycle never starts BOOTSTRAP” clause is now superseded only for an origin-tagged <code>BOOT_AUTO</code> request created from post-unlock <code>BOOT_COMPLETED</code>, persisted in this same envelope and atomically claimed once by the process-singleton Cast lifecycle coordinator before running the identical manual-intent orchestration. Every other lifecycle, receiver, locked-boot, package-replacement, generic-startup and view-creation path remains forbidden from claiming or starting BOOTSTRAP, and the explicit-user pending-placement contract is unchanged. The frozen 0.70 exact-source manifests, source ID, JVM evidence and historical APK identity remain untouched; no runtime, test, build, install, vehicle, commit or push action accompanied this amendment.</p></div>
 </section>
 </div>
+
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
 </body>
 </html>

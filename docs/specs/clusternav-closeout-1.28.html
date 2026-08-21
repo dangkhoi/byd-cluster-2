@@ -268,5 +268,8 @@
 <div class="card"><b>Pass 1 — 2026-08-16</b> — Senior review <b>APPROVED</b> (0 P0/P1). TASK 4: giá trị ON được sửa về <code>NAV_SCREEN_FULL</code> đã chứng minh (proven). Security scan <b>CLEAN</b> sau khi redact placeholder. Kèm đợt hardening đóng dự án: giảm log (log-on-change + chẩn đoán nặng sau cờ verbose off-main), cache reflection BydHal trên hot-path, disclaimer lần đầu mở app, hoàn tất ghi công CREDITS, lưu trữ diagnostics lịch sử. 1.28 (versionCode 128) build + ký; <code>aapt2</code> xác nhận không có test surface trong release APK. <span class="en">Senior review APPROVED (0 P0/P1). TASK 4: the ON value was corrected to the proven <code>NAV_SCREEN_FULL</code>. Security scan CLEAN after placeholder redactions. Includes the closeout hardening pass: logging reduction (log-on-change + heavy diagnostics behind an off-main verbose flag), BydHal reflection caching on the hot path, in-app first-launch disclaimer, CREDITS attribution completed, historical diagnostics archived. 1.28 (versionCode 128) built + signed; <code>aapt2</code> confirms no test surface in the release APK.</span></div>
 
 </div>
+
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
 </body>
 </html>

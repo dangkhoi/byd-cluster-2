@@ -189,4 +189,7 @@ if (geometry.isAppOnDisplay(pkg, displayId)) {
 <div class="review"><h3>Pass 1 — 2026-08-12 · senior review (inline; sub-agent bị huỷ giữa chừng)</h3><p class="small">VERDICT: APPROVED — 0 P0–P1. Diff audit: #3 slotOutcome RETURN chỉ khi CastingSplit+side occupied, CAST còn lại; onCastSlot Stop(side) vs detectForeground→CastSlot; two-track giữ (CAST vẫn qua validateCastSlot rejects CP/AA). #1 adopt branch resolveConfig+applySavedProfile(FULL) cho NORMAL, vẫn return (không re-cast → không loop); density-only seed bounds=null (không stamp full), resize thật vẫn persist bounds. #2 chỉ NORMAL_DEFAULT.density="240" (default param giữ "reset" → CP/AA native). Boundary shapes khớp; profile keys không đổi. A10 display-global DPI đã document (per-side độc lập bất khả thi). Evidence: :core:test 89 files + :app:testDebugUnitTest 50 files → BUILD SUCCESSFUL, 0 failures/0 errors; :app:assembleRelease → 1.09 (aapt versionCode=109).</p></div>
 </section>
 
-</div></body></html>
+</div>
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
+</body></html>

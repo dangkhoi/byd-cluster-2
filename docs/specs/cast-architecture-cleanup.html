@@ -92,5 +92,8 @@ Refactor này đụng đường cast sống. Off-car đã xanh (compile + 996 te
 <h2 id="rev"><span class="n">6</span>Reviewer Log</h2>
 <div style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px"><b>Pass 1 — 2026-08-17</b> — Fork A executed via 2-stage sub-agent DAG (decouple → delete) + independent orchestrator verification. Caught a latent strings.xml fence-pin failure the cached sub-agent run missed (exposed via <code>--rerun-tasks</code>). 996 tests green; APK verified. Pending: senior review + security scan.</div>
 </div>
+
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
 </body>
 </html>

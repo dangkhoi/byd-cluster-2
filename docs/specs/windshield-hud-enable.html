@@ -482,5 +482,8 @@ python3 scripts/evidence/record-hud-release.py \
 <div class="review"><h3>Pass 9 — 2026-08-06 · Final target/identity/command closure</h3><p>Certification audit found 2 P1 + 1 P2. Split V11 into static off-car verification and D0 exact-target DUMP/fallback preflight bound to vehicleTest+ordinary-sender tuples and a frozen action/counter oracle; added <code>record-hud-release.py</code> + full release tuple/apksigner/cert comparison; and froze exact V3–V16 selectors/flags plus proven exact-source, vehicleTest/sender and <code>collectAuthorizedApk</code> command lines. Off-car <code>--all</code> now explicitly performs no install/ADB.</p></div>
 <div class="review"><h3>Pass 10 — 2026-08-06 · Final canonical-mirror certification</h3><p>Independent verdict: <strong>APPROVED — 0 P0–P3 findings</strong>. Certified the corrected AmapService canonical model, cluster-active M1 proof, separate M2 road channel, exact per-extra payload table, emission arbiter, physical-setting ownership, release-signed vehicleTest/sender security, full diagnostic/release identity tuples, frozen paths and exact V3–V16 commands. This is a specification certification, not implementation or on-car PASS.</p></div>
 </section>
-</div></body>
+</div>
+<h2>Nhật ký triển khai (Implementation Log)</h2>
+<p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
+</body>
 </html>
