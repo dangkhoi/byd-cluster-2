@@ -18,6 +18,16 @@ Kết luận trước đây (ADR 0002 amend + `hud-provisioning-compare-2026-08-
 
 **Hệ quả:** hiện **CHƯA có ví dụ nào xác nhận một HUD zin hiện nav** (mẫu "162 lên nav" là HUD Taobao, không tính cho HUD zin). Câu hỏi RE mở lại về đúng trọng tâm: **lớp nav của HUD zin bị gate bởi cờ provisioning firmware nào — `0x38B00030` (± cờ họ hàng) là nghi phạm số 1, chưa bác.**
 
+## 0.1 — ĐÍNH CHÍNH 2026-08-21 (OWNER xác nhận, ưu tiên CAO NHẤT — thay thế suy luận Taobao ở §0)
+**HUD anh em là HUD BYD ZIN (chính hãng) GẮN THÊM — KHÔNG phải Taobao.** Thị trường VN **cắt HUD** khỏi xe khi bán; anh em **mua HUD zin rồi lắp vào** SL6. ⇒ §0 ("HUD Taobao aftermarket / đường render độc lập") **SAI**. HUD anh em đi **đúng đường render firmware factory** như HUD zin.
+
+**Hệ quả (đảo lại §0 + phục hồi so-sánh coding):**
+- HUD zin SL6 **hiện arrow+dist** dù đọc `0x38B00030 = NOT_PROVISIONED` (giống Seal) ⇒ **`0x38B00030` KHÔNG gate arrow+dist**. Nó gate **ROAD-NAME** (lớp sâu hơn: `0x420A1010` check-state — cả 2 xe đều =0, chưa provision ở đâu).
+- Khác biệt **Seal (không gì) vs SL6 (arrow+dist)** = **coding biến thể `40d` 138 (Seal) vs 162 (SL6)** — 162 bật lớp HUD-nav-guide, 138 không. (Chính là kết luận GỐC trước khi "đính chính Taobao" — nay phục hồi vì HUD là ZIN.)
+- **Gate PHÂN TẦNG:** Lớp 1 arrow+dist = coding `40d` (SL6 có, Seal không) · Lớp 2 road-name = `0x38B00030`/check-state (cả 2 chưa có).
+- **Unlock owner:** (1) lắp **HUD zin** (VN-cut nên phải mua+gắn như anh em); (2) **code Seal 138→162** (VDS2100) để bật arrow+dist — PROVEN concept (HUD zin SL6 + 162 = arrow+dist). Road-name = cần provision `0x38B00030` thêm (lớp sâu, chưa proven ở đâu).
+- ADR 0002 §Sửa-lần-2 + §0 doc này + `hud-provisioning-compare` mục 5-6 (nói "Taobao") → **stale, đọc §0.1 này thay**.
+
 ### Hai đường ra (owner quyết)
 
 | | Đường | Trạng thái | Bản chất |
