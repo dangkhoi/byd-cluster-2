@@ -122,6 +122,7 @@
 ### Historical / context — giữ tại chỗ
 
 - [`diagnostics/oncar-handoff-voicekey-2026-08-14.md`](diagnostics/oncar-handoff-voicekey-2026-08-14.md) — handoff on-car voice-key 1.19 (đã qua)
+- [Cụm-centre render root cause (08-21)](diagnostics/cluster-centre-render-rootcause-2026-08-21.md) — vì sao HAL guide rc=0 mà centre trống; đường đúng = NaviInfo flatbuffer qua AutoContainer.sendInfo2(4) trên cụm fission. Current, 2026-08-21.
 - `diagnostics/artifacts/` — evidence logcat/env cast 2026-07-30 (đọc-only)
 - Scripts diagnostics (tooling, không phải doc): `diagnostics/nav-log.ps1`, `diagnostics/nav-debug.ps1`, `diagnostics/autotest.ps1`, `diagnostics/cluster-cast-test.ps1`
 
