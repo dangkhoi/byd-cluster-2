@@ -13,9 +13,10 @@
 set -u
 CAR="${1:?usage: $0 <car-serial>}"
 ADB="${ADB:-adb}"
-JAR="${JAR:-$HOME/Documents/workspaces/experiments/byd/apks/navopen-v4.jar}"
+JAR="${JAR:-$HOME/Documents/workspaces/experiments/byd/apks/navopen-v5.jar}"
 NAV="CLASSPATH=/data/local/tmp/navopen.jar app_process /system/bin com.byd.navopen.NavOpen"
 OUT="${OUT:-/tmp/clcentre-probe}"; mkdir -p "$OUT"
+SV="${SV:-3}"    # SET_NAVI_SCREEN_STATUS value (3 default; thử SV=2 nếu 3 không ra centre — soft spot RE 08-14)
 
 # Test NaviInfo flatbuffer (108B) — naviState=1, nextRouteName="Nguyen Hue", curToSegmentDist=250,
 # nextTurnIcon=2, routeRemainTime=600, routeRemainDist=3000, eta="12:05", SegRemainDisAuto="250".
@@ -35,22 +36,18 @@ echo "  → !=\"1\" ⇒ centre PHẢI đi flatbuffer (đúng hypothesis). ==\"1\
 echo "=== 2. AutoContainer reachability (acprobe) ==="
 run "$NAV acprobe" 12
 
-echo "=== 3. push NaviInfo flatbuffer + status, keep-alive ~12s, screencap giữa chừng ==="
-# One-shot per app_process (self-halts). Loop a few times to bridge the OEM display timeout; grab a
-# screencap right after a push while the frame is still latched.
-for i in 1 2 3 4 5 6; do
-  run "$NAV ac2 4 $HEX" 12
-  if [ "$i" = "3" ]; then
-    run "screencap -d 1 /sdcard/clcentre_$i.png" 8
-    $ADB -s "$CAR" pull /sdcard/clcentre_$i.png "$OUT/" >/dev/null 2>&1 && echo "  screencap → $OUT/clcentre_$i.png ($(wc -c <"$OUT/clcentre_$i.png" 2>/dev/null) bytes)"
-  fi
-  sleep 0.3
-done
-# final screencap
-run "screencap -d 1 /sdcard/clcentre_final.png" 8
-$ADB -s "$CAR" pull /sdcard/clcentre_final.png "$OUT/" >/dev/null 2>&1 && echo "  final screencap → $OUT/clcentre_final.png ($(wc -c <"$OUT/clcentre_final.png" 2>/dev/null) bytes)"
+echo "=== 3. WARM-RESTART sequence (0x4C10E015=$SV + navistate 4→2 + flatbuffer keep-alive 12s) + screencap ==="
+echo "  ⚠ Chạy với app ClusterNav Nav+HUD OFF (để AmapService/app không giành lại 0x4C10E015)."
+# clcentre = 1 process: setSettingRaw(0x4C10E015,SV) + navistate 4, rồi lặp [navistate 2 + sendInfo2(4,flatbuffer)] ~300ms x 12s.
+( run "$NAV clcentre 12 $SV $HEX" 24 ) &
+CL=$!
+sleep 5    # để frame latched giữa keep-alive
+run "screencap -d 1 /sdcard/clcentre_mid.png" 8
+$ADB -s "$CAR" pull /sdcard/clcentre_mid.png "$OUT/" >/dev/null 2>&1 && echo "  mid screencap → $OUT/clcentre_mid.png ($(wc -c <"$OUT/clcentre_mid.png" 2>/dev/null) bytes)"
+wait $CL 2>/dev/null
+echo "  → nếu clcentre báo sendInfo2_ok>0 mà mid.png vẫn ~12KB blank: thử SV=2 (SV=2 $0 <car>) hoặc layout door 4C10A018/4C130041 (xem doc §4)."
 
 echo "=== 4. cleanup ==="
 run "rm -f /data/local/tmp/navopen.jar /sdcard/clcentre_*.png" 8
-echo "  DONE. Xem $OUT/clcentre_final.png — nếu centre hiện 'Nguyen Hue / 250m / ETA' = HYPOTHESIS CONFIRMED."
+echo "  DONE. Xem $OUT/clcentre_mid.png — nếu centre hiện 'Nguyen Hue / 250m / ETA' = HYPOTHESIS CONFIRMED."
 echo "  (screencap >100KB + có chữ = render; ~12KB blank = chưa. Đọc ảnh QUA SUB-AGENT, không đọc trực tiếp.)"

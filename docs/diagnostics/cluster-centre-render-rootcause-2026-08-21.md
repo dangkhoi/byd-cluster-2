@@ -76,16 +76,20 @@ Hai cái này chỉ **bật chế độ**; content vẫn phải qua flatbuffer t
 | 17 | roungAboutNum | int | số lối ra vòng xuyến |
 | 18 | nextRoungAboutNum | int | |
 
-## 4. Đường render ĐÚNG (cho cụm fission)
+## 4. Đường render ĐÚNG — SEQUENCE ĐẦY ĐỦ (reconcile RE 08-14)
+> ⚠ **Flatbuffer-một-mình KHÔNG đủ.** `fission_single_os` chỉ chọn TRANSPORT (đường flatbuffer CÓ chạy vì =0), KHÔNG phải layout. Layout centre = `m_u8NaviType` phía cụm (`libBydDataSource.so`, từ `BODYWORK_POWER_LEVEL==3` + `0x4C10E015` + store `/collect2`). Cần CHUỖI warm-restart đầy đủ vào cụm ĐANG SỐNG:
 ```
 [nav data] → GuideInfo (18 field)
-   → setNaviScreenStatus(0x4C10E015, 3)                (BYDAutoSettingDevice)   [enabler]
-   → setNaviStatus(INSTRUMENT_SEND_NAVI_STATUS_SET, 4) (BYDAutoInstrumentDevice)[enabler]
+   [app Nav+HUD OFF để AmapService không giành lại 0x4C10E015; cụm sống: BODYWORK_POWER_LEVEL==3, nav active]
+   → setNaviScreenStatus(0x4C10E015, v)  (SOFT SPOT: AmapService ghi 3 nhưng nhánh EASY test ==2 — getraw 4 state để chốt)
+   → setNaviStatus(0x43E0003A, 4 → 2)    (ÉP transition để cụm recompute m_u8NaviType → EASY/centre)
    → NaviInfo flatbuffer (createNaviInfo, thứ tự §3)
    → AutoContainerManager.sendInfo2(4, bytes)          ← CONTENT (đoạn THIẾU)
    → keep-alive: lặp lại ~250-400ms (giống cụm-lane heartbeat)
 ```
 Ghi chú reachability: `sendInfo2` nhận `byte[]` ⇒ **KHÔNG gửi được bằng `service call` CLI** (chỉ i32/s16). Phải qua **binder in-process**: `getSystemService("auto_container")` HOẶC `ServiceManager.getService("AutoContainer")` + `transact(txn, parcel{writeInt(4); writeByteArray(bytes)})`. Txn code: `sendInfo` đã biết = **2** (app dùng), `sendInfo2` **nghi = 3** (cần confirm từ Stub smali hoặc thử on-car).
+
+**RECONCILE `docs/archive/diagnostics/re-4mode-amap-layout-mechanism-2026-08-14.md` (đọc TRƯỚC):** doc 08-14 đã RE đúng chỗ này kỹ hơn — `mClusterType=fission_single_os=0` = chọn transport; layout do `m_u8NaviType` phía cụm quyết (không phải flatbuffer). Verdict 08-14: chuyển layout LIVE có thể KHÔNG root-free reachable (layout ở cụm-OS-domain, recompute trên event nội bộ) — NHƯNG quan sát 'app/OTA restart → centre' chứng tỏ chuỗi warm-restart LÊN được centre. Layout doors chưa thử (P2): `setraw instr 4C10A018` (INSTRUMENT_NAVI_TYPE_SET), `4C130041` (INSTRUMENT_NAVIGATION_STYLE_SET). **Bài học doc-discipline: tôi tạo doc 08-21 mà chưa search KB → suýt trùng/lệch doc 08-14. Đã cross-link.**
 
 ## 5. Xác minh ON-CAR (chưa từng chạy — bài test dứt điểm)
 1. **Xác nhận loại cụm** (1 lệnh, quyết chẩn đoán):
@@ -97,7 +101,7 @@ Ghi chú reachability: `sendInfo2` nhận `byte[]` ⇒ **KHÔNG gửi được b
 2. **Gửi 1 frame test qua flatbuffer** (probe jar §6) + `setNaviScreenStatus(3)` + `setNaviStatus(4)` → nhìn cụm-centre. Render = xác nhận đường đúng.
 
 ## 6. Bước kế
-- **Probe SẴN SÀNG (không cần build)**: `scripts/vehicle/cluster-centre-flatbuffer-probe.sh <car>` — navopen-v4 đã có `ac2` (sendInfo2). Script: getprop fission → acprobe → push flatbuffer test (108B, `gen-naviinfo-flatbuffer.py`) qua `ac2 4 <hex>` + screencap cụm. Đọc ảnh QUA SUB-AGENT. Render 'Nguyen Hue/250m/ETA' = CONFIRMED.
+- **Probe SẴN SÀNG (không cần build)**: `scripts/vehicle/cluster-centre-flatbuffer-probe.sh <car>` — navopen-v5 có `clcentre <s> <screenVal> <hex>` (1 process: setSettingRaw 0x4C10E015 + navistate 4→2 + sendInfo2(4,flatbuffer) keep-alive). Script: getprop fission → acprobe → `clcentre 12 3 <hex-108B>` (app Nav OFF) → screencap. `SV=2` nếu 3 không ra. Đọc ảnh QUA SUB-AGENT. Render 'Nguyen Hue/250m/ETA' = CONFIRMED.
 - **App (code chuẩn)**: thêm `com.google.flatbuffers` + class `NaviInfo` (sinh từ schema §3) + `AutoContainerCentreSink` (getSystemService/binder + sendInfo2(4,bytes)) + gate `fission_single_os != "1"` + keep-alive; owner DUY NHẤT = `NavigationHudOwner` (không đụng đường cast). Chỉ ghi khi nav-only (Cast master OFF), giống op39 hiện tại.
 
 ## 7. References (RE)
