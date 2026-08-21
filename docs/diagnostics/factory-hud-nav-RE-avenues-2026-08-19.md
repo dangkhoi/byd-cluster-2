@@ -303,3 +303,13 @@ chỗ **LOG rc MỌI write** (matrix che `>nul` nên không biết lever nào á
 + `0x30100030` lật khỏi -2147482648 → provisioning bật được từ Android (không cần VDS2100). Nếu bị từ chối
 (rc≠0) hoặc status vẫn not-provisioned dù mọi write rc=0 → khẳng định **provisioning-gate cứng** → VDS2100/D6.
 Dù kết quả nào, v3 (có log rc) sẽ CHỐT dứt điểm "Android bật được không".
+
+## 0.2 — RE FINDING 2026-08-21: tầng ĐÚNG là CarService `ICarHudManager`, KHÔNG phải HAL bydauto thô
+RE `sysimg/jadx-DiCarServer` + `decoded/1d1095…/com/byd/car/feature/vision/`:
+- Có **CarService HUD manager `ICarHudManager`** (client `car/j2.java`) với API nav-riêng:
+  - đọc: **`getHudConfig(int featureMask)`** (bitmask feature provisioned) · `getHudSupportedModes()` · **`isNavigationMapEnabled()`** · `isDynamicNavigationEnabled()` · `isNavigationFusionEnabled()` · `isHudSwitchEnabled()`
+  - ghi: **`setNavigationMapEnabled(bool)`** · `setDynamicNavigationEnabled` · `setNavigationFusionEnabled` · `setHudMode`
+- **`HudMode` = SIMPLE(1)/STANDARD(2)/OFF_ROAD(3)** = layout hiển thị, KHÔNG phải "mode nav" → nav là feature RIÊNG (`NavigationMapEnabled`), không phải 1 HudMode.
+- ⇒ **Tôi đã probe nhầm tầng**: `navopen getraw/setraw 0x38B00030` là **HAL bydauto thô**; tầng điều khiển thật là **CarService `ICarHudManager`** (map xuống HAL). `getHudConfig` bitmask = **cách CHÍNH XÁC** so năng lực Seal vs SL6 (thay cho suy đoán `vehicle_40d` 138/162 — chỉ correlation, chưa chứng minh).
+- **Provisioning gate:** service impl của ICarHudManager (native/tiến trình khác — KHÔNG trong jadx app) mới quyết support; nó đọc coding/equipment. HAL thô trả NOT_PROVISIONED trên Seal ⇒ nhiều khả năng CarService setter cũng fail, NHƯNG **chưa test qua tầng đúng**.
+- **Bài probe kế (off-car build → on-car):** dùng **Car API `com.byd.car.Car` → ICarHudManager**: (1) `getHudConfig(mask)` + `isNavigationMapEnabled/Fusion/Dynamic` trên Seal — đọc năng lực THẬT; (2) so với SL6 → byte/bit khác chính xác; (3) thử `setNavigationMapEnabled(true)` — nếu FLIP true = **toggle (không cần coding dealer!)**, nếu fail = coding-gated. Đây là câu trả lời dứt điểm "toggle hay coding".
