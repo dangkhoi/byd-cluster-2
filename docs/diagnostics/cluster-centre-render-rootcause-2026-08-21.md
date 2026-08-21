@@ -97,7 +97,7 @@ Ghi chú reachability: `sendInfo2` nhận `byte[]` ⇒ **KHÔNG gửi được b
 2. **Gửi 1 frame test qua flatbuffer** (probe jar §6) + `setNaviScreenStatus(3)` + `setNaviStatus(4)` → nhìn cụm-centre. Render = xác nhận đường đúng.
 
 ## 6. Bước kế
-- **Probe (off-car build → on-car)**: thêm lệnh `clcentre` vào navopen (self-halting): build NaviInfo flatbuffer test + `AutoContainer.sendInfo2(4, bytes)` + 2 HAL status + keep-alive vài giây. Chạy 1 phát biết render hay không.
+- **Probe SẴN SÀNG (không cần build)**: `scripts/vehicle/cluster-centre-flatbuffer-probe.sh <car>` — navopen-v4 đã có `ac2` (sendInfo2). Script: getprop fission → acprobe → push flatbuffer test (108B, `gen-naviinfo-flatbuffer.py`) qua `ac2 4 <hex>` + screencap cụm. Đọc ảnh QUA SUB-AGENT. Render 'Nguyen Hue/250m/ETA' = CONFIRMED.
 - **App (code chuẩn)**: thêm `com.google.flatbuffers` + class `NaviInfo` (sinh từ schema §3) + `AutoContainerCentreSink` (getSystemService/binder + sendInfo2(4,bytes)) + gate `fission_single_os != "1"` + keep-alive; owner DUY NHẤT = `NavigationHudOwner` (không đụng đường cast). Chỉ ghi khi nav-only (Cast master OFF), giống op39 hiện tại.
 
 ## 7. References (RE)
