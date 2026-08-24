@@ -1,6 +1,6 @@
 # ClusterNav 2.0 — Docs Index (INDEX canonical)
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-08-23 · **Mục đích**: Bản đồ MỌI tài liệu hiện hành theo 9-loại taxonomy (R4). Không có trong index = archive/stale, KHÔNG authoritative (R0).
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-24 · **Mục đích**: Bản đồ MỌI tài liệu hiện hành theo 9-loại taxonomy (R4). Không có trong index = archive/stale, KHÔNG authoritative (R0).
 
 **(VI)** Đây là **nguồn map tài liệu duy nhất** của repo. Đọc file này trước → rồi mở doc cụ thể. Task = `PROJECT-BACKLOG.md`. Luật bền = `../.kiro/steering/`.
 **(EN)** This is the repo's **single documentation map**. Read this first → then open the specific doc. Tasks live in `PROJECT-BACKLOG.md`; durable rules in `../.kiro/steering/`.
@@ -85,6 +85,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 | [`specs/b3-full-nav-capture.html`](specs/b3-full-nav-capture.html) | **B3 FULL**: đọc mũi tên+làn+camera+text (Waze/VietMap/GMaps) + menu chọn nguồn + bắn cụm/HUD + overlay cụm (như speed badge). **Draft/chờ duyệt** | Current | 2026-08-23 |
 | [`specs/b3-data-flow.html`](specs/b3-data-flow.html) | **B3 DATA FLOW**: input→process→output (đường nào, data nào, vẽ gì/thế nào) — 2 sơ đồ SVG. Reference | Current | 2026-08-20 |
 | [`specs/b3-glyph-locator-cast-invariant.html`](specs/b3-glyph-locator-cast-invariant.html) | **B3.27**: dò glyph BẤT BIẾN với cấu hình cast (user chỉnh dpi/size/vị-trí, cast 1 hoặc 2 app) — thay mọi rect crop cố định. §4.2 + Reviewer Log Pass 2/3 = bộ cổng hiện hành (B3.47 vòng 3 + 3b) | Current | 2026-08-23 |
+| [`specs/nav-input-output-architecture.html`](specs/nav-input-output-architecture.html) | **Kiến trúc luồng nav — owner DUYỆT 08-24**: nhiều cách nhận tín hiệu → MỘT cửa vào → các đầu ra. Vẽ cả chỗ code đã trôi + 3 bước quay về | Current | 2026-08-24 |
 | [`specs/b3-53-fixed-rect-ncc.html`](specs/b3-53-fixed-rect-ncc.html) | **B3.53**: nhánh NCC MỀM chấm crop lấy bằng rect KHÔNG-phải-mũi-tên ra SAI HƯỚNG — bảng số 2 ứng viên + vá `classifyStrict` (tier rect cố định) + vá `CaptureBounds.target` (tier a11y, Pass 2) + bảng giá phủ sóng (off-car xanh, chưa on-car) | Current | 2026-08-23 |
 | [`specs/b-multiapp-nav-safety.html`](specs/b-multiapp-nav-safety.html) | **Scope B**: an toàn khi >1 app dẫn — một-package-một-khung · dwell chống nhảy nguồn · guard hợp lý hoá cự ly · cổng kênh DATA/IMAGE | Current | 2026-08-22 |
 | [`specs/speed-limit-cluster-hud-oncar-ready.html`](specs/speed-limit-cluster-hud-oncar-ready.html) | Speed-limit cluster badge + HAL port + HUD probe (on-car ready) | Current | 2026-08-17 |
@@ -142,6 +143,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 | [`diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md`](diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md) | **Cổng dò glyph VietMap — chẩn đoán + bản vá đã đo lại** (§7 vòng 3, §7.7 vòng 3b): cổng cũ trả **icon POI bản đồ ở 60/87 khung** thay vì im lặng ⇒ thay trần dp bằng tỉ số + **neo trái** (dò đúng 27→86, đảo mồi 60→0); vòng 3b đóng thêm 3 đường false-positive — `windowRect=null` ⇒ mũi tên app KHÁC (Hamming 0) · dpi khai ≤124 ⇒ icon status bar ở 87/87 · rơi về rect Waze cố định ⇒ 2 ca SAI HƯỚNG | Current | 2026-08-23 |
 | [`diagnostics/b3-cluster-arrow-e2e-emulator-1920x720-2026-08-21.md`](diagnostics/b3-cluster-arrow-e2e-emulator-1920x720-2026-08-21.md) | Mốc B3.e2e — chuỗi "đọc cụm → đẩy HUD" thông off-car ở đúng 1920×720 (log thật) | Current | 2026-08-21 |
 | [`diagnostics/hal-register-latch-on-identity-switch-2026-08-22.md`](diagnostics/hal-register-latch-on-identity-switch-2026-08-22.md) | HAL latch khi đổi danh tính nguồn — nền cho bất biến MỘT-PACKAGE-MỘT-KHUNG (SB.1) | Current | 2026-08-22 |
+| [`diagnostics/voicekey-adb-approval-first-open-2026-08-24.md`](diagnostics/voicekey-adb-approval-first-open-2026-08-24.md) | **F2 — phím thoại câm ở lần mở app đầu**: [ĐO] bytecode dadb 2.0.0 (adbd im lặng chờ bấm "Cho phép gỡ lỗi USB" + `socketTimeout=0` ⇒ treo vĩnh viễn; nối LƯỜI ⇒ thử lại sẽ phát lại lệnh) · vá = phân loại lý do + chờ có giãn cách (**4 lần × 1/2/4 s, ~31 s**) CHỈ cho 2 đường owner-chủ-động · **§4.3 = vòng phản biện: 6 điểm phải sửa, đứng đầu là "cấm phát lại lệnh đã gửi"** · quy kết còn ở mức [SUY], §5 nêu đúng 3 lệnh để chốt trên xe | Current | 2026-08-24 |
 | [`diagnostics/8hare-gemini-voicekey-vietmap-autostart-2026-08-21.md`](diagnostics/8hare-gemini-voicekey-vietmap-autostart-2026-08-21.md) | Voice-key → Gemini (keyevent 231, recipe 8hare) + VietMap autostart headless-friendly | Current | 2026-08-21 |
 | [`diagnostics/multi-app-nav-source-channels-2026-08-20.md`](diagnostics/multi-app-nav-source-channels-2026-08-20.md) | Ma trận kênh nguồn (GMaps/VietMap/Waze nền vs visible) + khung two-track (data không phải overlay) + bác lừa/clone overlay | Current | 2026-08-20 |
 | [`diagnostics/VEHICLE-TEST-V2.md`](diagnostics/VEHICLE-TEST-V2.md) | Checklist thử trên xe + ma trận Stage 11 (execution NOT STARTED) | Current | 2026-07-26 |
@@ -197,6 +199,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 | [`_handoff/stage-b3spec-done.md`](_handoff/stage-b3spec-done.md) | Handoff B3 — spec screen-capture (4 case) trước khi code | Session | 2026-08-19 |
 | [`_handoff/stage-b4-done.md`](_handoff/stage-b4-done.md) | Handoff B4 — diagnostics hygiene (screenRead INVALID khi stale) | Session | 2026-08-19 |
 | [`_handoff/stage-b3-core-done.md`](_handoff/stage-b3-core-done.md) | Handoff B3 core — NavGlyphLocator + registry mực + roster NavApps | Session | 2026-08-22 |
+| [`_handoff/session-2026-08-24-funnel-hud-voicekey.md`](_handoff/session-2026-08-24-funnel-hud-voicekey.md) | Handoff 08-24 — phễu nav bước 1/3 · HUD VietMap/Waze · badge tốc độ · phím thoại · 3 bài học + sự cố PII | Session | 2026-08-24 |
 | [`_handoff/.b3-app-plan.md`](_handoff/.b3-app-plan.md) | Kế hoạch nhánh :app của B3 (nháp phiên) | Session | 2026-08-22 |
 | [`_handoff/re-hud-track1-hudservice.md`](_handoff/re-hud-track1-hudservice.md) | RE HUD track 1 — HudService | Session | 2026-08-21 |
 | [`_handoff/re-hud-track2-firmware-gate.md`](_handoff/re-hud-track2-firmware-gate.md) | RE HUD track 2 — cổng firmware | Session | 2026-08-21 |

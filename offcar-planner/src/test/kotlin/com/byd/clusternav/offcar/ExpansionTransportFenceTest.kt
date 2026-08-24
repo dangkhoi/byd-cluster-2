@@ -496,11 +496,27 @@ class ExpansionTransportFenceTest {
          * Hằng cũ (giữ lại để trace): activity_main.xml = 4738ceb6…4946ec.
          * Chức năng KHÔNG mất: badge vẫn lấy từ widget VietMap, dòng trạng thái `txt_speed_source_bind` giữ nguyên.
          *
+         * ⚠ CẬP NHẬT 2026-08-24 (lần 2) — owner duyệt, KHÔNG phải sửa lén.
+         *
+         * `activity_main.xml` đổi lần nữa vì **F3 — gán NHIỀU phím cho NHIỀU app**. Owner yêu cầu nguyên văn:
+         * *"có thể binding nhiều nút vào nhiều app được không? … nên có giao diện kiểu sau khi chọn nút +
+         * chọn app xong → add, thì ra 1 dòng đã binding nút và app, xong có thể chọn thêm add thêm, mình
+         * listen thì listen theo cái danh sách đã save đó thôi"*.
+         * Thay đổi trong mục "Nút vật lý → mở app": thêm `btn_voicekey_add` (Thêm gán), `list_voicekey_bindings`
+         * (nơi bơm từng dòng đã gán) và `txt_voicekey_empty` (nói rõ danh sách rỗng ⇒ KHÔNG có gì chạy);
+         * đánh số lại nhãn hai dropdown sẵn có thành "1 · Chọn nút" / "2 · Chọn app sẽ mở".
+         * Dòng đã gán nằm ở layout MỚI `row_voicekey_binding.xml` (không thuộc danh sách canh này).
+         * `strings.xml` KHÔNG đổi — nhãn đặt lúc chạy qua `Lang.t` để giữ song ngữ, đúng lối đang dùng.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = fddc1ef5…a694d.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
+         * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
+         * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "fddc1ef5ccef7fbdd3e61193451aa294c9162116b796a8e508eaf168a64a694d",
+            "app/src/main/res/layout/activity_main.xml" to "25fa883616277e815e49ed270aa1489c7fafcd62fc155dd256a8c8f267e2f202",
             "app/src/main/res/values/strings.xml" to "4b068200722b3a6d26620f1adf7d550e7497f29262fa9bc7a30d3684daec6fa1",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

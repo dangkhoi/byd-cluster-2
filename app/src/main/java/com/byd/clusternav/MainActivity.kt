@@ -397,6 +397,9 @@ class MainActivity : Activity() {
         }
         navClusterStatus.refresh()
         updateVoiceKeyLabel()
+        // F3: quay lại màn hình phải thấy đúng danh sách gán đang lưu (vd vừa cài/gỡ app đích, hoặc màn
+        // hình bị huỷ-dựng lại). Vẽ lại từ Prefs — không giữ bản sao trên UI.
+        rebuildVoiceKeyBindingList()
     }
 
     private fun View.tint(color: Int) {
@@ -573,19 +576,85 @@ class MainActivity : Activity() {
     /** Dropdown nút = preset + nút tự học (persist). */
     private fun voiceKeyButtonList(): List<Pair<String, Int>> = voiceKeyPresets + Prefs.voiceKeyCustomButtons(this)
 
-    private fun updateVoiceKeyLabel() {
-        val current = findViewById<TextView>(R.id.txt_voicekey_current) ?: return
-        val kc = Prefs.voiceKeyCode(this)
-        current.text = Lang.t("Nút hiện tại: ", "Current button: ") + android.view.KeyEvent.keyCodeToString(kc) + " ($kc)"
+    /**
+     * Đích chọn được = 3 mục đặc biệt (ghim đầu) + mọi app có launcher. Dựng MỘT lần rồi dùng lại cho cả
+     * dropdown lẫn nhãn từng dòng đã gán — hai nơi phải đọc CÙNG một bảng, nếu không dòng đã gán có thể
+     * hiện tên khác với lúc chọn.
+     */
+    private val voiceKeyTargetSpecs: List<Pair<String, String>> by lazy {
+        listOf(
+            Lang.t("Trợ lý mặc định hệ thống", "System default assistant") to Prefs.VK_TARGET_ASSIST,
+            Lang.t("Trợ lý qua phím cứng (Gemini · 231)", "System assistant via hard key (Gemini · 231)") to Prefs.VK_TARGET_GEMINI_KEY,
+            Lang.t("Nhận dạng giọng nói", "Speech recognizer") to Prefs.VK_TARGET_RECOGNIZER,
+        ) + com.byd.clusternav.modules.clustercast.ClusterCast.listInstalledApps(this).map { it.label to it.pkg }
     }
 
-    /** (Re)nạp dropdown nút, chọn keycode [selectCode]. */
-    private fun rebuildVoiceKeyButtonSpinner(selectCode: Int = Prefs.voiceKeyCode(this)) {
+    /** Nhãn nút: ưu tiên tên trong dropdown (preset/tự học), không có thì dựng từ mã phím. */
+    private fun voiceKeyButtonLabel(code: Int): String =
+        voiceKeyButtonList().firstOrNull { it.second == code }?.first
+            ?: (android.view.KeyEvent.keyCodeToString(code) + " ($code)")
+
+    /** Nhãn đích: tên app trong bảng; app đã gỡ cài ⇒ hiện chính chuỗi spec để owner còn nhận ra mà xoá. */
+    private fun voiceKeyTargetLabel(spec: String): String =
+        voiceKeyTargetSpecs.firstOrNull { it.second == spec }?.first ?: spec
+
+    /** Nhãn "nút ĐANG CHỌN trong dropdown" — F3: không còn khái niệm "nút hiện tại" vì gán được nhiều nút. */
+    private fun updateVoiceKeyLabel() {
+        val current = findViewById<TextView>(R.id.txt_voicekey_current) ?: return
+        val kc = selectedVoiceKeyCode()
+        current.text =
+            if (kc == null) Lang.t("Nút đang chọn: —", "Selected button: —")
+            else Lang.t("Nút đang chọn: ", "Selected button: ") + android.view.KeyEvent.keyCodeToString(kc) + " ($kc)"
+    }
+
+    private fun selectedVoiceKeyCode(): Int? {
+        val spinner = findViewById<android.widget.Spinner>(R.id.spinner_voicekey_button) ?: return null
+        return voiceKeyButtonList().getOrNull(spinner.selectedItemPosition)?.second
+    }
+
+    /**
+     * (Re)nạp dropdown nút. [selectCode] = mã phím cần chọn sẵn (vd vừa học xong một nút mới).
+     * Lựa chọn dropdown là trạng thái TẠM của màn hình — cấu hình thật nằm ở danh sách đã gán.
+     */
+    private fun rebuildVoiceKeyButtonSpinner(selectCode: Int? = null) {
         val spinner = findViewById<android.widget.Spinner>(R.id.spinner_voicekey_button) ?: return
+        // Đọc mã đang chọn TRƯỚC khi thay adapter: gán adapter mới reset lựa chọn về 0, nên nếu đọc sau thì
+        // "giữ nguyên lựa chọn" luôn ra mục đầu — owner vừa xoá một nút tự học là nút đang chọn nhảy mất.
+        val keep = selectCode ?: selectedVoiceKeyCode()
         val list = voiceKeyButtonList()
         spinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.first })
-        spinner.setSelection(list.indexOfFirst { it.second == selectCode }.coerceAtLeast(0))
+        spinner.setSelection(list.indexOfFirst { it.second == keep }.coerceAtLeast(0))
         updateVoiceKeyLabel()
+    }
+
+    /**
+     * F3 — vẽ lại DANH SÁCH ĐÃ GÁN từ `Prefs.voiceKeyBindings` (đúng danh sách mà
+     * `NavAccessibilityService.onKeyEvent` nghe theo, không phải một bản sao khác trên UI).
+     * Rỗng ⇒ hiện dòng nhắc "chưa gán nút nào ⇒ không có gì chạy" (yêu cầu của owner).
+     */
+    private fun rebuildVoiceKeyBindingList() {
+        val container = findViewById<android.widget.LinearLayout>(R.id.list_voicekey_bindings) ?: return
+        val items = Prefs.voiceKeyBindings(this)
+        findViewById<TextView>(R.id.txt_voicekey_empty)?.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        container.removeAllViews()
+        for (b in items) {
+            val row = layoutInflater.inflate(R.layout.row_voicekey_binding, container, false)
+            row.findViewById<TextView>(R.id.txt_binding_label).text =
+                voiceKeyButtonLabel(b.keyCode) + "  →  " + voiceKeyTargetLabel(b.targetSpec)
+            // Nhãn nút đặt LÚC CHẠY, không lấy chữ cứng trong XML — KDoc của row_voicekey_binding.xml nói rõ
+            // chuỗi không vào strings.xml (file đó nằm trong danh sách canh chống-sửa-lén T11) nên song ngữ
+            // phải do đây lo. Bản F3 đầu tiên quên, nên máy đặt tiếng Anh vẫn thấy nút "Xoá".
+            row.findViewById<Button>(R.id.btn_binding_remove).apply {
+                text = Lang.t("Xoá", "Remove")
+                contentDescription = Lang.t("Xoá dòng gán này", "Remove this binding")
+                setOnClickListener {
+                    Prefs.removeVoiceKeyBinding(this@MainActivity, b.keyCode)
+                    rebuildVoiceKeyBindingList()
+                    Toast.makeText(this@MainActivity, Lang.t("Đã xoá gán", "Binding removed"), Toast.LENGTH_SHORT).show()
+                }
+            }
+            container.addView(row)
+        }
     }
 
     /** Sau khi service bắt keycode mới: hỏi tên → lưu nút custom → nạp lại dropdown + chọn. */
@@ -597,10 +666,17 @@ class MainActivity : Activity() {
             .setTitle(Lang.t("Đặt tên nút (mã $code)", "Name this button (code $code)"))
             .setView(input)
             .setPositiveButton(Lang.t("Lưu", "Save")) { _, _ ->
+                // Học phím = thêm nút vào dropdown + chọn sẵn. CHƯA gán gì cả — owner còn phải chọn app rồi
+                // bấm "Thêm gán" (F3). Trước F3 bước này ghi thẳng `voicekey_keycode`, tức học xong là đổi
+                // luôn nút đang chạy; giờ cấu hình thật chỉ đổi khi owner bấm Thêm.
                 val name = input.text.toString().ifBlank { default }
                 Prefs.addVoiceKeyCustomButton(this, "$name (mã $code)", code)
-                Prefs.setVoiceKeyCode(this, code)
                 rebuildVoiceKeyButtonSpinner(code)
+                Toast.makeText(
+                    this,
+                    Lang.t("Đã lưu nút. Chọn app rồi bấm “Thêm gán”.", "Button saved. Pick an app, then tap “Add binding”."),
+                    Toast.LENGTH_LONG,
+                ).show()
             }
             .setNegativeButton(Lang.t("Huỷ", "Cancel"), null)
             .show()
@@ -633,21 +709,31 @@ class MainActivity : Activity() {
             }
         }
 
-        // Dropdown nút (preset + custom). Chọn 1 nút = đặt keycode đó.
+        // Dropdown nút (preset + custom). F3: chọn nút KHÔNG còn ghi cấu hình — nó chỉ là bước 1 của
+        // "chọn nút → chọn app → Thêm gán". Cấu hình thật chỉ đổi khi bấm Thêm/Xoá.
         rebuildVoiceKeyButtonSpinner()
         val btnSpinner = findViewById<android.widget.Spinner>(R.id.spinner_voicekey_button)
-        val vkBtnInitialPos = voiceKeyButtonList().indexOfFirst { it.second == Prefs.voiceKeyCode(this) }.coerceAtLeast(0)
-        var vkBtnFirstCallback = true
         btnSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                if (vkBtnFirstCallback) { vkBtnFirstCallback = false; if (pos == vkBtnInitialPos) return }
-                val kc = voiceKeyButtonList().getOrNull(pos)?.second ?: return
-                Prefs.setVoiceKeyCode(this@MainActivity, kc)
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) =
                 updateVoiceKeyLabel()
-            }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
         // Nhấn-giữ 1 mục để XOÁ nút tự học (preset không xoá).
+        //
+        // ⚠️ [ĐO 2026-08-24] KHỐI NÀY LÀ CODE CHẾT — đã đọc source AOSP `android-10.0.0_r47`, không phải trí nhớ:
+        //   • `Spinner.java` KHÔNG có một chỗ nào gọi `performItemLongClick` / `performLongClick` / đọc
+        //     `mOnItemLongClickListener`; `onTouchEvent` chỉ chuyển cho `mForwardingListener` rồi `super`,
+        //     và `performClick()` chỉ MỞ POPUP.
+        //   • `AdapterView.java` chỉ CẤT listener (`setOnItemLongClickListener` set field + `setLongClickable(true)`)
+        //     và KHÔNG override `performLongClick()` để phát tới nó. Bên phát thật là `AbsListView.performLongPress`,
+        //     mà `Spinner` không kế thừa `AbsListView`.
+        //   ⇒ Nhấn-giữ dropdown chỉ mở popup; lambda dưới CHƯA TỪNG chạy kể từ 1.19.
+        //
+        // Hệ quả: owner hiện KHÔNG có đường xoá một nút tự học (F3 làm nó lộ rõ hơn — nhãn dòng đã gán rơi về
+        // `KEYCODE_x (mã)`). Đây là lỗi CÓ TỪ 1.19, KHÔNG phải hồi quy của F3, và cách chữa (đổi sang dialog
+        // chọn-để-xoá, hay nút "Xoá nút này" cạnh dropdown) là THÊM giao diện ⇒ quyết định của owner, không
+        // được tự ý làm trong phạm vi F3. Đã ghi backlog F4. Giữ nguyên khối này để không im lặng đổi hành vi;
+        // KHÔNG được tin nó đang chạy.
         btnSpinner.onItemLongClickListener = android.widget.AdapterView.OnItemLongClickListener { _, _, pos, _ ->
             val item = voiceKeyButtonList().getOrNull(pos)
             if (item != null && Prefs.voiceKeyCustomButtons(this).any { it.second == item.second }) {
@@ -665,39 +751,57 @@ class MainActivity : Activity() {
             Toast.makeText(this, Lang.t("Giữ màn hình này mở rồi bấm nút vật lý muốn dùng…", "Keep this screen open, then press the physical button…"), Toast.LENGTH_LONG).show()
         }
 
-        // Đích = 2 mục đặc biệt (ghim đầu) + toàn bộ app có launcher (reuse ClusterCast.listInstalledApps).
-        val targetSpecs: List<Pair<String, String>> = listOf(
-            Lang.t("Trợ lý mặc định hệ thống", "System default assistant") to Prefs.VK_TARGET_ASSIST,
-            Lang.t("Trợ lý qua phím cứng (Gemini · 231)", "System assistant via hard key (Gemini · 231)") to Prefs.VK_TARGET_GEMINI_KEY,
-            Lang.t("Nhận dạng giọng nói", "Speech recognizer") to Prefs.VK_TARGET_RECOGNIZER,
-        ) + com.byd.clusternav.modules.clustercast.ClusterCast.listInstalledApps(this).map { it.label to it.pkg }
-        targetSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, targetSpecs.map { it.first })
-        val vkTgtInitialPos = targetSpecs.indexOfFirst { it.second == Prefs.voiceKeyTargetSpec(this) }.coerceAtLeast(0)
-        targetSpinner.setSelection(vkTgtInitialPos)
-        var vkTgtFirstCallback = true
-        targetSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                if (vkTgtFirstCallback) { vkTgtFirstCallback = false; if (pos == vkTgtInitialPos) return }
-                targetSpecs.getOrNull(pos)?.let {
-                    Prefs.setVoiceKeyTargetSpec(this@MainActivity, it.second)
-                    // Chọn Gemini (sentinel 231 HOẶC lỡ chọn thẳng app Gemini/Google) → đặt luôn trợ lý hệ thống = Google/Gemini
-                    // (full recipe 8hare, một lần) để keyevent 231 mở Gemini dạng ASSISTANT (voice), không phải app home.
-                    if (com.byd.clusternav.modules.voicekey.AssistantLauncher.isGeminiVoiceSpec(it.second)) {
-                        Toast.makeText(this@MainActivity, Lang.t("Đang đặt Gemini làm trợ lý hệ thống…", "Setting Gemini as system assistant…"), Toast.LENGTH_SHORT).show()
-                        Thread {
-                            val err = com.byd.clusternav.modules.voicekey.AssistantLauncher.setSystemAssistant(this@MainActivity)
-                            runOnUiThread {
-                                Toast.makeText(this@MainActivity,
-                                    if (err.isEmpty()) Lang.t("Đã đặt trợ lý = Google/Gemini. Giữ nút mic để NÓI (không mở app).", "Assistant set to Google/Gemini. Long-press mic to TALK (not open app).")
-                                    else err,
-                                    Toast.LENGTH_LONG).show()
-                            }
-                        }.start()
-                    }
-                }
+        // Đích = 3 mục đặc biệt (ghim đầu) + toàn bộ app có launcher (reuse ClusterCast.listInstalledApps).
+        // F3: chọn app cũng KHÔNG ghi cấu hình — chỉ là bước 2. Không listener nào ở đây nữa.
+        targetSpinner.adapter =
+            android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, voiceKeyTargetSpecs.map { it.first })
+
+        // F3 — "3 · Thêm gán": ghi cặp (nút đang chọn → app đang chọn) vào danh sách. Đây là NƠI DUY NHẤT
+        // ghi cấu hình gán, nên cũng là nơi chạy công thức "đặt trợ lý hệ thống = Google/Gemini" (trước F3
+        // nằm ở listener của dropdown app — chạy cả khi owner chỉ lướt qua mục đó mà không gán gì).
+        findViewById<Button>(R.id.btn_voicekey_add).setOnClickListener {
+            val kc = selectedVoiceKeyCode()
+            val target = voiceKeyTargetSpecs.getOrNull(targetSpinner.selectedItemPosition)
+            if (kc == null || target == null) {
+                Toast.makeText(this, Lang.t("Chọn nút và app trước đã.", "Pick a button and an app first."), Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            val replaced = Prefs.addVoiceKeyBinding(this, kc, target.second)
+            rebuildVoiceKeyBindingList()
+            val msg = when {
+                replaced == null ->
+                    Lang.t("Đã thêm: ", "Added: ") + voiceKeyButtonLabel(kc) + " → " + target.first
+                replaced == target.second ->
+                    Lang.t("Đã có sẵn: ", "Already set: ") + voiceKeyButtonLabel(kc) + " → " + target.first
+                // GHI ĐÈ — báo rõ thay cái gì, cấm im lặng (một mã phím chỉ gán một app).
+                else -> Lang.t("Nút này đã gán ", "This button was bound to ") + voiceKeyTargetLabel(replaced) +
+                    Lang.t(" → đã THAY bằng ", " → REPLACED with ") + target.first
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+            // Chọn Gemini (sentinel 231 HOẶC lỡ chọn thẳng app Gemini/Google) → đặt luôn trợ lý hệ thống = Google/Gemini
+            // (full recipe 8hare, một lần) để keyevent 231 mở Gemini dạng ASSISTANT (voice), không phải app home.
+            // `replaced != target.second` ⇒ CHỈ chạy khi cấu hình thật sự đổi. Bấm Thêm lại đúng cặp đang có
+            // (nhánh "Đã có sẵn") thì không đổi gì cả, mà công thức này bung một thread + một phiên dadb +
+            // 2 Toast — đúng kiểu tác dụng phụ chạy oan mà F3 vừa dời khỏi listener dropdown để tránh.
+            if (replaced != target.second &&
+                com.byd.clusternav.modules.voicekey.AssistantLauncher.isGeminiVoiceSpec(target.second)
+            ) {
+                Toast.makeText(this, Lang.t("Đang đặt Gemini làm trợ lý hệ thống…", "Setting Gemini as system assistant…"), Toast.LENGTH_SHORT).show()
+                Thread {
+                    val err = com.byd.clusternav.modules.voicekey.AssistantLauncher.setSystemAssistant(this@MainActivity)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        Toast.makeText(this@MainActivity,
+                            if (err.isEmpty()) Lang.t("Đã đặt trợ lý = Google/Gemini. Giữ nút mic để NÓI (không mở app).", "Assistant set to Google/Gemini. Long-press mic to TALK (not open app).")
+                            else err,
+                            Toast.LENGTH_LONG).show()
+                    }
+                }.start()
+            }
         }
+
+        rebuildVoiceKeyBindingList()
 
         // Cầu học-phím: service bắt keycode → hiện dialog đặt tên (Activity foreground).
         com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus.setListener { code -> runOnUiThread { showLearnNameDialog(code) } }

@@ -279,10 +279,25 @@ class NavSourceDwellWiringContractTest {
         )
         // §6 — đường notification GMaps dùng `extractArrivalClock` (12 h, KHÔNG hiểu AM/PM). Nó phải giữ NGUYÊN:
         // hàm 24 h là hàm RIÊNG, chỉ cho producer mới. Đổi tại chỗ = lặng lẽ đổi hành vi một đường đã proven.
-        val repo = SourceRoots.text("src/main/java/com/byd/clusternav/NavRepository.kt")
+        //
+        // ⚠ RE-POINT 2026-08-24 (F4 bước 1): biểu thức này DỜI CHỖ từ `NavRepository.ingest` sang
+        // `NavContentBuilder.fromNotification` (:core) — CÙNG hàm, CÙNG miền, chỉ khác nơi ở. Khẳng định
+        // được trỏ lại đúng chỗ, KHÔNG được xoá (xoá là mất máy đo, đúng bẫy F1). Phần giá trị của cùng
+        // hành vi này còn được `GmapsContentGoldenTest` (:core) đông cứng theo bảng vàng.
+        val builder = SourceRoots.text("src/main/kotlin/com/byd/clusternav/navigation/NavContentBuilder.kt")
+        // `fromNotification` là biểu thức một dòng (`= NavigationFrameContent(...)`), không có thân {} nên
+        // scanner theo dấu ngoặc nhọn ở dưới không dùng được — cắt theo ranh giới hai hàm.
+        val from = builder.indexOf("fun fromNotification(")
+        val to = builder.indexOf("fun fromImage(")
+        assertTrue(from in 0 until to, "NavContentBuilder phải có cả fromNotification lẫn fromImage")
+        val notif = builder.substring(from, to)
         assertTrue(
-            repo.contains("arrivalClock = NavParse.extractArrivalClock(value.eta)"),
+            notif.contains("arrivalClock = NavParse.extractArrivalClock(eta)"),
             "đường notification GMaps giữ nguyên extractArrivalClock — không được đổi sang bản 24 h",
+        )
+        assertFalse(
+            notif.contains("extractArrivalClock24"),
+            "hàm 24 h là của producer a11y, KHÔNG được lẻn vào đường notification",
         )
     }
 

@@ -418,8 +418,8 @@ class NavAccessibilityService : AccessibilityService() {
      * T3 — nút vật lý → trợ lý giọng nói. Chỉ chạy khi service được cấp quyền hỗ trợ + config
      * `canRequestFilterKeyEvents` + flag `flagRequestFilterKeyEvents` (xem nav_accessibility_config.xml).
      *
-     * KHÔNG thay chức năng gốc: chỉ trả true (nuốt phím) cho đúng tổ hợp (keycode + cử chỉ) người dùng cấu
-     * hình — quyết định ở [VoiceKeyMatcher] (:core). Phím/khác → super (pass-through).
+     * KHÔNG thay chức năng gốc: chỉ trả true (nuốt phím) cho mã phím CÓ TRONG danh sách gán của người dùng
+     * — quyết định ở [VoiceKeyMatcher] (:core). Phím khác → super (pass-through).
      * "Học phím": nếu bật, ghi lại keycode nút vừa bấm (trên DOWN) rồi tự tắt cờ.
      */
     override fun onKeyEvent(event: KeyEvent?): Boolean {
@@ -437,15 +437,19 @@ class NavAccessibilityService : AccessibilityService() {
 
         if (!Prefs.voiceKeyEnabled(app)) return super.onKeyEvent(event)
 
-        val cfg = VoiceKeyConfig(enabled = true, keyCode = Prefs.voiceKeyCode(app))
+        // F3 (owner 2026-08-24): tra DANH SÁCH gán, không so với một mã nữa. Danh sách rỗng ⇒ mọi phím
+        // pass-through (matcher trả IGNORE) ⇒ không nuốt nhầm phím nào của xe.
+        val cfg = VoiceKeyConfig(enabled = true, bindings = Prefs.voiceKeyBindings(app))
         val action = when (event.action) {
             KeyEvent.ACTION_DOWN -> VoiceKeyAction.DOWN
             KeyEvent.ACTION_UP -> VoiceKeyAction.UP
             else -> VoiceKeyAction.OTHER
         }
         val decision = voiceKeyMatcher.onKey(cfg, action, event.keyCode, event.downTime)
-        if (decision.fire) {
-            val spec = Prefs.voiceKeyTargetSpec(app)
+        // Đích lấy TỪ quyết định (bất biến: fire ⟺ targetSpec != null) — KHÔNG tra lại prefs, tra hai lần
+        // có thể ra hai kết quả nếu owner vừa sửa danh sách giữa DOWN và lúc phóng intent.
+        val spec = decision.targetSpec
+        if (decision.fire && spec != null) {
             Log.i(TAG, "voice-key fire → target=$spec key=${event.keyCode}")
             runCatching { AssistantLauncher.launch(app, spec) }
                 .onFailure { Log.e(TAG, "assistant launch failed", it) }

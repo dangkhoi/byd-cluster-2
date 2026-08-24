@@ -59,7 +59,7 @@
   <span><b>Date:</b> 2026-08-14</span>
   <span><b>Slug:</b> voicekey-rework-1.19</span>
 </div>
-<div class="meta"><span class="pill">STATUS: DRAFT — chờ owner approve. Chưa code.</span></div>
+<div class="meta"><span class="pill">STATUS: 1.19 đã ship. F3 (2026-08-24) — danh sách gán nhiều phím → nhiều app: code + test xong, CHƯA chạy trên xe.</span></div>
 <div class="callout accent" style="margin-top:16px"><div class="lbl">Vì sao</div>
 Tính năng "Nút vật lý → Trợ lý" (1.13→1.18) khó dùng: (a) ô Cử chỉ Nhấn/Nhấn-giữ vô nghĩa vì nút này short/long ra <b>keycode khác hẳn</b>; (b) "Học phím" nhét trong dropdown gây rối; (c) đích là enum trợ lý cứng + đoán intent ASSIST → chọn Kiki nhưng <b>mở nhầm Gemini</b> (test on-car 1.18). Owner chốt: bỏ gesture, học phím thành nút ngoài + đặt tên, đích = <b>liệt kê toàn bộ app</b> chọn tự do.</div>
 
@@ -73,6 +73,8 @@ Tính năng "Nút vật lý → Trợ lý" (1.13→1.18) khó dùng: (a) ô Cử
 
 <h2 id="changelog"><span class="n">1</span>Changelog</h2>
 <table><thead><tr><th>Rev</th><th>Date</th><th>Change</th></tr></thead><tbody>
+<tr><td>v3</td><td>2026-08-24</td><td><b>F3 vòng phản biện — [P0] app không mở được trên xe.</b> Ba view id của F3 chỉ có ở <code>layout/</code>, thiếu ở <code>layout-w960dp/</code> (bản mà đầu xe 1920×1080@240 = 1280dp thật sự render) ⇒ <code>findViewById</code> null → NPE trong <code>onCreate</code>. Đã bê khối F3 sang bản w960dp; khoá bất biến bằng test mới <code>LayoutVariantIdParityTest</code>; đường migrate nay chạy thật trong <code>VoiceKeyBindingMigrationTest</code>. Chi tiết ở §Nhật ký triển khai cuối trang.</td></tr>
+<tr><td>v2</td><td>2026-08-24</td><td><b>F3 — một cặp → DANH SÁCH gán.</b> Owner: <em>"binding nhiều nút vào nhiều app… chọn nút + chọn app xong → add, thì ra 1 dòng đã binding nút và app… listen theo cái danh sách đã save"</em>. §4.4 (persist một cặp) bị THAY bằng khoá <code>voicekey_bindings</code> + migrate không mất cấu hình; §4.1 matcher đổi từ so-một-mã sang tra-danh-sách (máy trạng thái chống-lặp giữ nguyên). Chi tiết ở §Nhật ký triển khai cuối trang.</td></tr>
 <tr><td>v1</td><td>2026-08-14</td><td>Chốt qua chat với owner: bỏ gesture + mốc 500ms; học phím = nút ngoài + đặt tên "{tên} (mã {code})" + thêm vào dropdown + xoá; đích = list toàn bộ app (reuse <code>ClusterCast.listInstalledApps</code>) + ghim 2 mục đặc biệt trên đầu; launch bằng launch-intent. Nhắm fix luôn bug Kiki→Gemini nếu phím tới được app.</td></tr>
 </tbody></table>
 
@@ -169,5 +171,77 @@ Tính năng "Nút vật lý → Trợ lý" (1.13→1.18) khó dùng: (a) ô Cử
 
 <h2>Nhật ký triển khai (Implementation Log)</h2>
 <p><em>Back-fill 2026-08-21 (rule R2.6):</em> spec viết trước rule §Nhật ký, hoặc là spec lịch sử/đã đóng. Nhật ký chi tiết KHÔNG back-fill (tránh bịa lịch sử). Trạng thái + quyết định THỰC TẾ: xem <code>git log</code>, <code>docs/PROJECT-BACKLOG.md</code>, <code>docs/diagnostics/</code>. Từ đây về sau, thay đổi liên quan spec này ghi §Nhật ký NGAY tại đây (atomic với code).</p>
+
+<h3>2026-08-24 — F3: một cặp → DANH SÁCH gán (nhiều phím → nhiều app)</h3>
+<p>Owner yêu cầu (nguyên văn): <em>"có thể binding nhiều nút vào nhiều app được không? … nên có giao diện kiểu sau khi chọn nút + chọn app xong → add, thì ra 1 dòng đã binding nút và app, xong có thể chọn thêm add thêm, mình listen thì listen theo cái danh sách đã save đó thôi"</em>. Đây là <b>thay thế</b> mô hình một-cặp mô tả ở §4.4 của spec này.</p>
+<ul>
+  <li><b>Lưu trữ</b> — thêm khoá <code>voicekey_bindings</code> = JSON <code>[{"k":mã,"t":đích}]</code> (<code>VoiceKeyBindingStore</code>, <code>:app</code>, vì <code>org.json</code> là API Android — nhận thẳng <code>SharedPreferences</code> nên đúng tầng lưu trữ). Hai khoá cũ <code>voicekey_keycode</code>/<code>voicekey_target</code> <b>giữ nguyên đường ĐỌC</b> chỉ để migrate; hai setter <code>setVoiceKeyCode</code>/<code>setVoiceKeyTargetSpec</code> bị bỏ để không còn hai nguồn chân lý.</li>
+  <li><b>Migrate</b> (<code>VoiceKeyBindings.migrateLegacy</code>, <code>:core</code>) — điều kiện dựng dòng gán đầu tiên là <b>dấu vết thật</b> trong file prefs (<code>SharedPreferences.contains</code>) <i>hoặc</i> cờ <code>voicekey_enabled</code>, KHÔNG phải giá trị đọc được: cả hai khoá cũ đều có mặc định (328 → Kiki) nên máy vừa cài cũng "đọc ra một cặp". Ca dễ mất nhất — owner bật công tắc rồi xài thẳng cặp mặc định, file prefs không có khoá nào — chính là vế <code>enabled</code>. Kết quả được <b>ghi xuống ngay</b> (kể cả khi rỗng → <code>"[]"</code>) để migrate không chạy lại làm dòng owner vừa xoá sống dậy.</li>
+  <li><b>Khớp phím</b> — <code>VoiceKeyConfig</code> đổi từ <code>keyCode: Int</code> sang <code>bindings: List&lt;VoiceKeyBinding&gt;</code>; <code>VoiceKeyDecision</code> thêm <code>targetSpec</code> với bất biến <b><code>fire</code> ⟺ <code>targetSpec != null</code></b> (tầng app không tra prefs lần hai). Máy trạng thái chống-bắn-lặp của 1.19 <b>giữ nguyên</b> (CLAUDE.md §6), chỉ đổi ổ khoá từ <code>downTime</code> đơn lẻ sang <b>(mã phím, downTime)</b> — hai phím đã gán bấm trùng mốc ms mà dùng chung một ô thì phím thứ hai mất lần bắn.</li>
+  <li><b>Ràng buộc</b> — một mã phím chỉ gán một app. Cưỡng chế ở <b>hai đầu</b>: <code>put()</code> lúc ghi (ghi đè, giữ nguyên vị trí dòng, trả đích cũ cho UI báo) và <code>sanitize()</code> lúc đọc (file prefs có thể hỏng/sửa tay). Không có nó thì <code>targetFor</code> không tất định.</li>
+  <li><b>UI</b> — <code>activity_main.xml</code>: thêm <code>btn_voicekey_add</code>, <code>list_voicekey_bindings</code>, <code>txt_voicekey_empty</code>; mỗi dòng đã gán là layout mới <code>row_voicekey_binding.xml</code> (nhãn + nút Xoá). Chọn trong dropdown <b>không còn ghi cấu hình</b> — chỉ Thêm/Xoá mới đổi. Hệ quả: công thức "đặt trợ lý hệ thống = Google/Gemini" (<code>isGeminiVoiceSpec</code>) dời từ listener dropdown sang nút Thêm, tức chỉ chạy khi owner thật sự gán, thay vì mỗi lần lướt qua mục đó.</li>
+  <li><b>Seal</b> — <code>activity_main.xml</code> nằm trong <code>T11_PATHS</code> của <code>ExpansionTransportFenceTest</code>; hằng <code>T11_HASHES</code> đã cập nhật <code>fddc1ef5…</code> → <code>25fa8836…</code> kèm KDoc ghi lý do + trích yêu cầu owner. Đã <b>chứng minh seal còn sống</b>: đổi 1 byte trong layout ⇒ test đó ĐỎ.</li>
+  <li><b>Phép thử làm-đỏ bắt được một test mù</b> — bản đầu của <code>VoiceKeyBindingListTest</code> kiểm layout bằng <code>contains("btn_voicekey_add")</code>; đổi tên id thành <code>btn_voicekey_addnew</code> đồng bộ cả layout lẫn code thì test VẪN XANH (tên cũ là tiền tố tên mới). Đã sửa sang khớp <code>@+id/&lt;tên&gt;"</code> và xác nhận ĐỎ.</li>
+</ul>
+<h3>2026-08-24 — F3 vòng phản biện: nghiệm thu KHÔNG ĐẠT, [P0] app không mở được trên xe</h3>
+<p>Bản F3 ở trên qua 2058 test không lỗi <b>trong khi cây đang chứa một lỗi làm app chết ngay lúc mở trên xe</b>. Đó là bằng chứng đủ để bác câu "test đi đúng đường người dùng đi" của bản đầu.</p>
+<ul>
+  <li><b>[P0] Ba view id của F3 chỉ có ở bản layout DỌC; đầu xe render bản <code>layout-w960dp</code>.</b>
+      Màn chính 1920×1080 @ density 240 ⇒ <b>1280dp ≥ 960</b> (<code>docs/diagnostics/multi-app-nav-source-channels-2026-08-20.md:55</code>;
+      header <code>layout-w960dp/activity_main.xml:2</code> tự ghi đúng điều đó). Đo: <code>btn_voicekey_add</code> /
+      <code>list_voicekey_bindings</code> / <code>txt_voicekey_empty</code> = 1 ở <code>layout/</code>, <b>0</b> ở <code>layout-w960dp/</code>;
+      23 id còn lại có ở cả hai ⇒ chỉ F3 phá bất biến này. <code>MainActivity.kt:740</code> gọi
+      <code>findViewById&lt;Button&gt;(R.id.btn_voicekey_add).setOnClickListener{…}</code> — không <code>?.</code>, không try/catch, và
+      <code>onCreate</code> không bọc lời gọi ⇒ <code>findViewById</code> trả <code>null</code> → <b>NPE trong <code>onCreate</code></b> →
+      app chết lúc mở, kéo theo <code>navClusterStatus.bind()</code>, <code>btn_reconnect_nav</code>,
+      <code>VoiceKeyLearnBus.setListener</code> không bao giờ chạy. Máy build vẫn xanh vì <code>R.id.*</code> sinh từ <b>hợp</b> của mọi biến thể.</li>
+  <li><b>Kèm hồi quy kiểu F1 ("gỡ thứ đang gánh hộ").</b> Trước F3, hai listener dropdown chính là đường ghi cấu hình <b>duy nhất</b>;
+      F3 gỡ chúng và chuyển việc ghi sang một nút <b>không tồn tại trên bản layout mà xe render</b> ⇒ kể cả vá NPE thì trên xe owner vẫn
+      không tạo/sửa/xoá gán được. Cấu hình CŨ thì không mất (<code>NavAccessibilityService.kt:442</code> vẫn migrate được).
+      Câu hỏi "nó còn đang gánh hộ việc gì không?" đã không được hỏi lúc gỡ.</li>
+  <li><b>Đây là lần thứ HAI cùng một lỗi trong 4 ngày</b> — lần 1 là commit <code>5d4dab6</code> (<code>txt_nav_source_active</code>).
+      Bài học lúc đó chỉ nằm trong commit message, <b>không khoá bằng test</b> (trái CLAUDE.md §10) nên tái phát nguyên vẹn.</li>
+  <li><b>Vá [P0]</b> — bê đủ khối F3 sang <code>app/src/main/res/layout-w960dp/activity_main.xml</code>, đánh số nhãn 1·2·3 cho khớp bản dọc.</li>
+  <li><b>Vá [P1] — khoá bất biến bằng test</b>: <code>app/src/test/java/com/byd/clusternav/LayoutVariantIdParityTest.kt</code> (2 test).
+      (1) mọi biến thể của cùng một tên layout phải khai báo <b>cùng tập <code>@+id</code></b>, so <b>hai chiều</b> vì id chỉ có ở bản rộng
+      thì máy hẹp hơn 960dp crash y hệt, chỉ đổi vai; (2) mọi <code>R.id.*</code> mà <code>MainActivity</code> chạm phải có ở <b>mọi</b>
+      biến thể của layout nó <code>setContentView</code>, hoặc ở layout con nó <code>inflate</code>. Test tự dò thư mục <code>layout*</code>,
+      không ghim tên id nào ⇒ khoá luôn bài học <code>5d4dab6</code> và mọi biến thể thêm về sau.</li>
+  <li><b>Vá [P2] — đường migrate chưa từng được CHẠY trong test.</b> <code>VoiceKeyBindingListTest</code> chỉ khoá bằng
+      <code>body.contains(...)</code>. Đo tự chứng minh test cũ mù: đổi <code>writeVoiceKeyBindings(p, migrated)</code> →
+      <code>(p, emptyList())</code> — đúng ca <b>mất sạch cấu hình owner</b> — thì <code>VoiceKeyBindingListTest</code> <b>VẪN XANH</b>.
+      Vá: tách nạp chồng <code>Prefs.voiceKeyBindings/addVoiceKeyBinding/removeVoiceKeyBinding(p: SharedPreferences)</code>, bản
+      <code>Context</code> còn là vỏ một dòng; thêm <code>VoiceKeyBindingMigrationTest</code> (9 test) chạy THẬT cả 4 ca migrate
+      (chưa có khoá + có dấu vết / chưa có khoá + không dấu vết / đã có <code>"[]"</code> / đã có danh sách) trên ô nhớ giả.</li>
+  <li><b>Vá [P3]</b> — <code>setSystemAssistant</code> chỉ chạy khi cấu hình thật sự đổi (<code>replaced != target.second</code>);
+      nhãn nút "Xoá" từng dòng đặt lúc chạy qua <code>Lang.t</code> (trước hardcode tiếng Việt, trái KDoc của chính
+      <code>row_voicekey_binding.xml</code>); gỡ <code>VoiceKeyBindingStore.read()</code> — 0 call site (CLAUDE.md §8) và nguy hơn là
+      nó <i>trông giống</i> hàm đọc đúng nhưng nuốt mất phân biệt <code>null</code> ↔ <code>"[]"</code> ⇒ gọi nhầm là bỏ qua migrate.</li>
+  <li><b>[ĐO] test sau vá</b> — 5 module, <b>2087 test, 0 lỗi</b> (<code>app 1037 · core 888 · offcar-planner 99 · car-integration 41 ·
+      vehicle-contracts 22</code>), <code>./gradlew test --rerun-tasks --continue</code> → <code>BUILD SUCCESSFUL in 3m20s</code>.</li>
+  <li><b>[ĐO] phép thử làm-đỏ cho test MỚI</b> (test chưa từng đỏ là test mù): (A) xoá khối <code>btn_voicekey_add</code> khỏi
+      <code>layout-w960dp</code> ⇒ <b>cả hai</b> test parity ĐỎ; (B) <code>writeVoiceKeyBindings(p, emptyList())</code> ⇒ ĐỎ đúng
+      <code>nang cap tu 1_19 — cau hinh mot-cap cua owner duoc giu nguyen</code>; (C) bỏ early-return
+      <code>rawOrNull(...)?.let{return}</code> ⇒ <b>5/9</b> test migrate ĐỎ. Cả ba đã khôi phục, <code>shasum -a 256</code> của
+      <code>Prefs.kt</code> khớp trước/sau.</li>
+  <li><b>Hoãn có chủ ý, đã ghi backlog F5</b> — (a) nhấn-giữ dropdown để xoá nút tự học là <b>code chết từ 1.19</b>: đọc AOSP
+      <code>android-10.0.0_r47</code>, <code>Spinner.java</code> không gọi <code>performItemLongClick</code>/<code>performLongClick</code>
+      và <code>AdapterView.java</code> chỉ CẤT listener chứ không override <code>performLongClick()</code>; bên phát thật là
+      <code>AbsListView.performLongPress</code> mà <code>Spinner</code> không kế thừa. Không phải hồi quy F3, và cách chữa là THÊM giao diện
+      ⇒ quyết định của owner. (b) <code>layout-w960dp/activity_main.xml</code> không nằm trong seal T11 — thêm vào buộc phải sinh lại
+      <code>docs/diagnostics/hud-sign-re/offcar-boundary-revisions.json</code> + chuỗi <code>revisionSha256</code> móc xích, tức sửa vào
+      thư mục seal ⇒ owner duyệt rồi mới làm, không sửa lén.</li>
+</ul>
+
+<h3>2026-08-24 — F2: phím thoại câm ở lần mở app đầu (cổng cấp quyền adb) + vòng phản biện</h3>
+<p>Owner báo (nguyên văn): <em>"start app vẫn chưa hold mic gọi gemini/kiki được, phải tắt, mở lại thì mới xin được quyền và mới sử dụng được"</em>. Bằng chứng cơ chế + phép đo còn thiếu: <code>docs/diagnostics/voicekey-adb-approval-first-open-2026-08-24.md</code>. Quy kết "cổng cấp quyền adb chính là thủ phạm" vẫn ở mức <b>[SUY]</b> — chưa đo trên xe, F2 giữ 🔧.</p>
+<ul>
+  <li><b>Transport</b> (<code>:car-integration/carexec/LocalShellRetryPolicy.kt</code>, file mới) — phân loại thất bại theo <b>kiểu ngoại lệ</b> (<code>LocalShellFailure</code>: chờ-bấm-Đồng-ý / bị-từ-chối / cổng-5555-đóng / đứt-vào-ra / không-rõ) thay cho một chữ <code>null</code> câm, cộng vòng chờ có giãn cách. <code>LocalDeviceShell.session()</code> cũ <b>uỷ quyền</b> cho đường mới với chính sách <code>NONE</code> = nguyên hành vi trước 08-24, nên năm đường dùng chung (<code>VietMapAutostart</code>, <code>UpdateChecker</code>, <code>NavConnect</code>, <code>ClusterDiag</code>, <code>VietMapWidgetDiagActivity</code>) không đổi một ly — CLAUDE.md §6.</li>
+  <li><b>Chỉ hai đường owner-chủ-động</b> bật <code>AWAIT_ADB_APPROVAL</code>: giữ phím mic (<code>launchViaVoiceAssistKey</code>) và đặt trợ lý hệ thống (<code>setSystemAssistant</code>) — đúng lúc owner đang nhìn màn hình nên hộp thoại bung ra là bấm được ngay.</li>
+  <li><b>Lịch chờ = 4 lần thử, giãn 1/2/4 s, hạn đọc 6 s ⇒ ~31 s đồng hồ tường.</b> Con số này là con số <b>xe chạy</b>, không phải con số đồng hồ giả của test: bản vá đầu ghi 5 lần × 1/2/4/8 s vì đồng hồ giả đứng yên suốt mỗi lần thử nên trần thời gian không bao giờ chạm. Đã sửa cả hai đầu (chính sách <code>attempts = 4</code>, và đồng hồ giả trong test tiến đúng hạn đọc mỗi lần hỏng).</li>
+  <li><b>Cấm phát lại lệnh đã gửi</b> — hạn đọc áp cho cả lần đọc <i>kết quả</i> một lệnh, nên thử lại có thể gửi lại lệnh: tài xế nhận nhiều lần <code>KEYCODE_VOICE_ASSIST</code> từ MỘT cú bấm, hoặc công thức 12 lệnh của <code>setSystemAssistant</code> chạy lại từ đầu (nguy nhất là khe giữa <code>voice_interaction_service ''</code> và lần đặt lại — dừng ở đó là trợ lý hệ thống đang <b>rỗng</b>). Cờ <code>dispatched</code> đặt trước khi gửi, và <code>if (dispatched) break</code> là điều kiện dừng ĐẦU TIÊN của vòng lặp: an toàn thắng đủ tính năng.</li>
+  <li><b>Owner không còn bị bỏ trong im lặng</b> — toast lúc bắt đầu chờ (kèm nhắc tích "luôn cho phép", vì mỗi lần thử là một kết nối MỚI), toast khi bỏ cuộc kèm lý do, toast một lần khi cú bấm bị nuốt vì đang có vòng chờ chạy dở. Hỏng SAU khi đã gửi được lệnh thì nói đúng chuyện đó, không nói "chưa cấp quyền" (bắt tay đã xong rồi).</li>
+  <li><b>Chốt đơn-luồng</b> <code>voiceAssistInFlight</code> — vòng chờ dài hơn hẳn debounce 1.5 s nên phải có chốt riêng; nhả cả khi <code>Thread.start()</code> ném, và cú bấm bị nuốt không đẩy mốc debounce.</li>
+</ul>
 </body>
 </html>

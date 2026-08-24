@@ -1,7 +1,11 @@
 package com.byd.clusternav
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.byd.clusternav.contracts.SpeedLimitSource
+import com.byd.clusternav.modules.voicekey.VoiceKeyBindingStore
+import com.byd.clusternav.voicekey.VoiceKeyBinding
+import com.byd.clusternav.voicekey.VoiceKeyBindings
 
 /** Lưu lựa chọn người dùng (bật/tắt đẩy cụm + chế độ chọn nguồn). Đọc trực tiếp trong listener. */
 object Prefs {
@@ -122,6 +126,7 @@ object Prefs {
     private const val K_VK_TARGET = "voicekey_target"          // 1.19: STRING (package hoặc sentinel __ASSIST__/__RECOGNIZER__)
     private const val K_VK_LEARN = "voicekey_learn"
     private const val K_VK_CUSTOM = "voicekey_custom_buttons"  // 1.19: JSON [{"n":name,"k":keycode}] nút tự học
+    private const val K_VK_BINDINGS = "voicekey_bindings"      // F3: JSON [{"k":keycode,"t":target}] danh sách gán
     const val VK_KEYCODE_DEFAULT = 328   // nút mic vô-lăng giữ trên xe này (đo on-car 2026-08-13). "Học phím mới" nếu xe khác.
     const val VK_TARGET_ASSIST = "__ASSIST__"
     const val VK_TARGET_RECOGNIZER = "__RECOGNIZER__"
@@ -132,20 +137,90 @@ object Prefs {
 
     fun voiceKeyEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_VK_ENABLED, false)
     fun setVoiceKeyEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_VK_ENABLED, v).apply()
-    fun voiceKeyCode(ctx: Context): Int = sp(ctx).getInt(K_VK_KEYCODE, VK_KEYCODE_DEFAULT)
-    fun setVoiceKeyCode(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_VK_KEYCODE, v).apply()
 
-    /** Đích mở khi bấm nút = package name hoặc sentinel. Migrate cấu hình cũ (int ordinal → string). */
-    fun voiceKeyTargetSpec(ctx: Context): String {
-        val p = sp(ctx)
-        return when (val raw = p.all[K_VK_TARGET]) {
+    /** CŨ (trước F3) — mã phím DUY NHẤT. Từ F3 chỉ còn dùng để **migrate** sang [voiceKeyBindings]. */
+    fun voiceKeyCode(ctx: Context): Int = voiceKeyCode(sp(ctx))
+
+    /** Bản nhận thẳng ô nhớ — xem ghi chú "vì sao có nạp chồng" ở [voiceKeyBindings]. */
+    fun voiceKeyCode(p: SharedPreferences): Int = p.getInt(K_VK_KEYCODE, VK_KEYCODE_DEFAULT)
+
+    /**
+     * CŨ (trước F3) — đích DUY NHẤT: package name hoặc sentinel. Migrate cấu hình đời đầu (int ordinal →
+     * string) rồi ghi lại. Từ F3 chỉ còn dùng để **migrate** sang [voiceKeyBindings].
+     */
+    fun voiceKeyTargetSpec(ctx: Context): String = voiceKeyTargetSpec(sp(ctx))
+
+    /** Bản nhận thẳng ô nhớ — xem ghi chú "vì sao có nạp chồng" ở [voiceKeyBindings]. */
+    fun voiceKeyTargetSpec(p: SharedPreferences): String =
+        when (val raw = p.all[K_VK_TARGET]) {
             is String -> raw
             is Int -> (when (raw) { 1 -> "com.byd.autovoice"; 2 -> VK_TARGET_RECOGNIZER; 3 -> VK_TARGET_ASSIST; else -> VK_TARGET_DEFAULT })
                 .also { p.edit().putString(K_VK_TARGET, it).apply() }
             else -> VK_TARGET_DEFAULT
         }
+
+    // ─── F3 (owner 2026-08-24): DANH SÁCH gán (nhiều phím → nhiều app) ──────────────────────────
+    // Owner: "chọn nút + chọn app xong → add, thì ra 1 dòng đã binding nút và app, xong có thể chọn thêm
+    // add thêm, mình listen thì listen theo cái danh sách đã save đó thôi".
+    // Đây là NGUỒN CHÂN LÝ DUY NHẤT cho khớp phím (NavAccessibilityService.onKeyEvent). Danh sách RỖNG ⇒
+    // không phím nào bị nuốt, không app nào được mở — đúng ý "rỗng thì không có gì chạy".
+
+    /**
+     * Đọc danh sách gán. Lần đọc ĐẦU TIÊN trên một máy chưa có khoá danh sách sẽ **migrate cấu hình
+     * một-cặp** của 1.19 rồi ghi xuống ngay — nâng cấp KHÔNG được làm mất cấu hình owner đang chạy.
+     *
+     * Điều kiện migrate nằm ở [VoiceKeyBindings.migrateLegacy] (thuần, test off-device được); ở đây chỉ
+     * cấp cho nó **dấu vết thật** trong file prefs (`contains`), vì cả hai khoá cũ đều có giá trị mặc định
+     * nên "đọc ra được" không chứng minh owner từng cấu hình.
+     *
+     * Sau khi ghi khoá danh sách (kể cả khi migrate ra RỖNG → ghi `"[]"`), migrate KHÔNG chạy lại: nếu
+     * chạy lại thì owner xoá hết dòng gán rồi mở lại app sẽ thấy dòng cũ sống lại.
+     *
+     * ── VÌ SAO CÓ NẠP CHỒNG NHẬN THẲNG `SharedPreferences` (2026-08-24) ─────────────────────────
+     * Bản chỉ-nhận-`Context` **không chạy được trong test off-device** (`getSharedPreferences` là API
+     * Android; repo không dùng Robolectric), nên đường migrate — đúng chỗ nguy hiểm nhất, sai một lần là
+     * **mất vĩnh viễn cấu hình owner** — trước đó chỉ được khoá bằng cách *quét chuỗi source*, tức vẫn
+     * xanh nếu ai đó đổi thân hàm thành `writeVoiceKeyBindings(ctx, emptyList())`. Tách ô nhớ ra thành
+     * tham số cho phép `VoiceKeyBindingMigrationTest` **chạy thật** cả 4 ca (chưa có khoá + có dấu vết /
+     * chưa có khoá + không dấu vết / đã có `"[]"` / đã có danh sách) với một ô nhớ giả.
+     * Bản `Context` chỉ còn là lớp vỏ một dòng — không còn logic nào nằm ngoài tầm test.
+     */
+    fun voiceKeyBindings(ctx: Context): List<VoiceKeyBinding> = voiceKeyBindings(sp(ctx))
+
+    fun voiceKeyBindings(p: SharedPreferences): List<VoiceKeyBinding> {
+        VoiceKeyBindingStore.rawOrNull(p, K_VK_BINDINGS)?.let { return VoiceKeyBindingStore.decode(it) }
+        val migrated = VoiceKeyBindings.migrateLegacy(
+            hasLegacyKeyCode = p.contains(K_VK_KEYCODE),
+            hasLegacyTarget = p.contains(K_VK_TARGET),
+            enabled = p.getBoolean(K_VK_ENABLED, false),
+            keyCode = voiceKeyCode(p),
+            targetSpec = voiceKeyTargetSpec(p),
+        )
+        writeVoiceKeyBindings(p, migrated)
+        return migrated
     }
-    fun setVoiceKeyTargetSpec(ctx: Context, spec: String) = sp(ctx).edit().putString(K_VK_TARGET, spec).apply()
+
+    /**
+     * Thêm một dòng gán. Mã phím đã được gán ⇒ **GHI ĐÈ** (giữ nguyên vị trí dòng) và trả về đích CŨ để UI
+     * báo cho owner biết đã thay cái gì — cấm im lặng. Dòng mới ⇒ trả `null`.
+     */
+    fun addVoiceKeyBinding(ctx: Context, keyCode: Int, targetSpec: String): String? =
+        addVoiceKeyBinding(sp(ctx), keyCode, targetSpec)
+
+    fun addVoiceKeyBinding(p: SharedPreferences, keyCode: Int, targetSpec: String): String? {
+        val result = VoiceKeyBindings.put(voiceKeyBindings(p), keyCode, targetSpec)
+        writeVoiceKeyBindings(p, result.bindings)
+        return result.replaced
+    }
+
+    /** Xoá dòng gán của [keyCode] (nút xoá trên từng dòng). */
+    fun removeVoiceKeyBinding(ctx: Context, keyCode: Int) = removeVoiceKeyBinding(sp(ctx), keyCode)
+
+    fun removeVoiceKeyBinding(p: SharedPreferences, keyCode: Int) =
+        writeVoiceKeyBindings(p, VoiceKeyBindings.remove(voiceKeyBindings(p), keyCode))
+
+    private fun writeVoiceKeyBindings(p: SharedPreferences, list: List<VoiceKeyBinding>) =
+        VoiceKeyBindingStore.write(p, K_VK_BINDINGS, list)
 
     /** "Học phím mới": khi BẬT, onKeyEvent kế tiếp bắt keycode nút vừa bấm rồi tự tắt cờ + báo Activity đặt tên. */
     fun voiceKeyLearn(ctx: Context): Boolean = sp(ctx).getBoolean(K_VK_LEARN, false)

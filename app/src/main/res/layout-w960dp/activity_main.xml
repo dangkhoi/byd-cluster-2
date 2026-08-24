@@ -125,7 +125,15 @@
                     android:textAllCaps="false" android:textColor="@color/warn_amber" />
 
                 <!-- T3 (1.13): Nút vật lý → Trợ lý giọng nói (cùng id với layout dọc). KHÔNG thay chức năng
-                     gốc — chỉ nuốt đúng tổ hợp (nút + cử chỉ). Mặc định TẮT. "Học phím…" để gán nút trên xe. -->
+                     gốc — chỉ nuốt đúng tổ hợp (nút + cử chỉ). Mặc định TẮT. "Học phím…" để gán nút trên xe.
+
+                     F3 (2026-08-24): khối này phải có ĐỦ id mà MainActivity chạm — đầu xe 1920×1080 @240 =
+                     1280dp ⇒ Android chọn ĐÚNG biến thể w960dp này, không phải bản dọc. Bản F3 đầu tiên chỉ
+                     thêm btn_voicekey_add / txt_voicekey_empty / list_voicekey_bindings vào bản dọc ⇒ trên xe
+                     findViewById trả null → NPE lúc mở app (tái phát đúng lỗi commit 5d4dab6 với
+                     txt_nav_source_active). Bất biến này nay được khoá bằng test
+                     app/src/test/java/com/byd/clusternav/LayoutVariantIdParityTest.kt — thêm id mới vào MỘT
+                     bản layout là test ĐỎ ngay. -->
                 <View android:layout_width="match_parent" android:layout_height="1dp"
                     android:layout_marginTop="14dp" android:layout_marginBottom="14dp" android:background="@color/divider" />
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -139,21 +147,39 @@
                 </LinearLayout>
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Gán một nút (vô-lăng/táp-lô) để mở trợ lý giọng nói. Không đổi chức năng gốc của nút."
+                    android:text="Gán nút (vô-lăng/táp-lô) để mở app. Gán được NHIỀU nút cho NHIỀU app. Không đổi chức năng gốc của nút chưa gán."
                     android:textColor="@color/text_secondary" android:textSize="@dimen/text_label" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:text="Nút" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:layout_marginTop="12dp" android:text="1 · Chọn nút" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 <Spinner android:id="@+id/spinner_voicekey_button" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
                 <TextView android:id="@+id/txt_voicekey_current" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp" android:text="Nút hiện tại: —" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                    android:layout_marginTop="4dp" android:text="Nút đang chọn: —" android:textColor="@color/text_secondary" android:textSize="12sp" />
                 <Button android:id="@+id/btn_voicekey_learn" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
                     android:text="Học phím mới…" android:contentDescription="Học một nút vật lý mới trên xe" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:text="Mở trợ lý" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                    android:layout_marginTop="12dp" android:text="2 · Chọn app sẽ mở" android:textColor="@color/text_secondary" android:textSize="13sp" />
                 <Spinner android:id="@+id/spinner_voicekey_target" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
+
+                <!-- F3: "3 · Thêm gán" ghi cặp (nút → app) đang chọn thành MỘT DÒNG trong danh sách dưới.
+                     Trùng mã phím ⇒ ghi đè + Toast báo đã thay app nào (một mã phím chỉ gán một app).
+                     Đây là ĐƯỜNG DUY NHẤT ghi cấu hình gán — hai dropdown trên KHÔNG còn ghi gì. -->
+                <Button android:id="@+id/btn_voicekey_add" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="10dp" android:minHeight="@dimen/touch_min"
+                    android:background="@drawable/btn_outline" android:textColor="@color/brand" android:textAllCaps="false"
+                    android:text="3 · Thêm gán" android:contentDescription="Thêm cặp nút và app đang chọn vào danh sách gán" />
+
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp" android:text="Đã gán (app chỉ nghe theo danh sách này)"
+                    android:textColor="@color/text_secondary" android:textSize="13sp" />
+                <TextView android:id="@+id/txt_voicekey_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Chưa gán nút nào — hiện KHÔNG có nút nào mở app. Chọn nút + app rồi bấm “Thêm gán”."
+                    android:textColor="@color/text_secondary" android:textSize="12sp" />
+                <LinearLayout android:id="@+id/list_voicekey_bindings" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="4dp" />
 
                 <!-- VietMap HUD BLE Bridge — HIDDEN (hardware not supported, research pending) -->
                 <!--

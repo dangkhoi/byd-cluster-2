@@ -2,11 +2,19 @@ package com.byd.clusternav.modules.voicekey
 
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognizerIntent
 import android.util.Log
+import android.widget.Toast
 import com.byd.clusternav.AdbKeys
+import com.byd.clusternav.Lang
 import com.byd.clusternav.Prefs
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellFailure
+import com.byd.clusternav.carexec.LocalShellResult
+import com.byd.clusternav.carexec.LocalShellRetry
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Mở đích của "Nút vật lý → mở app". Rework 1.19: đích = 1 STRING — hoặc **package name** (mở thẳng app),
@@ -23,6 +31,12 @@ object AssistantLauncher {
     // tự kích lại onKeyEvent(231) → storm. Debounce = tối đa 1 emit / khoảng này (cùng tinh thần 8hare 800ms).
     private const val VOICE_ASSIST_DEBOUNCE_MS = 1500L
     @Volatile private var lastVoiceAssistEmitMs = 0L
+
+    /** Đơn-luồng cho vòng chờ cấp quyền adb (F2): xem [launchViaVoiceAssistKey]. */
+    private val voiceAssistInFlight = AtomicBoolean(false)
+
+    /** Đã nói cho owner biết "đang bận" trong vòng chờ hiện tại chưa — mỗi vòng đúng MỘT lần. */
+    private val voiceAssistBusyNoticed = AtomicBoolean(false)
 
     // Nguồn CHÂN LÝ DUY NHẤT của 2 sentinel = Prefs (nơi lưu/migrate spec + nơi MainActivity dựng dropdown).
     // Delegate compile-time const → không thể lệch literal giữa producer (Prefs/MainActivity) và consumer (đây).
@@ -85,20 +99,121 @@ object AssistantLauncher {
             Log.i(TAG, "keyevent 231 bỏ qua (debounce ${VOICE_ASSIST_DEBOUNCE_MS}ms — chống self-loop nếu capture==231)")
             return true
         }
-        lastVoiceAssistEmitMs = now
         val app = ctx.applicationContext
+        // Đơn-luồng (F2): vòng chờ cấp quyền adb dài tới ~31 s, dài hơn hẳn debounce 1.5 s. Không có chốt
+        // này thì owner bấm mic vài lần là sinh vài vòng chờ song song → vài phiên dadb → head unit bung
+        // vài hộp thoại "Cho phép gỡ lỗi USB" chồng nhau.
+        if (!voiceAssistInFlight.compareAndSet(false, true)) {
+            Log.i(TAG, "keyevent 231 bỏ qua — đang có một vòng chờ cấp quyền adb chạy dở")
+            // KHÔNG cập nhật debounce ở đây: cú bấm này không phát lệnh nào, đẩy mốc debounce chỉ làm phím
+            // mic chết thêm 1,5 s sau khi vòng chờ kết thúc.
+            // Nói cho owner một lần mỗi vòng: im lặng ~31 s là đúng cái làm owner tưởng app hỏng (F2).
+            if (voiceAssistBusyNoticed.compareAndSet(false, true)) {
+                toast(app, Lang.t(
+                    "Đang thử nối vào xe để mở trợ lý — chờ vài giây…",
+                    "Still reaching the head unit to open the assistant — hang on…",
+                ))
+            }
+            return true
+        }
+        lastVoiceAssistEmitMs = now
+        voiceAssistBusyNoticed.set(false)
         // CHẠY NỀN: phiên dadb ~1-2s — KHÔNG block onKeyEvent (nếu block sẽ trễ/ANR phím). Fire-and-forget.
-        Thread {
-            runCatching {
-                val keys = AdbKeys.ensure(app)
-                LocalDeviceShell.session(keys) { sh ->
-                    val r = sh("input keyevent 231")
-                    Log.i(TAG, "keyevent 231 (VOICE_ASSIST) exit=${r.exitCode} err=${r.errorOutput.trim().take(80)}")
-                    r.exitCode == 0
-                } ?: Log.e(TAG, "voice-assist key: dadb session null (5555 chưa mở / key chưa allow)")
-            }.onFailure { Log.e(TAG, "voice-assist key launch failed: $it") }
-        }.start()
+        val worker = Thread {
+            try {
+                runCatching {
+                    val keys = AdbKeys.ensure(app)
+                    val result = LocalDeviceShell.sessionResult(
+                        keys,
+                        // Owner vừa giữ phím mic ⇒ đang đứng trước màn hình ⇒ hộp thoại "Cho phép gỡ lỗi
+                        // USB" bung ra là lúc bấm được ngay. Chờ có giãn cách thay vì bỏ (F2).
+                        retry = LocalShellRetry.AWAIT_ADB_APPROVAL,
+                        onProgress = { attempt, reason, waitMs -> reportProgress(app, attempt, reason, waitMs) },
+                    ) { sh ->
+                        val r = sh("input keyevent 231")
+                        Log.i(TAG, "keyevent 231 (VOICE_ASSIST) exit=${r.exitCode} err=${r.errorOutput.trim().take(80)}")
+                        r.exitCode == 0
+                    }
+                    when (result) {
+                        is LocalShellResult.Ok ->
+                            Log.i(TAG, "voice-assist key: phiên dadb OK sau ${result.attempts} lần thử")
+                        is LocalShellResult.Failed -> {
+                            Log.e(
+                                TAG,
+                                "voice-assist key: hỏng sau ${result.attempts} lần thử — ${result.reason} " +
+                                    "(đã phát lệnh=${result.commandDispatched})",
+                                result.cause,
+                            )
+                            // Đã phát được lệnh nghĩa là bắt tay adb ĐÃ XONG — quyền không phải vấn đề, và
+                            // `input keyevent 231` có thể đã tới nơi (chỉ kết quả đọc về là hỏng). Bảo owner
+                            // "chưa cấp quyền" lúc này là nói sai; nói đúng cái đã biết thôi.
+                            toast(app, if (result.commandDispatched) {
+                                Lang.t(
+                                    "Đã gửi lệnh mở trợ lý nhưng xe không trả lời kịp — thử lại nếu chưa thấy trợ lý.",
+                                    "Sent the assistant key but the head unit did not answer in time — retry if nothing opened.",
+                                )
+                            } else {
+                                failureMessage(result.reason)
+                            })
+                        }
+                    }
+                }.onFailure { Log.e(TAG, "voice-assist key launch failed: $it") }
+            } finally {
+                voiceAssistInFlight.set(false)
+            }
+        }
+        // `start()` ném (hết bộ nhớ / hết luồng) SAU khi CAS đã chiếm chốt ⇒ `finally` bên trong runnable
+        // không bao giờ chạy ⇒ chốt kẹt `true` vĩnh viễn ⇒ phím mic câm tới khi kill process. Nhả tay ở đây.
+        runCatching { worker.start() }.onFailure {
+            voiceAssistInFlight.set(false)
+            Log.e(TAG, "không khởi được luồng phát keyevent 231: $it")
+        }
         return true   // đã nhận lệnh; emit chạy nền
+    }
+
+    /**
+     * Nói cho owner biết đang chờ cái gì. Chỉ báo ở lần hỏng ĐẦU: vòng chờ tối đa 4 lần, báo mỗi lần sẽ
+     * thành 3 toast chồng nhau trên xe đang chạy.
+     *
+     * Câu chữ nhắc **tích "luôn cho phép"**: mỗi lần thử là một kết nối MỚI, nên nếu owner bấm Cho phép mà
+     * không tích ô đó thì quyền chỉ sống với đúng kết nối đang treo — lần thử sau lại hỏi lại.
+     */
+    private fun reportProgress(ctx: Context, attempt: Int, reason: LocalShellFailure, waitMs: Long) {
+        Log.i(TAG, "adb loopback: lần $attempt hỏng vì $reason, chờ ${waitMs}ms rồi thử lại")
+        if (attempt != 1) return
+        if (reason == LocalShellFailure.AWAITING_APPROVAL || reason == LocalShellFailure.AUTH_REJECTED) {
+            toast(
+                ctx,
+                Lang.t(
+                    "Bấm \"Cho phép/Allow\" (tích \"luôn cho phép\") trên hộp thoại gỡ lỗi USB — app đang chờ…",
+                    "Tap \"Allow\" (tick \"always allow\") on the USB-debugging dialog — waiting…",
+                ),
+            )
+        }
+    }
+
+    /** Lý do hỏng, viết cho owner đọc — thay cho im lặng của bản trước 2026-08-24. */
+    private fun failureMessage(reason: LocalShellFailure): String = when (reason) {
+        LocalShellFailure.AWAITING_APPROVAL, LocalShellFailure.AUTH_REJECTED -> Lang.t(
+            "Chưa được cấp quyền gỡ lỗi USB. Bấm \"Cho phép/Allow\" (nhớ tích \"luôn cho phép\") rồi thử lại.",
+            "USB debugging not authorised yet. Tap \"Allow\" (tick \"always allow\") then try again.",
+        )
+        LocalShellFailure.PORT_CLOSED -> Lang.t(
+            "Cổng gỡ lỗi 5555 chưa bật trên xe — trợ lý giọng nói không chạy được.",
+            "Debug port 5555 is off on the head unit — the voice assistant cannot run.",
+        )
+        LocalShellFailure.IO_ERROR, LocalShellFailure.UNKNOWN -> Lang.t(
+            "Không nối được vào xe để mở trợ lý. Thử lại sau.",
+            "Could not reach the head unit to open the assistant. Try again later.",
+        )
+    }
+
+    private fun toast(ctx: Context, text: String) {
+        val app = ctx.applicationContext
+        // Gọi từ thread nền (dịch vụ hỗ trợ không có Looper riêng) → phải đẩy về main looper.
+        Handler(Looper.getMainLooper()).post {
+            runCatching { Toast.makeText(app, text, Toast.LENGTH_LONG).show() }
+        }
     }
 
     /**
@@ -119,7 +234,12 @@ object AssistantLauncher {
         }
         return runCatching {
             val keys = AdbKeys.ensure(app)
-            val ok = LocalDeviceShell.session(keys) { sh ->
+            val result = LocalDeviceShell.sessionResult(
+                keys,
+                // Owner vừa chọn trợ lý trong app ⇒ đang nhìn màn hình ⇒ chờ được hộp thoại cấp quyền (F2).
+                retry = LocalShellRetry.AWAIT_ADB_APPROVAL,
+                onProgress = { attempt, reason, waitMs -> reportProgress(app, attempt, reason, waitMs) },
+            ) { sh ->
                 sh("settings put secure assistant $GSA_ASSIST")
                 sh("settings put secure voice_interaction_service ''")
                 Thread.sleep(300)   // như 8hare: để clear settle trước khi set lại (nếu không, set lại có thể bị bỏ qua)
@@ -134,8 +254,32 @@ object AssistantLauncher {
                 sh("appops set $PKG_BARD SYSTEM_ALERT_WINDOW allow")
                 Log.i(TAG, "system assistant → Google/Gemini (full 8hare recipe); float_app_list=$merged")
                 true
-            } ?: false
-            if (ok) "" else "Không mở được dadb (5555 chưa bật / key chưa allow trên xe)."
+            }
+            when (result) {
+                is LocalShellResult.Ok -> {
+                    Log.i(TAG, "setSystemAssistant OK sau ${result.attempts} lần thử")
+                    ""
+                }
+                is LocalShellResult.Failed -> {
+                    Log.e(
+                        TAG,
+                        "setSystemAssistant hỏng sau ${result.attempts} lần thử — ${result.reason} " +
+                            "(đã phát lệnh=${result.commandDispatched})",
+                        result.cause,
+                    )
+                    // Hỏng SAU khi đã phát lệnh = công thức 12 bước chạy dở. Nguy hiểm nhất là khe giữa
+                    // `voice_interaction_service ''` và lần đặt lại — dừng đúng chỗ đó là trợ lý hệ thống
+                    // đang RỖNG. Owner phải biết để bật lại, không được nghĩ "không có gì thay đổi".
+                    if (result.commandDispatched) {
+                        failureMessage(result.reason) + " " + Lang.t(
+                            "Công thức trợ lý mới chạy được một phần — bật lại công tắc để chạy đủ.",
+                            "The assistant recipe was only partly applied — toggle it again to finish.",
+                        )
+                    } else {
+                        failureMessage(result.reason)
+                    }
+                }
+            }
         }.getOrElse { Log.e(TAG, "setSystemAssistant failed: $it"); "Lỗi đặt trợ lý: ${it.message}" }
     }
 }

@@ -43,17 +43,30 @@ import org.junit.jupiter.api.Test
 class NavSourceModeSwitchTest {
 
     private class FakeSink : NavOutputOwner.Sink {
-        var arrowCount = 0
         var laneCount = 0
         var cameraCount = 0
-        var clearCount = 0
-        var blankCount = 0
-        override fun pushArrow(icon: Int, segMeters: Int) { arrowCount++ }
         override fun pushLane(info: LaneInfo) { laneCount++ }
         override fun pushCamera(iconCode: Int, distanceMeters: Int) { cameraCount++ }
-        override fun blankDistance() { blankCount++ }
-        override fun clear() { clearCount++ }
-        val pushCount: Int get() = arrowCount + laneCount + cameraCount
+    }
+
+    /**
+     * CỬA CHÍNH giả (F4 bước 1, 08-24). Mũi tên không còn đi `sink.pushArrow` mà vào phễu
+     * (`NavRepository.ingestContent`); nhả khung không còn là `sink.clear()` mà là `stopIfSource(pkg)`.
+     *
+     * ⚠ ĐỌC SỐ ĐÚNG CÁCH: [count] là số lần khung vào phễu, KHÔNG phải số nhịp re-assert. Owner dedup theo
+     * nội dung (4 Hz × `prefs.commit()` đồng bộ là không chấp nhận được), còn việc nhắc lại nội dung cho OEM
+     * nằm SAU phễu (`NavigationHudOwner.keepAliveTick`). Vì thế các test dưới đây đo "còn tươi hay không"
+     * bằng [stopped] (nhả khung) chứ không bằng cách đếm nhịp bắn.
+     */
+    private class FakeFunnel {
+        val frames = mutableListOf<Pair<String, com.byd.clusternav.navigation.NavigationFrameContent>>()
+        val stopped = mutableListOf<String>()
+        val count: Int get() = frames.size
+        val lastPkg: String? get() = frames.lastOrNull()?.first
+        fun ingest(pkg: String, content: com.byd.clusternav.navigation.NavigationFrameContent) {
+            frames += pkg to content
+        }
+        fun stop(pkg: String) { stopped += pkg }
     }
 
     private val gmaps = NavApps.GMAPS.first()
@@ -65,8 +78,10 @@ class NavSourceModeSwitchTest {
     @BeforeEach fun reset() { ScreenCaptureSignal.clear(); NavViewIdSource.clear(); SourceArbiter.clear() }
     @AfterEach fun tearDown() { ScreenCaptureSignal.clear(); NavViewIdSource.clear(); SourceArbiter.clear() }
 
-    private fun owner(sink: NavOutputOwner.Sink) =
-        NavOutputOwner(sink = sink, clock = { 0L }, log = {}, speed = { null })
+    private fun owner(sink: NavOutputOwner.Sink, funnel: FakeFunnel) = NavOutputOwner(
+        sink = sink, ingest = funnel::ingest, stopSession = funnel::stop,
+        clock = { 0L }, log = {}, speed = { null },
+    )
 
     // ── 1. Ca hiện trường: đổi sang PREFER_* của app KHÁC ⇒ nhịp tick KẾ TIẾP im ────────────────────────
     /**
@@ -74,11 +89,11 @@ class NavSourceModeSwitchTest {
      * [NavSourceModeSwitch.onModeSelected] là test này ĐỎ ngay (mũi tên GMaps vẫn được bắn ở t+250 ms).
      */
     @Test fun `doi sang PREFER app khac - nhip tick KE TIEP khong ban gi`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(waze, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
             o.tick(1_000L)
-            assertEquals(1, sink.arrowCount, "tiền đề: Waze đang lái cụm qua đường ảnh")
+            assertEquals(1, funnel.count, "tiền đề: Waze đang lái cụm qua đường ảnh")
 
             var persisted = -1
             val changed = NavSourceModeSwitch.onModeSelected(
@@ -92,8 +107,8 @@ class NavSourceModeSwitchTest {
             // Nhịp keep-alive KẾ TIẾP (250 ms sau), tức còn RẤT xa mốc stale 6 000 ms.
             o.tick(1_250L)
         }
-        assertEquals(1, sink.arrowCount, "sau khi đổi menu, KHÔNG được bắn thêm mũi tên của app cũ")
-        assertEquals(1, sink.clearCount, "khung của app cũ phải được NHẢ, không để nhịp tim ghim lại")
+        assertEquals(1, funnel.count, "sau khi đổi menu, KHÔNG được đưa thêm khung của app cũ vào phễu")
+        assertEquals(listOf(waze), funnel.stopped, "phiên của app cũ phải được NHẢ, không để nhịp tim ghim lại")
     }
 
     /**
@@ -101,17 +116,19 @@ class NavSourceModeSwitchTest {
      * hai mốc thời gian, chỉ bỏ đúng bước đổi mode ⇒ mũi tên app cũ vẫn lên cụm. Và ở mốc 6 001 ms thì hết.
      */
     @Test fun `doi chung - khong doi mode thi mui ten app cu song toi moc 6000ms`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(waze, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
             o.tick(1_250L)
-            assertEquals(1, sink.arrowCount, "250 ms sau: còn tươi")
+            assertEquals(1, funnel.count, "250 ms sau: còn tươi ⇒ khung đã vào phễu")
             o.tick(1_000L + ScreenCaptureSignal.STALE_MS)
-            assertEquals(2, sink.arrowCount, "đúng mốc 6 000 ms: VẪN còn tươi — đây chính là cửa sổ 6 giây")
+            // Mốc tươi đo bằng ĐƯỜNG NHẢ, không đếm nhịp bắn: nội dung y hệt nên phễu dedup (xem KDoc
+            // FakeFunnel). Còn tươi ⇔ CHƯA nhả phiên.
+            assertTrue(funnel.stopped.isEmpty(), "đúng mốc 6 000 ms: VẪN còn tươi — đây chính là cửa sổ 6 giây")
             o.tick(1_001L + ScreenCaptureSignal.STALE_MS)
         }
-        assertEquals(2, sink.arrowCount, "quá 6 000 ms mới hết tươi")
-        assertEquals(1, sink.clearCount)
+        assertEquals(1, funnel.count, "quá 6 000 ms mới hết tươi ⇒ không có khung mới")
+        assertEquals(listOf(waze), funnel.stopped, "6 001 ms: hết tươi ⇒ nhả phiên")
     }
 
     // ── 1b. VÒNG 2: app KHÁC còn giữ khung ⇒ gỡ sample KHÔNG đủ, phải NHẢ khung ────────────────────────
@@ -126,12 +143,12 @@ class NavSourceModeSwitchTest {
      * → `t+500 lane=2 clear=0`. Không một lệnh nhả khung nào.
      */
     @Test fun `app bi loai ma app KHAC con giu khung - van phai NHA khung dung mot lan`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(waze, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
             ScreenCaptureSignal.publishLane(vietmap, lanes, now = 1_000L)
             o.tick(1_000L)
-            assertEquals(1, sink.arrowCount, "tiền đề: mũi tên Waze đang là danh tính khung")
+            assertEquals(1, funnel.count, "tiền đề: mũi tên Waze đang là danh tính khung")
             assertEquals(0, sink.laneCount, "làn VietMap lệch danh tính ⇒ DROP (không kéo theo clear)")
 
             NavSourceModeSwitch.onModeSelected(NavSourceMode.AUTO, NavSourceMode.PREFER_VIETMAP) {}
@@ -139,15 +156,15 @@ class NavSourceModeSwitchTest {
             assertNotNull(ScreenCaptureSignal.lane, "làn VietMap được phép ⇒ KHÔNG bị đụng")
 
             o.tick(1_250L)
-            assertEquals(1, sink.clearCount, "phải NHẢ khung: register mũi tên còn giữ nội dung của Waze")
-            assertEquals(1, sink.arrowCount, "không được bắn thêm mũi tên app cũ")
+            assertEquals(listOf(waze), funnel.stopped, "phải NHẢ phiên: register mũi tên còn giữ nội dung của Waze")
+            assertEquals(1, funnel.count, "không được đưa thêm khung của app cũ vào phễu")
             assertEquals(0, sink.laneCount, "nhịp nhả khung KHÔNG bắn tiếp trong cùng tick")
 
             // Nhịp kế: khung dựng lại SẠCH, chỉ còn app được phép.
             o.tick(1_500L)
             assertEquals(1, sink.laneCount, "nhịp sau dựng lại khung từ kênh còn được phép")
-            assertEquals(1, sink.arrowCount)
-            assertEquals(1, sink.clearCount, "nhả đúng MỘT lần, không nhả lặp mỗi nhịp")
+            assertEquals(1, funnel.count)
+            assertEquals(listOf(waze), funnel.stopped, "nhả đúng MỘT lần, không nhả lặp mỗi nhịp")
         }
     }
 
@@ -157,19 +174,20 @@ class NavSourceModeSwitchTest {
      * nhả khung lúc này là làm chính app vừa chọn chớp tắt, tức "hiện SAI".
      */
     @Test fun `goi bi loai KHONG phai danh tinh khung - khong duoc nha khung`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_RIGHT, amap = 3, now = 1_000L)
             ScreenCaptureSignal.publishLane(waze, lanes, now = 1_000L)
             o.tick(1_000L)
-            assertEquals(1, sink.arrowCount, "tiền đề: khung là của VietMap")
+            assertEquals(1, funnel.count, "tiền đề: khung là của VietMap")
 
             NavSourceModeSwitch.onModeSelected(NavSourceMode.AUTO, NavSourceMode.PREFER_VIETMAP) {}
             assertNull(ScreenCaptureSignal.lane, "làn Waze bị gỡ")
 
             o.tick(1_250L)
-            assertEquals(0, sink.clearCount, "khung của app vừa được chọn KHÔNG được nháy")
-            assertEquals(2, sink.arrowCount, "mũi tên VietMap vẫn re-assert đều mỗi nhịp")
+            assertTrue(funnel.stopped.isEmpty(), "phiên của app vừa được chọn KHÔNG được nhả (nháy khung)")
+            assertEquals(vietmap, funnel.lastPkg, "khung vẫn là của VietMap")
+            assertEquals(1, funnel.count, "nội dung không đổi ⇒ phễu không bị đập lại (re-assert nằm sau phễu)")
         }
     }
 
@@ -184,8 +202,8 @@ class NavSourceModeSwitchTest {
 
     // ── 2. Bẫy Spinner: onItemSelected bắn cả khi setSelection() lúc dựng màn hình ─────────────────────
     @Test fun `chon lai DUNG mode dang luu - no-op tuyet doi (khong ghi prefs, khong xoa kenh)`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(gmaps, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
             var persistCalls = 0
             val changed = NavSourceModeSwitch.onModeSelected(
@@ -198,20 +216,20 @@ class NavSourceModeSwitchTest {
             assertNotNull(ScreenCaptureSignal.arrow, "trùng mode thì KHÔNG được xoá kênh nào")
             o.tick(1_250L)
         }
-        assertEquals(1, sink.arrowCount, "mở app không được làm cụm mất mũi tên")
+        assertEquals(1, funnel.count, "mở app không được làm cụm mất mũi tên")
     }
 
     // ── 3. CHỈ THU HẸP: app được chọn không bị nháy ───────────────────────────────────────────────────
     @Test fun `chon dung app dang dan - kenh cua no GIU nguyen (khong nhay khung)`() {
-        val sink = FakeSink()
-        owner(sink).use { o ->
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel).use { o ->
             ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_RIGHT, amap = 3, now = 1_000L)
             NavSourceModeSwitch.onModeSelected(NavSourceMode.AUTO, NavSourceMode.PREFER_VIETMAP) {}
             assertNotNull(ScreenCaptureSignal.arrow, "app vừa được chọn phải giữ nguyên kênh")
             o.tick(1_250L)
         }
-        assertEquals(1, sink.arrowCount)
-        assertEquals(0, sink.clearCount, "không được nhả rồi dựng lại khung của chính app vừa chọn")
+        assertEquals(1, funnel.count)
+        assertTrue(funnel.stopped.isEmpty(), "không được nhả rồi dựng lại khung của chính app vừa chọn")
     }
 
     @Test fun `doi ve AUTO - khong xoa kenh nao (AUTO khong dien dat uu tien)`() {

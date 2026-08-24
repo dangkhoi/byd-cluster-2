@@ -44,15 +44,78 @@ object LocalDeviceShell {
      * disallow và allow listener, `ClusterDiag` chạy hàng chục lệnh và tự ghép stdout với stderr. Tách
      * thành nhiều phiên rời sẽ đổi hành vi của một đường tự-chữa vốn đã mong manh — mà giai đoạn này
      * không được đổi hành vi.
+     *
+     * Hỏng ⇒ `null`, KHÔNG thử lại, KHÔNG hạn đọc — nguyên vẹn hành vi trước 2026-08-24 cho mọi bên gọi
+     * cũ. Bên gọi nào cần chờ owner bấm "Cho phép gỡ lỗi USB" phải nói ra tường minh qua [sessionResult].
      */
-    fun <T> session(keys: AdbKeyPair, block: (shell: (String) -> LocalShellText) -> T): T? = runCatching {
-        Dadb.create(HOST, PORT, keys).use { adb ->
-            block { command ->
-                val response = adb.shell(command)
-                LocalShellText(response.output ?: "", response.errorOutput ?: "", response.exitCode)
-            }
+    fun <T> session(keys: AdbKeyPair, block: (shell: (String) -> LocalShellText) -> T): T? =
+        when (val result = sessionResult(keys, LocalShellRetry.NONE, block = block)) {
+            // Block trả `null` hợp lệ vẫn ra `null` ở đây — đúng như đường cũ, bên gọi không phân biệt được
+            // "chạy xong, kết quả null" với "phiên hỏng". Ai cần phân biệt thì dùng [sessionResult].
+            is LocalShellResult.Ok -> result.value
+            is LocalShellResult.Failed -> null
         }
-    }.getOrNull()
+
+    /**
+     * Như [session] nhưng (a) nhận [retry] để chờ owner cấp quyền adb, và (b) trả về **lý do hỏng** thay
+     * cho một chữ `null` câm.
+     *
+     * Sinh ra 2026-08-24 cho F2 (owner: *"start app vẫn chưa hold mic gọi gemini/kiki được, phải tắt, mở
+     * lại thì mới xin được quyền"*): lần đầu app nối tới `localhost:5555` bằng khoá mới sinh, head unit
+     * bung hộp thoại "Cho phép gỡ lỗi USB?" và phiên đó hỏng (hoặc treo) — không ai thử lại, không ai nói
+     * gì, nên owner chỉ còn cách tắt app mở lại. Xem [LocalShellFailure] cho bằng chứng bytecode dadb.
+     *
+     * @param onProgress báo cho tầng UI TRƯỚC mỗi lần chờ: (lần thử vừa hỏng, lý do, sẽ chờ bao nhiêu ms).
+     */
+    fun <T> sessionResult(
+        keys: AdbKeyPair,
+        retry: LocalShellRetry = LocalShellRetry.NONE,
+        onProgress: (Int, LocalShellFailure, Long) -> Unit = { _, _, _ -> },
+        block: (shell: (String) -> LocalShellText) -> T,
+    ): LocalShellResult<T> = LocalShellSessions.run(
+        connector = DadbLoopbackConnector,
+        keys = keys,
+        retry = retry,
+        onProgress = onProgress,
+        nowMs = System::currentTimeMillis,
+        sleepMs = Thread::sleep,
+        block = block,
+    )
+
+    /**
+     * Phiên thật: dadb tới `localhost:5555`.
+     *
+     * `socketTimeoutMs <= 0` ⇒ gọi ĐÚNG overload 3 tham số như trước 2026-08-24. Không đi qua overload 5
+     * tham số với số 0 cho "giống nhau": tuy bytecode dadb 2.0.0 cho thấy hai đường tương đương
+     * (`create(host,port,keys)` → `create$default(..., mask 56)` → connectTimeout=0, socketTimeout=0,
+     * keepAlive=false), nhưng đường đang chạy tốt ngoài hiện trường thì không đổi vì một suy luận —
+     * CLAUDE.md §6. Connect-timeout luôn để 0 để `SocketTimeoutException` chỉ có thể là hạn ĐỌC
+     * (điều kiện để [LocalShellFailures.classify] gọi ra [LocalShellFailure.AWAITING_APPROVAL]).
+     */
+    private object DadbLoopbackConnector : LocalShellConnector {
+        override fun open(keys: AdbKeyPair, socketTimeoutMs: Int): LocalShellConnection {
+            val adb = if (socketTimeoutMs <= 0) {
+                Dadb.create(HOST, PORT, keys)
+            } else {
+                Dadb.create(HOST, PORT, keys, 0, socketTimeoutMs)
+            }
+            return DadbConnection(adb)
+        }
+    }
+
+    private class DadbConnection(private val adb: Dadb) : LocalShellConnection {
+        /** `supportsFeature` đi qua `DadbImpl.connection()` ⇒ ép bắt tay xong mà không gửi lệnh shell nào. */
+        override fun handshake() {
+            adb.supportsFeature("shell_v2")
+        }
+
+        override fun shell(command: String): LocalShellText {
+            val response = adb.shell(command)
+            return LocalShellText(response.output ?: "", response.errorOutput ?: "", response.exitCode)
+        }
+
+        override fun close() = adb.close()
+    }
 
     /** Cài một APK. Trả về true nếu dadb không ném. */
     fun installApk(keys: AdbKeyPair, apk: File, vararg options: String): Boolean = runCatching {

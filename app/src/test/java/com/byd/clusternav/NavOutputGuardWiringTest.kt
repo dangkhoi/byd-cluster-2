@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.testsupport.SourceRoots
+import java.nio.file.Files
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -12,7 +13,13 @@ import org.junit.jupiter.api.Test
  *     không ai gọi thì cụm vẫn chạy y như cũ và không test nào đỏ (đúng ca `CastShell.evictVd` trong §8).
  *  2. Cạm bẫy `SpeedProvider.mps()` — biến thể last-good trả **0.0 khi HAL câm** (SpeedProvider.kt:26-35).
  *     Dùng nhầm nó thì guard tưởng xe LUÔN ĐỖ ⇒ luật đóng-băng chết câm, không ai biết.
- *  3. Ranh giới sở hữu session-latch (khuôn `PhysicalHudOwnershipTest`) — `blankNavDistance` là CONTENT-only.
+ *  3. Ranh giới sở hữu session-latch (khuôn `PhysicalHudOwnershipTest`).
+ *
+ * ⚠ 2026-08-24 (F4 bước 1): năng lực **XOÁ TRẮNG ô cự-ly** không còn là một lệnh HAL riêng
+ * (`sink.blankDistance()` → `BydHal.blankNavDistance`) mà được thừa hưởng qua phễu — guard từ chối ⇒ -1 ⇒
+ * `content.distanceMeters = null` ⇒ `NavigationHudOwner` truyền -1 xuống `BydHal.writeNavFrame`, và hàm đó
+ * ghi ô cự-ly **VÔ ĐIỀU KIỆN**. Điều kiện đó (`writeNavFrame` không có `if (segMeters >= 0)`) chính là thứ
+ * làm cho việc gỡ hàm cũ KHÔNG mất tính năng — nên nó phải được khoá bằng test, không phải bằng lời hứa.
  */
 class NavOutputGuardWiringTest {
 
@@ -37,9 +44,52 @@ class NavOutputGuardWiringTest {
         assertTrue(owner.contains("guard.noSample()"), "phải có đường 'không có mẫu' (VietMap/GMaps)")
         assertTrue(owner.contains("guard.reset()"), "phải reset guard theo vòng đời frame")
         assertTrue(owner.contains("NavViewIdSource.freshReadingFor("), "phải đọc ảnh chụp NHẤT QUÁN, không đọc rời")
-        assertTrue(owner.contains("sink.blankDistance()"), "phải có đường XOÁ ô cự-ly (cạnh xuống)")
-        assertTrue(owner.contains("BydHal.blankNavDistance("), "HalSink phải nối xuống HAL thật")
+        assertTrue(
+            owner.contains("NavContentBuilder.fromImage(pkg, arrowS, reading, seg)"),
+            "kết quả guard phải chảy vào khung của cửa chính (đây là đường xoá ô cự-ly sau F4 bước 1)",
+        )
         assertTrue(owner.contains("SpeedProvider.mpsOrNull"), "tốc độ phải đi qua biến thể phân biệt được 'không đọc được'")
+    }
+
+    /**
+     * T31 (08-24) — BẰNG CHỨNG "xoá trắng ô cự-ly được thừa hưởng, không phải bị mất".
+     *
+     * `pushNavigation` cũ có `if (segMeters >= 0)` nên -1 = GIỮ SỐ CŨ (đó chính là lý do `blankNavDistance`
+     * từng phải tồn tại). `writeNavFrame` thì KHÔNG có điều kiện đó ⇒ -1 ghi thẳng = xoá trắng. Nếu ai đó
+     * thêm một `if (segMeters >= 0)` vào `writeNavFrame` thì đường xoá ô cự-ly chết IM LẶNG trên xe — test
+     * này là thứ duy nhất bắt được.
+     */
+    @Test
+    fun `writeNavFrame ghi o cu-ly VO DIEU KIEN (-1 = xoa trang)`() {
+        val body = halFunctionBody("writeNavFrame")
+        assertTrue(
+            body.contains("w(\"INSTRUMENT_FRONT_CROSSING_DISTANCE_SET\", segMeters)"),
+            "writeNavFrame phải ghi ô cự-ly domestic",
+        )
+        assertTrue(body.contains("DIST_OVERSEA="), "và cả nhánh oversea")
+        assertFalse(
+            body.contains("if (segMeters >= 0)"),
+            "ghi CÓ ĐIỀU KIỆN là làm mất đường xoá trắng ô cự-ly mà guard B-III dựa vào",
+        )
+    }
+
+    /**
+     * T32 (08-24) — CỬA THỨ HAI ĐÃ NGƯNG GHI register guidance. Hai hàm HAL cũ còn nằm trong `BydHal.kt`
+     * (chưa gỡ — F4 bước 3) nhưng **không được có call site nào** trong `app/src/main`, nếu không là quay lại
+     * đúng cảnh hai owner ghi xen kẽ `INSTRUMENT_GUIDE_INFO_SIMPLE_SET` (B3.54).
+     */
+    @Test
+    fun `khong con ai goi pushNavigation hay blankNavDistance`() {
+        val offenders = Files.walk(SourceRoots.path("src/main/java/com/byd/clusternav")).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .filter { it.fileName.toString() != "BydHal.kt" }
+                .filter {
+                    val t = it.toFile().readText()
+                    t.contains("BydHal.pushNavigation(") || t.contains("BydHal.blankNavDistance(")
+                }
+                .toList()
+        }
+        assertTrue(offenders.isEmpty(), "đường ghi guidance thứ hai đã bị gỡ, đừng nối lại: $offenders")
     }
 
     /**

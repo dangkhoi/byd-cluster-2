@@ -7,12 +7,12 @@ import com.byd.clusternav.modules.hal.BydHal
 import com.byd.clusternav.navigation.NavViewIdSource
 import com.byd.clusternav.navigation.HudKeepAlivePolicy
 import com.byd.clusternav.navigation.LaneInfo
-import com.byd.clusternav.navigation.Maneuver
+import com.byd.clusternav.navigation.NavContentBuilder
 import com.byd.clusternav.navigation.NavOutputDecision
 import com.byd.clusternav.navigation.NavOutputPlan
+import com.byd.clusternav.navigation.NavigationFrameContent
 import com.byd.clusternav.navigation.TurnDistancePlausibility
 import com.byd.clusternav.navigation.stateAt
-import com.byd.clusternav.navigation.screencapture.ArrowSample
 import com.byd.clusternav.navigation.screencapture.ScreenCaptureSignal
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -22,11 +22,19 @@ import java.util.concurrent.TimeUnit
 /**
  * B3 T4 (spec `docs/specs/b3-full-nav-capture.html` §R3/§R4/§R5) — OWNER "payload gốc" của nguồn dẫn đường ẢNH.
  *
- * Đọc [ScreenCaptureSignal] (mũi tên + làn + camera, đã QUA trọng tài `SourceArbiter` khi publish) và bắn ra
- * cụm-centre + HUD qua [BydHal]:
- *  - mũi tên tươi → [BydHal.pushNavigation] (icon guidance, domestic + oversea);
- *  - làn tươi     → [BydHal.pushLane] (mỗi làn: hướng + recommended sáng/mờ, R4);
- *  - camera tươi  → [BydHal.pushCamera] (icon + cự-ly, R5a).
+ * ⚠ ĐỔI VAI 2026-08-24 (F4, spec `docs/specs/nav-input-output-architecture.html` — bước 1/3): file này KHÔNG
+ * còn là "cửa ra" của mũi tên. Nó đọc [ScreenCaptureSignal] (mũi tên + làn + camera, đã QUA trọng tài
+ * `SourceArbiter` khi publish), ghép thành MỘT khung có danh tính, rồi **đưa vào CỬA CHÍNH**:
+ *  - mũi tên tươi → [NavContentBuilder.fromImage] → seam [ingest] → `NavRepository.ingestContent` ⇒ phễu tự lo
+ *    CHỐT PHIÊN + cụm-centre "Giữa + ETA" + HUD + broadcast dải làn zin (đây là thứ đường ảnh THIẾU, làm
+ *    VietMap/Waze không lên HUD — F4);
+ *  - làn tươi     → [BydHal.pushLane] (mỗi làn: hướng + recommended sáng/mờ, R4) — CHƯA dời, bước 2 mới dời;
+ *  - camera tươi  → [BydHal.pushCamera] (icon + cự-ly, R5a) — CHƯA dời, bước 2 mới dời;
+ *  - hết tươi     → seam [stopSession] → `NavRepository.stopIfSource` (nhả CẢ phiên, không chỉ xoá nội dung).
+ *
+ * ⇒ **[BydHal.pushNavigation] / [BydHal.blankNavDistance] KHÔNG CÒN CALL SITE NÀO.** Register
+ * `INSTRUMENT_GUIDE_INFO_SIMPLE_SET` từ nay chỉ còn MỘT người ghi là [NavigationHudOwner.push]
+ * (`BydHal §writeNavFrame`) — đóng phần "hai bộ ghi chồng nhau" của B3.54 ở mức cơ chế.
  *
  * §R-BI — BẤT BIẾN MỘT-PACKAGE-MỘT-KHUNG: ba kênh publish ĐỘC LẬP và mỗi kênh tự tươi 6s, nên khi đổi app dẫn
  * (Waze → VietMap) kênh của app cũ còn tươi tới 6 giây ⇒ nếu không so danh tính thì dải làn của một ngã ba KHÁC
@@ -41,12 +49,12 @@ import java.util.concurrent.TimeUnit
  * KEEP-ALIVE (giống [HudKeepAlivePolicy]): một scheduler daemon nhịp mỗi [intervalMs]
  * (mặc định [HudKeepAlivePolicy.DEFAULT_INTERVAL_MS] = 250ms) gọi [tick]; mỗi tick ĐỌC LẠI mức tươi SỐNG của
  * tín hiệu ⇒ còn tươi thì RE-ASSERT nội dung (OEM không blank), hết tươi (tất cả kênh stale, ngưỡng
- * `ScreenCaptureSignal.STALE_MS`) thì [BydHal.clearNavFrame] ĐÚNG một lần. Dùng ngưỡng-tươi 6s (KHÔNG phải trần
+ * `ScreenCaptureSignal.STALE_MS`) thì NHẢ PHIÊN qua [stopSession] ĐÚNG một lần. Dùng ngưỡng-tươi 6s (KHÔNG phải trần
  * 180s của đường DATA) vì nguồn ẢNH tick 2Hz liên tục khi đang đọc — gap > 6s = capture đã dừng.
  *
- * RANH GIỚI SỞ HỮU (PhysicalHudOwnershipTest): owner này KHÔNG gọi đường `writeNavFrame` — session latch
- * (SEND_NAVI_STATUS / SET_NAVI_SCREEN_STATUS / SDK) vẫn là ĐỘC QUYỀN của [NavigationHudOwner]. Owner này chỉ ghi
- * CONTENT (mũi tên/cự-ly/làn/camera) qua các method push* THÊM (additive).
+ * RANH GIỚI SỞ HỮU (PhysicalHudOwnershipTest): file này KHÔNG gọi `writeNavFrame` — và từ 08-24 cũng không
+ * còn gọi `pushNavigation`/`blankNavDistance`. Mọi thứ chạm bề mặt cụm-centre/HUD đi qua phễu và do
+ * [NavigationHudOwner] ghi. Còn lại ở đây chỉ là hai register KHÁC họ: làn (0x198020xx) + camera (0x43F03xxx).
  *
  * ◐ "hai owner KHÔNG cùng ghi một lúc" — **ĐÓNG MỘT PHẦN 2026-08-23** (backlog **B3.48**). Cảnh báo cũ (08-23
  * vòng 2) đúng vào lúc viết: cổng DATA↔IMAGE của [SourceArbiter] là **theo package** (`isDataFresh(pkg)`),
@@ -88,6 +96,13 @@ import java.util.concurrent.TimeUnit
  */
 class NavOutputOwner internal constructor(
     private val sink: Sink,
+    /**
+     * CỬA CHÍNH — đưa khung ảnh vào phễu (`NavRepository.ingestContent`). CỐ Ý **không có giá trị mặc định**:
+     * một `= { _, _ -> }` là đúng cái bẫy CLAUDE.md §8 (quên nối mà build vẫn xanh ⇒ HUD câm im lặng trên xe).
+     */
+    private val ingest: (String, NavigationFrameContent) -> Unit,
+    /** Nhả PHIÊN của gói đang giữ khung (`NavRepository.stopIfSource`). Không mặc định — cùng lý do [ingest]. */
+    private val stopSession: (String) -> Unit,
     private val clock: () -> Long = { SystemClock.elapsedRealtime() },
     private val intervalMs: Long = HudKeepAlivePolicy.DEFAULT_INTERVAL_MS,
     private val log: (String) -> Unit = {},
@@ -139,6 +154,10 @@ class NavOutputOwner internal constructor(
     /** Prod: bơm ra HAL cụm/HUD in-process qua [BydHal] (đường CONTENT push*, KHÔNG phải session-latch owner). */
     constructor(appContext: Context) : this(
         sink = HalSink(appContext.applicationContext),
+        ingest = { pkg, content ->
+            NavRepository.ingestContent(appContext.applicationContext, pkg, null, content)
+        },
+        stopSession = { pkg -> NavRepository.stopIfSource(appContext.applicationContext, pkg) },
         log = { msg -> Log.i(TAG, msg) },
         assertNavSurface = {
             com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
@@ -146,18 +165,17 @@ class NavOutputOwner internal constructor(
         },
     )
 
-    /** Seam đầu ra — cho phép test inject fake, tách owner khỏi Android/HAL. */
+    /**
+     * Seam đầu ra CÒN LẠI — chỉ hai register KHÁC họ guidance: làn cụm + chip camera. Bước 2 của F4 sẽ dời
+     * nốt hai kênh này vào khung của phễu và seam này biến mất.
+     *
+     * ⚠ `pushArrow` / `blankDistance` / `clear` ĐÃ BỊ GỠ 08-24: mũi tên + cự-ly nay đi qua [ingest] (phễu →
+     * [NavigationHudOwner] → `BydHal §writeNavFrame`, ghi ô cự-ly VÔ ĐIỀU KIỆN nên `-1` = xoá trắng, tức năng
+     * lực của `blankDistance` được thừa hưởng nguyên vẹn), còn nhả khung đi qua [stopSession]. Đừng nối lại.
+     */
     interface Sink {
-        fun pushArrow(icon: Int, segMeters: Int)
         fun pushLane(info: LaneInfo)
         fun pushCamera(iconCode: Int, distanceMeters: Int)
-
-        /**
-         * B-III: XOÁ TRẮNG ô cự-ly (giữ mũi tên). KHÔNG có default body — cố ý: một `= Unit` mặc định là đúng
-         * cái bẫy CLAUDE.md §8 (quên override mà build vẫn xanh, guard mất tác dụng im lặng trên xe).
-         */
-        fun blankDistance()
-        fun clear()
     }
 
     private val scheduler: ScheduledExecutorService =
@@ -169,7 +187,19 @@ class NavOutputOwner internal constructor(
     private var hasFrame = false
     private var active = false   // log-on-change: có đang hiện frame không (đỡ spam ~4/s)
     private var framePkg: String? = null    // §R-BI: danh tính khung đang bắn (log-on-change)
+    // Danh tính của khung ĐANG HIỆN (lần cuối bắn/đưa vào phễu THÀNH CÔNG). KHÁC [framePkg]: cái đó là
+    // tracker log-on-change, bị `noteIdentity` đặt về null NGAY trong tick mà mọi kênh đã stale — tức trước
+    // khi [issueClear] chạy. Nhả phiên phải mang tên gói THẬT đang giữ khung, nếu không `stopIfSource` không
+    // bao giờ khớp và phiên bị ghim tới trần tuổi 180 s (đúng bệnh B3.48 vòng 1).
+    private var activeFramePkg: String? = null
     private var lastDropSig: String? = null // §R-BI: chữ ký ca DROP gần nhất (log-on-change, không spam 4Hz)
+    // CHỐNG SPAM PHỄU: khung ảnh vừa đưa vào cửa chính. Tick 4 Hz mà nội dung y hệt thì BỎ QUA —
+    // `PersistentNavigationFrameStore.append` gọi `prefs.commit()` ĐỒNG BỘ mỗi khung (NavRepository
+    // .PreferencesPersistence.save), tức 4 lần ghi đĩa/giây trên luồng "nav-output-owner" nếu không dedup.
+    // Việc RE-ASSERT nội dung cho OEM không phải việc của đây: `NavigationHudOwner.keepAliveTick` (250 ms) và
+    // `AmapEmissionArbiter.heartbeat` (400 ms) đã lo, và chúng nằm SAU phễu.
+    private var lastIngestPkg: String? = null
+    private var lastIngestContent: NavigationFrameContent? = null
 
     /** Bật keep-alive: nhịp [intervalMs] gọi [tick]. Idempotent. Vòng đời do T6 gọi. */
     fun start() {
@@ -204,8 +234,9 @@ class NavOutputOwner internal constructor(
         // `clear = !anyFresh` (NavOutputDecision) — TẤT CẢ ba kênh phải hết tươi. Một app KHÁC còn giữ một
         // kênh tươi (VietMap publish làn mỗi ~500 ms) ⇒ khung sống tiếp, mà `pushLane`/`pushCamera` KHÔNG ghi
         // `INSTRUMENT_GUIDE_INFO_SIMPLE_SET` ⇒ **mũi tên của app vừa bị loại nằm lại trên cụm vô hạn**.
-        // [ĐO] 2026-08-23 (`PROBE-A`): arrow=Waze + lane=VietMap ⇒ đổi sang PREFER_VIETMAP ⇒ `sink.clear()`
-        // không hề được gọi. Chỉ `clearNavFrame` (sink.clear) mới ghi SIMPLE_SET = 0 — đường ĐÃ proven on-car.
+        // [ĐO] 2026-08-23 (`PROBE-A`): arrow=Waze + lane=VietMap ⇒ đổi sang PREFER_VIETMAP ⇒ đường nhả khung
+        // không hề được gọi. (08-24: đích của nhánh nhả đổi từ `sink.clear()` sang [stopSession] — nhả CẢ
+        // phiên qua cửa chính; hình dạng nhánh B3.49 giữ nguyên, chỉ đổi đích. Xem [issueClear].)
         //
         // CHỈ NHẢ ĐÚNG KHUNG CỦA GÓI BỊ LOẠI: so với [framePkg] (danh tính đang bắn). Nhả vô điều kiện là làm
         // chính app vừa được chọn chớp tắt một nhịp — "hiện SAI", đúng thứ B3.49 cấm.
@@ -239,21 +270,31 @@ class NavOutputOwner internal constructor(
             // runCatching: một lần ném của đường shell/prefs không được phép nuốt cả tick nội dung.
             runCatching { assertNavSurface() }.onFailure { log("nav surface assert failed: ${it.message}") }
             var pushed = false
-            if (plan.pushArrow) arrowIconOrNull(arrowS)?.let { icon ->
+            if (plan.pushArrow) plan.framePkg?.let { pkg ->
                 // 08-22: cự ly THẬT nếu đọc được bằng view-id a11y (clone OpenBYD — Waze phơi
                 // `com.waze:id/navBarDistance`). Trước đây luôn -1 ⇒ HUD bỏ trống ô cự ly, chỉ có mũi tên trần.
                 // §R-BI: cự-ly đi theo DANH TÍNH KHUNG (plan.framePkg — MỘT nguồn sự thật, thay cho guard lẻ
-                // đọc arrowPkg), lệch/thiếu ⇒ -1 ⇒ BydHal.kt BỎ GHI ô cự-ly (không bao giờ ghi số của app khác
-                // cạnh mũi tên app này).
+                // đọc arrowPkg), lệch/thiếu ⇒ -1 ⇒ `content.distanceMeters = null` ⇒ `writeNavFrame` ghi -1
+                // (nó ghi ô cự-ly VÔ ĐIỀU KIỆN) = XOÁ TRẮNG — đúng năng lực `blankDistance` cũ, miễn phí.
                 // Chấm tươi bằng `now` CỦA TICK, không phải clock(): trộn hai miền đồng hồ trong cùng một
                 // quyết định là bug (off-car test tiêm clock={0L} phơi ra ngay).
-                // B-III: mẫu view-id còn phải qua [TurnDistancePlausibility] mới được lái ô cự-ly; và vì "bỏ ghi"
-                // = GIỮ SỐ CŨ, chính hàm dưới lo phát lệnh XOÁ TRẮNG ở cạnh xuống (xem plausibleSegOrUnknown).
-                val seg = plausibleSegOrUnknown(plan.framePkg, now)
-                if (NavLog.verbose) log("pushArrow icon=$icon seg=${if (seg >= 0) "${seg}m" else "—"}")
-                runCatching { sink.pushArrow(icon, seg) }
-                    .onSuccess { pushed = true }
-                    .onFailure { log("arrow push failed: ${it.message}") }
+                // ĐỌC MẪU a11y ĐÚNG MỘT LẦN rồi dùng cho CẢ guard lẫn khung: đọc hai lần là mở lại khe đọc-xé
+                // (guard xét mẫu N, khung mang tên đường của mẫu N+1).
+                val reading = NavViewIdSource.freshReadingFor(pkg, now)
+                val seg = plausibleSegOrUnknown(reading)
+                val content = NavContentBuilder.fromImage(pkg, arrowS, reading, seg)
+                if (content != null) {
+                    if (NavLog.verbose) {
+                        log("ingest khung ảnh $pkg maneuver=${content.maneuver} seg=${if (seg >= 0) "${seg}m" else "—"}")
+                    }
+                    if (alreadyIngested(pkg, content)) {
+                        pushed = true   // khung y hệt đang hiện — phễu không cần biết, nhưng KHÔNG phải "mất khung"
+                    } else {
+                        runCatching { ingest(pkg, content) }
+                            .onSuccess { noteIngested(pkg, content); pushed = true }
+                            .onFailure { log("ingest failed: ${it.message}") }
+                    }
+                }
             }
             if (plan.pushLane) laneS?.info?.takeIf { !it.isEmpty() }?.let { info ->
                 runCatching { sink.pushLane(info) }
@@ -268,6 +309,7 @@ class NavOutputOwner internal constructor(
             if (pushed) {
                 synchronized(stateLock) {
                     hasFrame = true
+                    activeFramePkg = plan.framePkg
                 }
             }
             // Log-on-change theo QUYẾT ĐỊNH (anyPush), KHÔNG theo sink-success: trên emulator/off-car HAL null
@@ -284,20 +326,46 @@ class NavOutputOwner internal constructor(
     /** Convenience: tick theo đồng hồ hiện tại (T6 có thể gọi mỗi lần nguồn publish tín hiệu mới). */
     fun publish() = tick(clock())
 
-    /** Nhả frame (clear) ĐÚNG một lần — no-op nếu chưa hiện gì (chống clear lặp mỗi tick stale). */
+    /**
+     * Nhả khung ĐÚNG một lần — no-op nếu chưa hiện gì (chống nhả lặp mỗi tick stale).
+     *
+     * 08-24 (F4 bước 1): thay `sink.clear()` (= `BydHal.clearNavFrame`, ghi thẳng `SEND_NAVI_STATUS=4` +
+     * `GUIDE_INFO_SIMPLE=0`) bằng [stopSession] — nhả CẢ PHIÊN qua cửa chính. Hai điểm được lợi, cả hai đều
+     * đọc được từ source:
+     *  · `NavRepository.stopIfSource` chỉ dừng khi gói này ĐÚNG là nguồn đang giữ phiên ⇒ khung ảnh của app A
+     *    hết tươi KHÔNG còn xoá trắng khung notification của Google Maps đang chạy (đường cũ `sink.clear()`
+     *    bắn VÔ ĐIỀU KIỆN — đó là bẫy F1 "gỡ cái này làm hỏng cái nó gánh hộ", theo chiều ngược lại);
+     *  · nhả phiên kéo theo `hudOwner.stop()` (huỷ keep-alive) + `ClusterBroadcaster.stop` ⇒ không còn nhịp
+     *    tim ghim khung chết tới trần 180 s.
+     */
     private fun issueClear() {
-        val was = synchronized(stateLock) {
+        val (was, pkg) = synchronized(stateLock) {
             val w = hasFrame
+            val p = activeFramePkg
             hasFrame = false
             framePkg = null
+            activeFramePkg = null
             lastDropSig = null
+            lastIngestPkg = null
+            lastIngestContent = null
             if (active) { active = false; log("nav output CLEAR (all channels stale)") }
-            w
+            w to p
         }
         // B-III: nhả frame = hết phiên ⇒ phiên sau phải chứng minh lại từ đầu. reset() cũng đặt displaying=false
         // nên sẽ KHÔNG có lệnh blank lạc lõng bắn ra sau khi frame đã được clear.
         guard.reset()
-        if (was) runCatching { sink.clear() }.onFailure { log("clear failed: ${it.message}") }
+        if (was && pkg != null) {
+            runCatching { stopSession(pkg) }.onFailure { log("stop session failed: ${it.message}") }
+        }
+    }
+
+    /** Khung y hệt lần đưa vào phễu gần nhất? (chống 4 lần ghi đĩa/giây — xem [lastIngestContent]). */
+    private fun alreadyIngested(pkg: String, content: NavigationFrameContent): Boolean =
+        synchronized(stateLock) { lastIngestPkg == pkg && lastIngestContent == content }
+
+    /** Ghi nhận khung vừa vào phễu THÀNH CÔNG. Thất bại thì KHÔNG ghi ⇒ nhịp sau thử lại. */
+    private fun noteIngested(pkg: String, content: NavigationFrameContent) {
+        synchronized(stateLock) { lastIngestPkg = pkg; lastIngestContent = content }
     }
 
     /**
@@ -327,19 +395,9 @@ class NavOutputOwner internal constructor(
         }
     }
 
-    /**
-     * Icon guidance CAN (toHudIcon) cho mũi tên của CHÍNH sample đang xét: ưu tiên [ArrowSample.maneuver], nếu
-     * null thì suy từ [ArrowSample.amap] qua [Maneuver.fromAmapIcon]. null ⇒ không có hướng hợp lệ →
-     * BỎ bắn mũi tên (degrade-safe: không bắn icon rác/rẽ giả — hợp với prereq B3.11).
-     *
-     * Nhận sample thay vì đọc lại global: đọc lại là mở đúng cái khe đọc-xé mà §R-BI vừa đóng.
-     */
-    private fun arrowIconOrNull(sample: ArrowSample?): Int? {
-        sample ?: return null
-        sample.maneuver?.let { return it.toHudIcon() }
-        sample.amap?.let { amap -> Maneuver.fromAmapIcon(amap)?.let { return it.toHudIcon() } }
-        return null
-    }
+    // `arrowIconOrNull` ĐÃ GỠ 08-24 (F4 bước 1, CLAUDE.md §8 — hàm không còn call site là nợ). Phép suy
+    // hướng "maneuver ?: fromAmapIcon(amap), không suy được thì BỎ khung" nay nằm ở
+    // [NavContentBuilder.fromImage] (:core) và được test bằng GIÁ TRỊ off-car, không chỉ qua owner.
 
     /**
      * B-III — cự ly view-id CHỈ được lái ô cự-ly khi qua [TurnDistancePlausibility].
@@ -356,17 +414,22 @@ class NavOutputOwner internal constructor(
      *
      * GIỚI HẠN đã biết: hàm này chỉ chạy trong nhánh mũi tên. Khi mũi tên stale mà làn/camera còn tươi thì tick
      * không đi qua đây ⇒ không có cơ hội blank, số cũ nằm lại tới lúc clear cả frame. Chấp nhận ở vòng này.
+     *
+     * 08-24 (F4 bước 1) — [TurnDistancePlausibility.Decision.blankDistance] KHÔNG còn phát một lệnh HAL riêng.
+     * Không phải bỏ năng lực, mà là nó được thừa hưởng qua phễu: guard từ chối ⇒ trả `UNKNOWN` (-1) ⇒
+     * `NavContentBuilder.fromImage` đặt `distanceMeters = null` ⇒ `NavigationHudOwner` truyền `-1` xuống
+     * `BydHal §writeNavFrame`, mà hàm đó ghi `INSTRUMENT_FRONT_CROSSING_DISTANCE_SET` **VÔ ĐIỀU KIỆN** (khác
+     * `pushNavigation` cũ — nó có `if (segMeters >= 0)` nên -1 = giữ số cũ, đúng lý do `blankNavDistance` từng
+     * phải tồn tại). Khoá bằng `NavOutputGuardWiringTest`.
+     *
+     * Nhận [r] (mẫu ĐÃ đọc ở [tick]) thay vì tự đọc lại: một lần đọc cho cả guard lẫn khung ⇒ không đọc-xé.
      */
-    private fun plausibleSegOrUnknown(framePkg: String?, now: Long): Int {
-        val r = framePkg?.let { NavViewIdSource.freshReadingFor(it, now) }
+    private fun plausibleSegOrUnknown(r: NavViewIdSource.Reading?): Int {
         // `speed` truyền dạng LAMBDA (không phải `speed()`): tham số được đánh giá TRƯỚC khi vào hàm, mà hàm
         // này chạy 4 Hz trong khi a11y chỉ publish ~1,25 Hz ⇒ phần lớn tick dừng ở bước chống-đọc-lặp
         // (REPEAT) và không cần tốc độ. Truyền giá trị là đốt ~3 lời gọi reflection HAL/giây vô ích cả chuyến.
         val d = if (r == null) guard.noSample()
         else guard.accept(r.pkg, r.turnMeters, r.road, r.atMs, speed)
-        if (d.blankDistance) {
-            runCatching { sink.blankDistance() }.onFailure { log("blank distance failed: ${it.message}") }
-        }
         // Dòng log để ĐO tần suất thật trên xe trước khi cân nhắc nới ngưỡng (OQ14) — bỏ REPEAT để không spam
         // 4Hz. [TurnDistancePlausibility.debugState] in state nội bộ: chỉ để đọc, không quyết định gì.
         if (NavLog.verbose && d.verdict != TurnDistancePlausibility.Verdict.REPEAT) {
@@ -396,11 +459,8 @@ class NavOutputOwner internal constructor(
             instrument = d
             return d
         }
-        override fun pushArrow(icon: Int, segMeters: Int) { instr()?.let { runCatching { BydHal.pushNavigation(it, icon, segMeters) } } }
         override fun pushLane(info: LaneInfo) { instr()?.let { runCatching { BydHal.pushLane(it, info) } } }
         override fun pushCamera(iconCode: Int, distanceMeters: Int) { instr()?.let { runCatching { BydHal.pushCamera(it, iconCode, distanceMeters) } } }
-        override fun blankDistance() { instr()?.let { runCatching { BydHal.blankNavDistance(it) } } }
-        override fun clear() { runCatching { BydHal.clearNavFrame(app) } }
     }
 
     companion object {

@@ -289,6 +289,14 @@ class NavNotificationListener : NotificationListenerService() {
         connected = true
         // ★ Revive: an toàn khởi động nguồn tín hiệu nếu onListenerConnected chưa (re)fire sau khi process restart.
         runCatching {
+            // ⚠ PHẢI sync TRƯỚC addListener — hồi quy F1 (owner 08-24: "trước đây lên ngon lành, giờ không lên").
+            // `SpeedSignLifecycleCoordinator` dựng kèm `onProcessRestart` nên khởi tạo TẮT SẠCH: masterEnabled=false,
+            // selectedSource=NONE, MỌI cổng ra enabled=false (SpeedSignLifecycleCoordinator.kt:84-88).
+            // Chỉ `syncFromPrefs()` bật lên. Đường `onListenerConnected` (:145) gọi đúng; đường lưới-an-toàn này
+            // TRƯỚC 08-24 KHÔNG gọi ⇒ cầu chạy, widget về, pusher bắn — mà cổng cụm vẫn đóng ⇒ badge CÂM.
+            // Vì sao trước 08-22 không lộ: vòng poll `WazeHudSource` gọi `onMasterEnabled(Prefs.enabled)` +
+            // `onSourceSelected` MỖI NHỊP nên tự vá hộ. Gỡ nó (B3.30) là mất luôn cái vá vô tình đó.
+            speedSignOwner.syncFromPrefs()
             val bridge = VietMapWidgetBridge.get(applicationContext)
             bridge.start(VietMapWidgetOwner.NAVIGATION)
             bridge.addListener(speedLimitPusher)
@@ -303,7 +311,10 @@ class NavNotificationListener : NotificationListenerService() {
     // máy không HUD: Waze đang dẫn, logcat rỗng). Bỏ đi là bớt hao pin mà không mất tín hiệu nào.
     // Comment cũ "speed ports = Noop" LỖI THỜI: đường VietMap dưới đây chạy thật, chính nó vẽ badge trên cụm.
     private val speedLimitPusher: (com.byd.clusternav.vietmapwidget.VietMapWidgetSnapshot) -> Unit = { snapshot ->
-        speedSignOwner.onSourceSelected(Prefs.speedLimitSource(applicationContext))
+        // TỰ LÀNH THEO NHỊP — khôi phục đúng hành vi vòng poll `WazeHudSource` đã gỡ (B3.30, hồi quy F1):
+        // bộ điều phối có thể bị đưa về TẮT SẠCH bất cứ lúc nào (owner được dựng lại sau khi process bị giết).
+        // Rẻ: `onMasterEnabled`/`onOutputEnabled`/`onSourceSelected` đều return sớm khi giá trị không đổi.
+        speedSignOwner.syncFromPrefs()
         if (snapshot.speedFreshness == VietMapWidgetFreshness.FRESH) {
             speedSignOwner.onSpeedLimit(
                 source = SpeedLimitSource.VIETMAP,
