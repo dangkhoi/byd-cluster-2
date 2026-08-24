@@ -62,8 +62,26 @@ class OffCarTransportFenceTest {
         }
     }
 
+    /**
+     * E6b — cùng hiểm hoạ với `ExpansionDeterminismTest`: `OffCarPlannerMain.main` tự suy root bằng cách
+     * LEO NGƯỢC từ thư mục làm việc của test worker (`<repo>/offcar-planner`) tới tổ tiên đầu tiên có
+     * `settings.gradle.kts` = repo root, rồi ghi thẳng vào `docs/diagnostics/hud-sign-re/` — thư mục CHA
+     * của bộ niêm phong (13 file chốt hash từng byte). Thứ duy nhất chặn lời gọi bên dưới ghi vào đó là
+     * chính `require(args.isEmpty())` mà test này đang kiểm. Vì vậy phải khoá trên NGUỒN rằng chốt đó là
+     * câu lệnh ĐẦU TIÊN, và khoá đó phải chạy TRƯỚC lời gọi: ai gỡ chốt thì test đỏ ở assert nguồn và
+     * dừng lại trước khi `main` kịp ghi một byte nào.
+     */
     @Test
     fun `entrypoint rejects every command-line option`() {
+        val entrypointSource = testProjectRoot()
+            .resolve("offcar-planner/src/main/kotlin/com/byd/clusternav/offcar/OffCarPlannerMain.kt")
+        assertTrue(Files.isRegularFile(entrypointSource), entrypointSource.toString())
+        val guard = "fun main(args: Array<String>) { require(args.isEmpty())"
+        assertTrue(
+            Files.readString(entrypointSource).replace(Regex("\\s+"), " ").contains(guard),
+            "`OffCarPlannerMain.main` phải mở đầu bằng `$guard` — đây là thứ duy nhất giữ lời gọi bên dưới " +
+                "khỏi ghi vào `docs/diagnostics/hud-sign-re/`. Xem KDoc E6b, ĐỪNG gỡ assert này.",
+        )
         assertThrows(IllegalArgumentException::class.java) {
             OffCarPlannerMain.main(arrayOf("any-option"))
         }

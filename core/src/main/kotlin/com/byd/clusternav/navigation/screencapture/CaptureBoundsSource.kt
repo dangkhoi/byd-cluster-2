@@ -18,31 +18,32 @@ object CaptureBoundsSource {
     /** a11y coi là "tươi" trong bao lâu; router chấm lại bằng `now - capturedAtMs` (đây chỉ là hằng tham chiếu). */
     const val FRESH_MS = 1500L
 
-    @Volatile private var left = 0
-    @Volatile private var top = 0
-    @Volatile private var right = 0
-    @Volatile private var bottom = 0
-    @Volatile private var capturedAtMs = 0L
+    /** MỘT snapshot bất biến (không phải 5 `@Volatile` rời) ⇒ rect / chủ / mốc không bao giờ lệch nhau. */
+    @Volatile private var snap: CaptureBounds? = null
 
-    /** a11y GHI: vùng node mũi tên/camera (toạ độ màn tuyệt đối) + mốc đơn điệu [now]. */
-    fun publish(l: Int, t: Int, r: Int, b: Int, now: Long) {
-        left = l; top = t; right = r; bottom = b; capturedAtMs = now
+    /**
+     * a11y GHI: vùng node mũi tên/camera (toạ độ màn tuyệt đối) + mốc đơn điệu [now], kèm **chủ sở hữu**
+     * [pkg] (§R-BI, package RUNTIME của cửa sổ đo được rect — xem [CaptureBounds.pkg]) và **mục tiêu đã đo
+     * cho** [target] (xem [CaptureBounds.target]). Cả hai đều KHÔNG có mặc định: mặc định = cho phép caller
+     * lặng lẽ bỏ danh tính / bỏ mục tiêu, mà rect vô-chủ hoặc sai-mục-tiêu là đường ra SAI HƯỚNG.
+     */
+    fun publish(pkg: String, target: CaptureTarget, l: Int, t: Int, r: Int, b: Int, now: Long) {
+        val rect = CropRect(l, t, r, b)
+        snap = if (pkg.isEmpty() || rect.isEmpty() || now <= 0L) null
+        else CaptureBounds(rect, now, pkg, target)
     }
 
     /**
-     * Snapshot cho router (tầng 1). null nếu chưa từng publish HOẶC rect rỗng. Router tự chấm freshness bằng
-     * `now - capturedAtMs <= freshMs`, nên ở đây KHÔNG lọc theo thời gian (giữ hàm thuần, không đọc đồng hồ).
+     * Snapshot cho router (tầng 1). null nếu chưa từng publish HOẶC rect rỗng HOẶC vô chủ. Router tự chấm
+     * freshness bằng `now - capturedAtMs <= freshMs` VÀ **mục tiêu** ([CaptureBounds.target] phải khớp target
+     * của plan), nên ở đây KHÔNG lọc theo thời gian (giữ hàm thuần,
+     * không đọc đồng hồ); danh tính cũng do consumer chốt (`NavFrameIdentity.sameFrame`).
      */
-    fun snapshot(): CaptureBounds? {
-        if (capturedAtMs <= 0L) return null
-        val rect = CropRect(left, top, right, bottom)
-        if (rect.isEmpty()) return null
-        return CaptureBounds(rect, capturedAtMs)
-    }
+    fun snapshot(): CaptureBounds? = snap
 
     /** Xoá (nav idle / mất foreground) → router rớt về tầng cố-định. */
     fun clear() {
-        left = 0; top = 0; right = 0; bottom = 0; capturedAtMs = 0L
+        snap = null
     }
 }
 

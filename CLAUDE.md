@@ -264,3 +264,32 @@ nhân nhanh nhất, không phải mô phỏng lại đúng thao tác user. Việ
 verify cuối (xác nhận sau khi đã hiểu/sửa xong), không phải ở bước điều tra. Priority: 1 → 2 → 3 luôn rẻ
 hơn, chính xác hơn, và cho câu trả lời có **file:line** trích dẫn được — đúng tinh thần §2/§3 của tài liệu
 này — thay vì một chuỗi ảnh chụp không ai trace lại được vì sao kết luận.
+
+---
+
+## 16. Luật bền nằm ở `.kiro/steering/` — BẮT BUỘC đọc, không phải tham khảo
+
+Viết ngày 2026-08-23. Repo có sẵn 5 file luật ở `.kiro/steering/` từ 08-19, nhưng **CLAUDE.md không hề trỏ
+tới chúng** ⇒ mỗi phiên Claude Code chỉ nạp file này và bỏ qua toàn bộ luật kia. Owner phải hỏi
+*"xem rule dự án trong .kiro/steering, mang các rule qua"* mới lộ ra. Đó là lỗi index, không phải lỗi luật.
+
+**Thứ tự nạp đầu mỗi phiên** (cả 5, không chọn lọc):
+
+| File | Nội dung | Ràng buộc cứng nhất |
+|---|---|---|
+| `.kiro/steering/project-context.md` | Tóm tắt luôn-bật: kiến trúc 2 nhánh · bản đồ nguồn nav · HAL/CAN facts · map file | Đọc TRƯỚC khi grep code — tránh đọc lại toàn repo |
+| `.kiro/steering/documentation-and-backlog.md` | Kỷ luật doc + backlog + taxonomy 9 loại | `docs/README.md` = INDEX canonical · `docs/PROJECT-BACKLOG.md` = nguồn task DUY NHẤT · code+doc **atomic** cùng commit |
+| `.kiro/steering/product-team-workflow.md` | PO → UX → Senior Dev → Dev → QA → Senior Review | Compile pass ≠ done; phải trace E2E từ UI tap → shell → kết quả |
+| `.kiro/steering/trace-den-tan-cung.md` | Cấm bỏ cuộc sớm | **Cấm** "A+B đủ rồi, bỏ C". Bỏ tính năng = quyết định của OWNER. "Không thể" phải kèm bằng chứng + điều kiện mở khoá |
+| `.kiro/steering/conversation-protocol.md` | Cách nói chuyện + báo cáo: khoa học · scope · progress · status · quality | Gắn **[ĐO]/[SUY]/[ĐOÁN]/[CHƯA BIẾT]** cho mọi khẳng định · cấm làm văn · "xong" phải qua checklist P5 |
+
+**Ba điều rút ra đặt thẳng vào quy trình §13:**
+
+- **§13 bước 0 (mới)**: đọc `project-context.md` + `docs/README.md` + `docs/PROJECT-BACKLOG.md` trước khi
+  chạm dòng code đầu tiên.
+- **§13 bước 9 (siết)**: "ghi phát hiện vào `docs/diagnostics/`" là **chưa đủ** — phải update **INDEX +
+  BACKLOG + project-context** trong CÙNG phiên (R2.1). Doc mồ côi (không có trong index) = không tồn tại.
+- **Mọi câu trả lời** đi qua checklist cuối `conversation-protocol.md`, kể cả trả lời ngắn.
+
+Luật ở `.kiro/steering/` và luật ở file này **cùng hiệu lực**. Mâu thuẫn thì lấy cái **nghiêm hơn**, và ghi
+lại mâu thuẫn đó vào backlog để owner chốt — không tự chọn cái dễ.

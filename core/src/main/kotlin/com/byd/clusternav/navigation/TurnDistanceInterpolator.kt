@@ -26,7 +26,11 @@ object TurnDistanceInterpolator {
     @Volatile private var lastRefineSeg = -1  // J2: cự ly tới rẽ ĐỌC TRÊN MÀN GMaps gần nhất (ground-truth cho log); <0 = chưa có
     @Volatile private var lastRefineAt = 0L   // J2: mốc (elapsedRealtime ms) của lần đọc-màn gần nhất; 0 = chưa có
 
-    private const val FACTOR = 0.95        // bù over-read đồng hồ + đường cong; <1 → lùi bảo thủ (correction hướng xuống)
+    // Bù over-read đồng hồ + đường cong; <1 → lùi bảo thủ (correction hướng xuống).
+    // CÔNG KHAI 2026-08-22 (B-III): [TurnDistancePlausibility] trừ quãng-đi theo CÙNG mô hình nên phải dùng
+    // CHUNG một hằng số — chép số 0.95 sang file thứ hai là mở đường cho hai giá trị lệch nhau về sau.
+    // Chỉ đổi visibility, KHÔNG đổi thân hàm nào ⇒ 0 thay đổi hành vi.
+    const val FACTOR = 0.95
     private const val MAX_EXTRAPOLATE_MS = 6000L  // map trễ >6s → NGỪNG lùi (giữ số, không trôi về 0)
     private const val JUMP_UP_M = 60       // noti cao hơn hiện >60m = đã QUA rẽ (maneuver kế) → cho reset
     private const val JUMP_UP_HYSTERESIS = 2

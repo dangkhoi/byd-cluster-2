@@ -83,7 +83,7 @@ class CaptureRouterTest {
     fun `bounds tang 2 — a11y null thi dung rect co dinh (Waze arrow OpenBYD)`() {
         val plan = CaptureRouter.route(loc(pkg = "com.waze", fullscreen = true), geom, a11y = null)!!
         assertEquals(BoundsSource.FIXED_CALIBRATED, plan.boundsSource)
-        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, plan.bounds)
+        assertEquals(CaptureCalibration.WAZE_ARROW_BANNER_D240, plan.bounds)
         assertEquals(CaptureTarget.ARROW, plan.target)
     }
 
@@ -92,7 +92,7 @@ class CaptureRouterTest {
         val a11yRect = CropRect(100, 100, 200, 180)
         val plan = CaptureRouter.route(
             loc(fullscreen = true), geom,
-            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L),
+            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L, target = CaptureTarget.ARROW),
             now = 1_200L, freshMs = 1500L,
         )!!
         assertEquals(BoundsSource.A11Y_DYNAMIC, plan.boundsSource)
@@ -103,11 +103,11 @@ class CaptureRouterTest {
     fun `bounds — a11y CU (qua freshMs) thi roi ve tang 2 co dinh`() {
         val plan = CaptureRouter.route(
             loc(pkg = "com.waze", fullscreen = true), geom,
-            a11y = CaptureBounds(CropRect(100, 100, 200, 180), capturedAtMs = 0L),
+            a11y = CaptureBounds(CropRect(100, 100, 200, 180), capturedAtMs = 0L, target = CaptureTarget.ARROW),
             now = 5_000L, freshMs = 1500L,
         )!!
         assertEquals(BoundsSource.FIXED_CALIBRATED, plan.boundsSource)
-        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, plan.bounds)
+        assertEquals(CaptureCalibration.WAZE_ARROW_BANNER_D240, plan.bounds)
     }
 
     @Test
@@ -138,7 +138,7 @@ class CaptureRouterTest {
         // ARROW dùng rect mũi tên hiệu chỉnh; CAMERA dùng seed camera → hai vùng KHÁC nhau.
         val arrow = plans.first { it.target == CaptureTarget.ARROW }
         val camera = plans.first { it.target == CaptureTarget.CAMERA }
-        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, arrow.bounds)
+        assertEquals(CaptureCalibration.WAZE_ARROW_BANNER_D240, arrow.bounds)
         assertEquals(CaptureCalibration.VIETMAP_CAMERA_SEED, camera.bounds)
         assertEquals(BoundsSource.FIXED_CALIBRATED, arrow.boundsSource)
         assertEquals(BoundsSource.FIXED_CALIBRATED, camera.boundsSource)
@@ -149,7 +149,7 @@ class CaptureRouterTest {
         val plans = CaptureRouter.routePlans(loc(pkg = "com.waze", fullscreen = true), geom)
         assertEquals(1, plans.size)
         assertEquals(CaptureTarget.ARROW, plans.single().target)
-        assertEquals(CaptureCalibration.WAZE_ARROW_OPENBYD, plans.single().bounds)
+        assertEquals(CaptureCalibration.WAZE_ARROW_BANNER_D240, plans.single().bounds)
     }
 
     @Test
@@ -173,20 +173,74 @@ class CaptureRouterTest {
         assertTrue(plans.all { it.case == CaptureCase.HALF_MAIN_SPLIT })
         // ARROW nửa phải: (26,218,208,298) +960 → (986,218,1168,298).
         val arrow = plans.first { it.target == CaptureTarget.ARROW }
-        assertEquals(CropRect(986, 218, 1168, 298), arrow.bounds)
+        assertEquals(CropRect(1038, 50, 1118, 163), arrow.bounds)
     }
 
+    /**
+     * KHOÁ [P1] B3.53 vòng review (08-23) — **rect a11y đo cho MỘT target KHÔNG được áp cho target kia**.
+     *
+     * Bản trước của chính test này khẳng định điều NGƯỢC LẠI ("cùng holder a11y → cả hai target tầng-1 dùng
+     * nó") và vì thế đã **khoá luôn cái lỗi**. [ĐO] 08-23 trên `CaptureRouter` thật:
+     * ```
+     * PLAN target=ARROW  bounds=CropRect(1500,300,1620,420) src=A11Y_DYNAMIC   ← rect của node CAMERA
+     * PLAN target=CAMERA bounds=CropRect(1500,300,1620,420) src=A11Y_DYNAMIC
+     * ```
+     * Với VietMap, producer a11y chọn node bằng [CaptureTarget.forPackage] = [CaptureTarget.CAMERA] (xem
+     * `NavAccessibilityService.maybePublishCaptureBounds`), nên rect trong holder LUÔN là icon camera; plan
+     * ARROW nhận y hệt rect đó rồi đi vào tier [BoundsSource.A11Y_DYNAMIC] của
+     * `ScreenCaptureNavSource.handleArrow` — tier dùng khớp **MỀM** (`classify` = Hamming ?: NCC 0.45). [ĐO]
+     * crop 87 khung VietMap qua [CaptureCalibration.VIETMAP_CAMERA_SEED]: khớp mềm ra mã **1** khung
+     * (`arrive_straight` → amap 12, đúng phải 9), khớp cứng ra **0**. Cùng lớp lỗi mà B3.53 vá ở tier
+     * rect-cố-định — đây là nửa cửa còn lại.
+     *
+     * Nay tầng-1 đòi [CaptureBounds.target] khớp target của plan; ARROW rơi xuống tầng-2 (rect cố định →
+     * `classifyStrict`, đã khoá ở `FixedRectSoftMatchTest`). Waze/GMaps không đổi — xem test kế bên.
+     */
     @Test
-    fun `routePlans — a11y tuoi ap cho MOI target (holder rect chung, clamp nua app)`() {
+    fun `routePlans — rect a11y do cho CAMERA KHONG duoc ap cho plan ARROW (B3_53 review)`() {
         val a11yRect = CropRect(100, 100, 220, 200)
         val plans = CaptureRouter.routePlans(
             loc(pkg = "vn.vietmap.live", fullscreen = true), geom,
-            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L), now = 1_100L, freshMs = 1500L,
+            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L, pkg = "vn.vietmap.live", target = CaptureTarget.CAMERA),
+            now = 1_100L, freshMs = 1500L,
         )
         assertEquals(2, plans.size)
-        // Cùng holder a11y (một rect) → cả hai target tầng-1 dùng nó (VERIFY-ON-CAR: holder đơn, OQ2).
-        assertTrue(plans.all { it.boundsSource == BoundsSource.A11Y_DYNAMIC })
-        assertTrue(plans.all { it.bounds == a11yRect })
+        val camera = plans.first { it.target == CaptureTarget.CAMERA }
+        assertEquals(BoundsSource.A11Y_DYNAMIC, camera.boundsSource, "target ĐÚNG vẫn phải dùng tầng-1")
+        assertEquals(a11yRect, camera.bounds)
+
+        val arrow = plans.first { it.target == CaptureTarget.ARROW }
+        assertEquals(
+            BoundsSource.FIXED_CALIBRATED, arrow.boundsSource,
+            "rect đo cho node CAMERA bị áp cho plan ARROW ⇒ crop sai chỗ đi vào khớp MỀM ⇒ SAI HƯỚNG",
+        )
+        assertFalse(arrow.bounds == a11yRect, "plan ARROW không được mang rect của node CAMERA")
+    }
+
+    /** Đường proven (CLAUDE.md §6): producer khai ARROW ⇒ plan ARROW vẫn dùng tầng-1 y như trước bản vá. */
+    @Test
+    fun `routePlans — rect a11y do cho ARROW van phuc vu plan ARROW (khong hoi quy Waze)`() {
+        val a11yRect = CropRect(100, 100, 220, 200)
+        val plans = CaptureRouter.routePlans(
+            loc(pkg = "com.waze", fullscreen = true), geom,
+            a11y = CaptureBounds(a11yRect, capturedAtMs = 1_000L, pkg = "com.waze", target = CaptureTarget.ARROW),
+            now = 1_100L, freshMs = 1500L,
+        )
+        assertEquals(listOf(CaptureTarget.ARROW), plans.map { it.target })
+        assertEquals(BoundsSource.A11Y_DYNAMIC, plans[0].boundsSource)
+        assertEquals(a11yRect, plans[0].bounds)
+    }
+
+    /** Rect KHÔNG khai mục tiêu = không rõ đo cho cái gì ⇒ bỏ tầng-1 (cùng nguyên tắc an toàn với `pkg` null). */
+    @Test
+    fun `bounds tang 1 — rect KHONG khai target thi bi bo qua (roi ve rect co dinh)`() {
+        val plan = CaptureRouter.route(
+            loc(pkg = "com.waze", fullscreen = true), geom,
+            a11y = CaptureBounds(CropRect(100, 100, 200, 180), capturedAtMs = 1_000L),
+            now = 1_100L, freshMs = 1500L,
+        )!!
+        assertEquals(BoundsSource.FIXED_CALIBRATED, plan.boundsSource)
+        assertEquals(CaptureCalibration.WAZE_ARROW_BANNER_D240, plan.bounds)
     }
 
     // ── Case-2 offset nửa L/R ──────────────────────────────────────────────────────────
@@ -198,7 +252,7 @@ class CaptureRouterTest {
         )!!
         assertEquals(CaptureCase.HALF_MAIN_SPLIT, plan.case)
         // divider = 1920*50/100 = 960; rect (26,218,208,298) -> (986,218,1168,298), clamp vao [960,1920) giu nguyen.
-        assertEquals(CropRect(986, 218, 1168, 298), plan.bounds)
+        assertEquals(CropRect(1038, 50, 1118, 163), plan.bounds)
         assertEquals(BoundsSource.FIXED_CALIBRATED, plan.boundsSource)
     }
 
@@ -207,7 +261,7 @@ class CaptureRouterTest {
         val plan = CaptureRouter.route(
             loc(pkg = "com.waze", fullscreen = false, slot = CaptureSlotSide.LEFT, leftPercent = 50), geom,
         )!!
-        assertEquals(CropRect(26, 218, 208, 298), plan.bounds)   // trong [0,960) → giữ nguyên
+        assertEquals(CropRect(78, 50, 158, 163), plan.bounds)   // trong [0,960) → giữ nguyên
     }
 
     @Test
@@ -215,7 +269,7 @@ class CaptureRouterTest {
         // RIGHT slot, divider 960; a11y rect (900,200,1100,300) tràn sang nửa trái → clamp về [960,1100).
         val plan = CaptureRouter.route(
             loc(fullscreen = false, slot = CaptureSlotSide.RIGHT, leftPercent = 50), geom,
-            a11y = CaptureBounds(CropRect(900, 200, 1100, 300), capturedAtMs = 10L),
+            a11y = CaptureBounds(CropRect(900, 200, 1100, 300), capturedAtMs = 10L, target = CaptureTarget.ARROW),
             now = 20L,
         )!!
         assertEquals(BoundsSource.A11Y_DYNAMIC, plan.boundsSource)
@@ -254,7 +308,7 @@ class CaptureRouterTest {
         val plan = CaptureRouter.route(
             loc(pkg = "com.waze", fullscreen = true),
             DisplayGeometry(screenW, screenH),
-            a11y = CaptureBounds(CropRect(ox, oy, ox + g, oy + g), capturedAtMs = 5L),
+            a11y = CaptureBounds(CropRect(ox, oy, ox + g, oy + g), capturedAtMs = 5L, target = CaptureTarget.ARROW),
             now = 10L,
         )!!
         assertEquals(BoundsSource.A11Y_DYNAMIC, plan.boundsSource)

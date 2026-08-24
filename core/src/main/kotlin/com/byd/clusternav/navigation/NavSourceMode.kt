@@ -13,7 +13,6 @@ object NavSourceMode {
     const val PREFER_WAZE = 3
     const val PREFER_VIETMAP = 4
 
-    // Speed + Alert source (independent of navigation source)
-    const val SPEED_VIETMAP = 0   // default: VietMap widget
-    const val SPEED_WAZE = 1      // WazeMod HLP/1 lim + alr fields
+    // 2026-08-22: bỏ hai hằng SPEED_VIETMAP/SPEED_WAZE. Nguồn tốc độ không còn là lựa chọn — chỉ còn widget
+    // VietMap (xem Prefs.speedLimitSource). Nhánh Waze HLP đã gỡ vì đo được 0 dòng logcat khi không có HUD BLE.
 }

@@ -14,47 +14,45 @@ class SpeedSignSourceLifecycleTest {
     private val bridge = SourceRoots.text("src/main/java/com/byd/clusternav/vietmapwidget/VietMapWidgetBridge.kt")
 
     @Test
-    fun `listener clears both sources before listener provider and bridge teardown`() {
+    fun `listener clears VietMap before bridge teardown`() {
         val cases = listOf(
-            Triple(
-                "override fun onListenerDisconnected()",
-                "onProviderDisconnected(SpeedLimitSource.VIETMAP)",
-                "onProviderDisconnected(SpeedLimitSource.WAZE)",
-            ),
-            Triple(
-                "override fun onDestroy()",
-                "onSourceStopped(SpeedLimitSource.VIETMAP)",
-                "onSourceStopped(SpeedLimitSource.WAZE)",
-            ),
+            "override fun onListenerDisconnected()" to "onProviderDisconnected(SpeedLimitSource.VIETMAP)",
+            "override fun onDestroy()" to "onSourceStopped(SpeedLimitSource.VIETMAP)",
         )
-        cases.forEach { (signature, vietmapEvent, wazeEvent) ->
+        cases.forEach { (signature, vietmapEvent) ->
             val body = functionBody(listener, signature)
             val vietmapClear = body.indexOf(vietmapEvent)
-            val wazeClear = body.indexOf(wazeEvent)
-            val wazeStop = body.indexOf("stopWazeHudSource")
             val bridgeStop = body.indexOf("bridge.stop")
             val listenerRemoval = body.indexOf("bridge.removeListener")
             assertTrue(vietmapClear in 0 until bridgeStop, "$signature VietMap clear must precede bridge stop")
-            assertTrue(wazeClear in 0 until wazeStop, "$signature Waze clear must precede source stop")
             assertTrue(bridgeStop in 0 until listenerRemoval, "$signature bridge publishes clear before listener removal")
         }
     }
 
+    /**
+     * HỒI QUY 2026-08-22 — nhánh **Waze HLP đã gỡ hẳn**, không được tái sinh mà không có bằng chứng mới.
+     *
+     * Vì sao gỡ: `WazeHudSource` poll `logcat -s WazeHudLink` qua dadb **mỗi 900ms (~4000 lệnh shell/giờ)**,
+     * chạy VÔ ĐIỀU KIỆN — không theo lựa chọn nguồn, thậm chí TRƯỚC cổng `Prefs.enabled` — để nhận về **0
+     * dòng**: WazeMod chỉ phát tag đó khi có peer HUD BT/BLE (đo 08-22, Waze ĐANG dẫn, máy không HUD).
+     *
+     * Muốn bật lại thì phải kèm phép đo chứng minh nó phát dữ liệu thật trên xe, VÀ phải gate theo lựa chọn
+     * nguồn + cổng master — không lặp lại kiểu poll vô điều kiện.
+     */
     @Test
-    fun `Waze speed remains route independent and forwards zero`() {
-        val start = functionBody(listener, "private fun startWazeHudSource()")
-        assertTrue(start.contains("if (masterEnabled && state.navigating)"), "navigation keeps its route gate")
-        assertTrue(start.contains("valueKph = state.speedLimitKmh"), "all HLP values must reach lifecycle")
-        assertFalse(start.contains("state.speedLimitKmh > 0"), "zero must not be dropped")
-        assertTrue(start.indexOf("valueKph = state.speedLimitKmh") > start.indexOf("if (masterEnabled && state.navigating)"))
+    fun `nhanh Waze HLP da go — khong con poll logcat vo dieu kien`() {
+        listOf("WazeHudSource", "startWazeHudSource", "stopWazeHudSource", "WazeHudLink")
+            .forEach { token ->
+                val live = listener.lineSequence()
+                    .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+                    .any { it.contains(token) }
+                assertFalse(live, "\"$token\" phải chỉ còn trong comment giải thích, không còn code sống")
+            }
     }
 
     @Test
     fun `VietMap fresh null is zero while unavailable is provider disconnect`() {
-        val pusher = listener.substring(
-            listener.indexOf("private val speedLimitPusher"),
-            listener.indexOf("private var wazeHudSource"),
-        )
+        val pusher = functionBody(listener, "private val speedLimitPusher")
         assertTrue(pusher.contains("snapshot.speedLimitKph ?: 0"))
         assertTrue(pusher.contains("snapshot.speedUpdatedAtElapsedMs"))
         assertTrue(pusher.contains("onProviderDisconnected(SpeedLimitSource.VIETMAP)"))
@@ -103,6 +101,10 @@ class SpeedSignSourceLifecycleTest {
         // control feeds a constant `false` (not the old `enabled` from a checkbox listener).
         assertTrue(main.contains("speedSign.onOutputEnabled(SpeedSignOutput.HUD, false)"))
         assertTrue(prefs.contains("fun speedLimitSource(ctx: Context): SpeedLimitSource"))
+        // 08-22: nguồn tốc độ KHÔNG còn là lựa chọn — chỉ widget VietMap. Selector + prefs key đã gỡ.
+        assertFalse(prefs.contains("fun setSpeedSource"), "setter nguồn tốc độ phải đã gỡ")
+        assertFalse(prefs.contains("K_SPEED_SOURCE"), "khoá prefs nguồn tốc độ phải đã gỡ")
+        assertFalse(main.contains("spinner_speed_source"), "spinner nguồn tốc độ phải đã gỡ khỏi UI")
         assertFalse(main.contains("SignCandidateGateway"))
         assertFalse(main.contains("vehicleTest"))
     }

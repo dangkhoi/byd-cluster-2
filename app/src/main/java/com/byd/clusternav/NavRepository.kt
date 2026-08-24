@@ -139,6 +139,23 @@ object NavRepository {
                 // này chảy vào CẢ 2 họ (domestic 0x43F01010 + oversea 0x1F701010) trong writeNavFrame. Frame khác: toHudIcon.
                 val exitText = frame.content.maneuverText?.takeIf { it.isNotBlank() } ?: frame.content.roadName.orEmpty()
                 val exitN = NavFormat.roundaboutExit(exitText)
+                // 08-23 — GỠ "mượn mũi tên từ screen-capture" (thêm 08-22, sống đúng một ngày). Khung
+                // notification chỉ dùng mũi tên của CHÍNH notification; không có thì về 11 = đi thẳng, y như
+                // hành vi đã chạy ngoài hiện trường trước 08-22.
+                //
+                // VÌ SAO GỠ (phản biện đã chứng minh từ source, không phải cảm tính):
+                //  1. Nhánh mượn KHÔNG BAO GIỜ bắn được cho VietMap — ca duy nhất nó sinh ra để chữa. Nó chỉ
+                //     chạy TRÊN một frame notification, mà đúng lúc đó `NavNotificationListener` vừa gọi
+                //     `SourceArbiter.shouldFeed(pkg, …)` (kênh DATA mặc định) ⇒ `lastDataByPkg[pkg]` vừa được
+                //     đóng mốc ⇒ mọi publish kênh IMAGE của `ScreenCaptureNavSource` bị chặn
+                //     (`SourceArbiter.shouldFeed` — IMAGE thua DATA còn tươi) ⇒ `ScreenCaptureSignal.arrow`
+                //     rỗng hoặc cũ ⇒ `hudIcon` luôn rơi về 11. Code chết mang hình dạng tính năng.
+                //  2. Ép nó chạy được (mở kênh IMAGE cho app đang có DATA tươi) sẽ đánh thức `NavOutputOwner.tick`
+                //     ⇒ HAI owner cùng ghi INSTRUMENT_GUIDE_INFO_SIMPLE_SET trên xe đang chạy. Đó là quyết định
+                //     kiến trúc, không phải một bản vá (CLAUDE.md §1).
+                // OWNER CHỐT (08-23): VietMap đi HẲN đường screen-capture (mũi tên + cự ly cùng một kênh, cùng
+                // một package), KHÔNG merge vào khung notification ⇒ cơ chế mượn không còn lý do tồn tại.
+                // Xem docs/PROJECT-BACKLOG.md B3.42.
                 val hudIcon = if (exitN in 1..10) 24 + exitN else frame.content.maneuver?.toHudIcon() ?: 11
                 owner.push(
                     icon = hudIcon,

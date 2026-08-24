@@ -263,22 +263,108 @@ class ExpansionDeterminismTest {
             .forEach { assertFalse(publication.contains("\"$it\""), it) }
     }
 
+    /**
+     * E6b — đích ghi của test không bao giờ được là project-root THẬT.
+     *
+     * **Cơ chế (đo 2026-08-23)** — `ExpansionMain.main` không nhận đích, nó tự suy ra bằng
+     * `findProjectRoot(Path.of("").toAbsolutePath())`, tức LEO NGƯỢC từ thư mục làm việc của test worker.
+     * Thư mục đó là `<repo>/offcar-planner` (mặc định `Test.workingDir` = `project.projectDir`;
+     * `offcar-planner/build.gradle.kts` KHÔNG đặt `workingDir` cho `Test` — dòng
+     * `workingDir = rootProject.projectDir` chỉ thuộc task JavaExec `renderExpansionPack`), và tổ tiên đầu
+     * tiên có `settings.gradle.kts` chính là repo root. ⇒ mọi lời gọi `ExpansionMain.main(emptyArray())`
+     * trong test đều ghi đè 11/12 file niêm phong TRACKED (`corpus-coverage.json` là đầu vào, không tái
+     * xuất bản, nên giữ nguyên). Hôm phát hiện, bytes trùng nên `git status` im lặng — nhưng chỉ cần một
+     * byte nguồn lệch là repo bẩn mà test vẫn XANH, và tệ hơn: bộ niêm phong đang lệch sẽ bị ghi đè cho
+     * khớp lại, che mất chính test canh lệch (`LegacyBaselineIdentityTest`). Lời gọi đó đã bị gỡ.
+     *
+     * Đính chính: bản ghi đầu của E6b quy cho "thư mục làm việc = `rootProject.projectDir`
+     * (`build.gradle.kts:33`)" — SAI. Hai cơ chế cho ra CÙNG một đích ghi nên nhầm lẫn không lộ ra; sự
+     * thật đo bằng init-script in `workingDir` của task `Test`, và nay được khoá bằng assert (0) bên dưới.
+     *
+     * **Bất biến giữ nguyên**: entrypoint từ chối MỌI tham số và chỉ có MỘT đích canonical. Nay chứng minh
+     * theo thứ tự FAIL-FAST, để không vế nào có thể ghi vào cây repo:
+     *  0. đo hiểm hoạ tại chỗ — `findProjectRoot(<thư mục làm việc>)` ra đúng repo root;
+     *  1. khoá trên NGUỒN `ExpansionMain.kt`: thân `main` khớp chuỗi cố định (trong đó
+     *     `require(args.isEmpty())` là câu lệnh ĐẦU TIÊN), trong `object ExpansionMain` có đúng MỘT
+     *     `writePack(`, `declaredMethods` = {`main`, `findProjectRoot`}. Vế này PHẢI chạy trước vế 2: ai gỡ
+     *     `require` thì test đỏ ngay ở đây và dừng **trước khi** lời gọi ở vế 2 kịp ghi một byte nào;
+     *  2. hành vi: `main(arrayOf("--output", …))` ném `IllegalArgumentException`. Assert `temp` rỗng đi kèm
+     *     chỉ là GUARD cho một `main` TƯƠNG LAI kiểu ghi-rồi-mới-ném — với `main` hiện tại (bỏ qua hoàn
+     *     toàn `args`) nó không thể đỏ, nên không tính là bằng chứng;
+     *  3. hành vi đầy đủ: chính biểu thức của `main` chạy trên project-root GIẢ trong `@TempDir` — đúng 12
+     *     file, chạy lần 2 byte-identical, `parentCombinedSha256` không đổi, đích khác bị từ chối.
+     *
+     * "Pack đã commit == pack dựng lại" vẫn được khoá read-only ở `ExpansionTransportFenceTest`
+     * (`generation has no side effects outside the 12 expansion outputs`) và `ExpansionTraceabilityTest`
+     * (`two fresh generations and checked pack are byte identical`) ⇒ không mất bảo đảm nào.
+     */
     @Test
     fun `entrypoint rejects options and has only the fixed expansion destination`() {
-        assertThrows(IllegalArgumentException::class.java) { ExpansionMain.main(arrayOf("--output", temp.toString())) }
-        val coverage = root.resolve(ExpansionPackRenderer.OUTPUT_DIRECTORY).resolve(ExpansionPackRenderer.COVERAGE)
-        val coverageBefore = Files.readAllBytes(coverage)
-        val parentBefore = LegacyBaselineIdentity.parentCombinedSha256(root)
-        if (runCatching { CoverageMetadata.parse(coverageBefore) }.isSuccess) ExpansionMain.main(emptyArray())
-        assertArrayEquals(coverageBefore, Files.readAllBytes(coverage))
-        assertEquals(parentBefore, LegacyBaselineIdentity.parentCombinedSha256(root))
-        assertEquals(ExpansionPackRenderer.OUTPUT_NAMES, directoryNames(coverage.parent))
+        // (0) Hiểm hoạ, đo tại chỗ: thư mục làm việc của test worker leo ngược ra ĐÚNG repo root ⇒ bất kỳ
+        //     lời gọi `ExpansionMain.main(emptyArray())` nào trong test cũng ghi vào cây tracked.
+        assertEquals(
+            root,
+            ExpansionMain.findProjectRoot(Path.of("").toAbsolutePath().normalize()),
+            "HIỂM HOẠ vẫn còn: thư mục làm việc của test worker leo ngược ra ĐÚNG repo root, nên mọi lời gọi " +
+                "`ExpansionMain.main(emptyArray())` in-process sẽ ghi vào cây tracked — thứ tự FAIL-FAST bên dưới " +
+                "(khoá NGUỒN trước, gọi `main` sau) là bắt buộc. Nếu assert này đỏ vì bạn vừa trỏ `Test.workingDir` ra " +
+                "NGOÀI repo thì hiểm hoạ đã hết — cập nhật assert + KDoc E6b, đừng chỉ xoá.",
+        )
         assertEquals(root, ExpansionMain.findProjectRoot(root.resolve("offcar-planner/src/main")))
         assertEquals(
             "docs/diagnostics/hud-sign-re/expansion",
             ExpansionPackRenderer.OUTPUT_DIRECTORY,
         )
+        assertEquals(ExpansionPackRenderer.OUTPUT_NAMES, directoryNames(root.resolve(ExpansionPackRenderer.OUTPUT_DIRECTORY)))
+
+        // (1) Khoá NGUỒN — bắt buộc đứng TRƯỚC mọi lời gọi `main`, xem KDoc.
+        val entrypointSource = root.resolve("offcar-planner/src/main/kotlin")
+            .resolve(ExpansionMain::class.java.name.replace('.', '/') + ".kt")
+        assertTrue(Files.isRegularFile(entrypointSource), entrypointSource.toString())
+        val entrypointObject = Files.readString(entrypointSource).replace(Regex("\\s+"), " ")
+            .substringAfter("object ExpansionMain {", "")
+        assertTrue(entrypointObject.isNotEmpty(), "không tìm thấy `object ExpansionMain` trong $entrypointSource")
+        val fixedBody = "fun main(args: Array<String>) { require(args.isEmpty()); " +
+            "val root = findProjectRoot(Path.of(\"\").toAbsolutePath().normalize()); " +
+            "ExpansionPackRenderer(root).writePack(root.resolve(ExpansionPackRenderer.OUTPUT_DIRECTORY)) }"
+        assertTrue(
+            entrypointObject.contains(fixedBody),
+            "Thân `ExpansionMain.main` phải giữ NGUYÊN chuỗi cố định (so sánh sau khi gộp khoảng trắng). " +
+                "Đây là khoá DUY NHẤT chứng minh `require(args.isEmpty())` là câu lệnh đầu tiên, và lời gọi " +
+                "`main` ngay bên dưới dựa vào nó để không ghi vào repo — xem KDoc E6b. Reformat lại `main` " +
+                "cũng làm đỏ assert này: sửa `fixedBody` cho khớp, ĐỪNG gỡ assert.\nMong đợi: $fixedBody\n" +
+                "Thực tế: $entrypointObject",
+        )
+        assertEquals(
+            1,
+            Regex("writePack\\(").findAll(entrypointObject).count(),
+            "`object ExpansionMain` chỉ được có ĐÚNG MỘT lời gọi writePack: $entrypointObject",
+        )
+        assertEquals(
+            setOf("main", "findProjectRoot"),
+            ExpansionMain::class.java.declaredMethods.map { it.name.substringBefore('$') }.toSet(),
+        )
         assertTrue(ExpansionMain::class.java.declaredMethods.none { it.name.contains("execute", ignoreCase = true) })
+
+        // (2) Hành vi — an toàn vì vế (1) vừa chứng minh `require(args.isEmpty())` chặn trước mọi lệnh ghi.
+        assertThrows(IllegalArgumentException::class.java) { ExpansionMain.main(arrayOf("--output", temp.toString())) }
+        assertEquals(emptyList<String>(), Files.list(temp).use { stream -> stream.map { it.fileName.toString() }.toList() })
+
+        // (3) Hành vi đầy đủ trên project-root GIẢ (`strictProjectRoot` tạo thư mục con trong `temp`,
+        //     nên phải chạy SAU assert `temp` rỗng ở trên).
+        val fakeRoot = strictProjectRoot()
+        assertEquals(fakeRoot, ExpansionMain.findProjectRoot(fakeRoot.resolve("offcar-planner/src/main")))
+        val output = fakeRoot.resolve(ExpansionPackRenderer.OUTPUT_DIRECTORY)
+        ExpansionPackRenderer(fakeRoot).writePack(output)
+        val checked = ExpansionPackRenderer.OUTPUT_NAMES.associateWith { Files.readAllBytes(output.resolve(it)) }
+        val parentBefore = LegacyBaselineIdentity.parentCombinedSha256(fakeRoot)
+        ExpansionPackRenderer(fakeRoot).writePack(output)
+        checked.forEach { (name, bytes) -> assertArrayEquals(bytes, Files.readAllBytes(output.resolve(name)), name) }
+        assertEquals(parentBefore, LegacyBaselineIdentity.parentCombinedSha256(fakeRoot))
+        assertEquals(ExpansionPackRenderer.OUTPUT_NAMES, directoryNames(output))
+        assertThrows(IllegalArgumentException::class.java) {
+            ExpansionPackRenderer(fakeRoot).writePack(fakeRoot.resolve("other-output"))
+        }
     }
 
     private fun directoryNames(directory: Path): Set<String> = Files.list(directory).use { stream ->
@@ -420,6 +506,9 @@ class ExpansionDeterminismTest {
             val schema = "offcar-planner/src/main/resources/expansion-contracts.schema.json"
             val schemaTarget = fixture.resolve(schema); Files.createDirectories(schemaTarget.parent); Files.copy(root.resolve(schema), schemaTarget)
             Files.createDirectories(coverage.parent); Files.write(coverage, sourceCoverage())
+            // E6b: fixture phải là project-root THẬT SỰ để `ExpansionMain.findProjectRoot` neo vào đây,
+            // không leo ngược lên repo thật.
+            Files.writeString(fixture.resolve("settings.gradle.kts"), "")
         }
         return fixture.toRealPath()
     }

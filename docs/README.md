@@ -1,6 +1,6 @@
 # ClusterNav 2.0 — Docs Index (INDEX canonical)
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-08-19 · **Mục đích**: Bản đồ MỌI tài liệu hiện hành theo 9-loại taxonomy (R4). Không có trong index = archive/stale, KHÔNG authoritative (R0).
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-23 · **Mục đích**: Bản đồ MỌI tài liệu hiện hành theo 9-loại taxonomy (R4). Không có trong index = archive/stale, KHÔNG authoritative (R0).
 
 **(VI)** Đây là **nguồn map tài liệu duy nhất** của repo. Đọc file này trước → rồi mở doc cụ thể. Task = `PROJECT-BACKLOG.md`. Luật bền = `../.kiro/steering/`.
 **(EN)** This is the repo's **single documentation map**. Read this first → then open the specific doc. Tasks live in `PROJECT-BACKLOG.md`; durable rules in `../.kiro/steering/`.
@@ -9,13 +9,44 @@
 
 **9-loại taxonomy (R4):** 1) Index · 2) Backlog · 3) Rules/Steering · 4) Overview · 5) Spec · 6) Diagnostics · 7) Guide · 8) ADR · 9) Handoff · (+ `archive/` = trạng thái doc bị thay thế).
 
+## 🔒 Doc niêm phong (byte-sealed) — ĐỌC TRƯỚC MỌI ĐỢT DỌN DOC
+
+Một số doc là **bằng chứng đã niêm phong**, không phải văn bản sống. Hash SHA-256 từng byte của chúng bị chốt cứng trong test (`offcar-planner .../LegacyBaselineIdentityTest.kt` + `ExpansionTransportFenceTest.kt`) và trong `docs/diagnostics/hud-sign-re/offcar-boundary-revisions.json`. **Thêm dù chỉ một dòng** → digest lệch → `:offcar-planner:test` đỏ, kéo theo cả `:vehicle-contracts`/`:core` ở lượt chạy sau.
+
+**Phạm vi — mức niêm phong khác nhau, [ĐO] từng cái:**
+- **Chốt hash từng byte** (sửa 1 ký tự = đỏ ngay): 12 file `docs/diagnostics/hud-sign-re/*` + `native/libbydcluster-diff.json` + `docs/specs/seal-nav-hud-speed-sign-offcar.html` = **13 file cha**, hash liệt kê trong `LegacyBaselineIdentityTest.PARENT_ARTIFACT_SHA256` và `ExpansionTransportFenceTest.PARENT_ARTIFACT_HASHES`; digest gộp nằm cả trong `ExpansionRegistry.LegacyBaselineIdentity.PARENT_BASELINE_SHA256` lẫn `offcar-boundary-revisions.json`.
+- **Chốt bằng tái sinh** (phải trùng đúng bytes mà generator tạo ra): 12 file `docs/diagnostics/hud-sign-re/expansion/*` — sửa tay = đỏ; `offcar-boundary-revisions.json` tự kiểm `selfSha256`.
+- **Chốt một phần**: `docs/specs/seal-hud-sign-candidate-expansion.html` — khối `CURRENT X0–X5` + bảng truy vết bị test đọc (`ExpansionTransportFenceTest`, `ExpansionTraceabilityTest`); phần văn xuôi không bị chốt.
+- **Chỉ chốt TÊN trong bản kê, KHÔNG chốt file**: `docs/specs/seal-hud-sign-vehicle-test-t10.html` — chuỗi đường dẫn nằm trong `SOURCE_SEAL_INPUT` của `offcar-boundary-revisions.json`, mà JSON đó bị chốt hash (`revisionSha256` + `selfSha256`, `ExpansionTransportFenceTest.kt:97` chốt `assertEquals(155, source.size)`) ⇒ **sửa bản kê = đỏ**. Nhưng [ĐO 2026-08-23] **xoá hẳn file khỏi đĩa ⇒ `:offcar-planner:test` vẫn 99/1, KHÔNG test nào đỏ** — không có assert tồn-tại nào cho đường dẫn này (khác `CURRENT_PATHS`, vốn có `Files.isRegularFile`). ⇒ Cứ coi như đọc-only cho an toàn, nhưng **đừng trông cậy test bắt được**.
+
+**Miễn trừ có chủ ý** (KHÔNG phải nợ doc): các file này **không nhận** header R2.2 (`> **Trạng thái**: …`) và **không nhận** §Nhật ký R2.6. Metadata đó sống ở **dòng index trong file này** và ở `PROJECT-BACKLOG.md`.
+
+**Nếu test báo "SEALED PARENT FILE(S) DRIFTED"**: khôi phục bytes (`git checkout <commit-trước-khi-sửa> -- <path>`). **CẤM** đi hướng ngược lại (chỉnh hằng số hash cho khớp bytes hiện tại) — đó mới là phá niêm phong. Lịch sử: 2 file bị doc-refactor E0–E4 sửa (commit `c7409b8`, `69fa2fe`) → đẻ ra 5 fail bị 3 agent gọi nhầm là "nợ có sẵn"; đã khôi phục ở **E6a** (2026-08-23).
+
+Thông điệp lỗi in **đích danh đường dẫn + hash sealed vs on-disk**, và [ĐO 2026-08-23] phủ **đủ 5/5** test nhạy niêm phong
+(`LegacyBaselineIdentityTest` ×2, `ExpansionTransportFenceTest` ×2, `ExpansionTraceabilityTest` ×1) — trước đó 3 trong 5 chỉ
+in digest vô danh (`expected: <5b49a5ea…> but was: <2329ccc6…>`, `array contents differ at index [29]`) và chính sự vô danh đó
+đã đốt 3 lượt điều tra.
+
+**⚠ BYTES ĐÚNG HIỆN CHỈ NẰM Ở INDEX + CÂY LÀM VIỆC, CHƯA VÀO `HEAD`** (2026-08-23 — E6a chưa được commit).
+[ĐO] `git show HEAD:docs/diagnostics/hud-sign-re/README.md | shasum -a 256` = `61a7ba11…` (lệch), worktree = `f854683a…` (đúng).
+⇒ mọi `git checkout` từ HEAD, `git stash`, clone mới hay CI đều lấy lại bytes lệch và cho **99 test / 5 fail**.
+Lệnh khôi phục chuẩn, chạy được ở **mọi** cây kể cả cây sạch:
+
+```bash
+git checkout cc5ae64 -- docs/diagnostics/hud-sign-re/README.md docs/specs/seal-nav-hud-speed-sign-offcar.html
+```
+
+`cc5ae64` là commit cuối còn giữ đúng bytes niêm phong của **cả hai** file. Chỉ dùng `git checkout -- <path>` (không nêu commit)
+khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD và lệnh đó sẽ **kéo bytes lệch trở lại**.
+
 ---
 
 ## 1) Index
 
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
-| [`README.md`](README.md) (file này) | Map canonical mọi doc hiện hành theo 9-loại | Current | 2026-08-19 |
+| [`README.md`](README.md) (file này) | Map canonical mọi doc hiện hành theo 9-loại + §🔒 doc niêm phong (byte-sealed) | Current | 2026-08-23 |
 
 ## 2) Backlog
 
@@ -29,7 +60,9 @@
 |-----|----------|-----------|----------|
 | [`../.kiro/steering/documentation-and-backlog.md`](../.kiro/steering/documentation-and-backlog.md) | Kỷ luật doc + backlog + 9-loại taxonomy (bắt buộc mọi phiên) | Current | 2026-08-19 |
 | [`../.kiro/steering/product-team-workflow.md`](../.kiro/steering/product-team-workflow.md) | Quy trình làm việc như một team (PO→UX→Dev→QA→Review) | Current | ~ |
-| [`../.kiro/steering/project-context.md`](../.kiro/steering/project-context.md) | Tóm tắt luôn-bật (kiến trúc + nguồn nav + HAL/CAN + map file + trạng thái) | Current | 2026-08-19 |
+| [`../.kiro/steering/project-context.md`](../.kiro/steering/project-context.md) | Tóm tắt luôn-bật (kiến trúc + nguồn nav + HAL/CAN + map file + trạng thái) | Current | 2026-08-23 |
+| [`../.kiro/steering/trace-den-tan-cung.md`](../.kiro/steering/trace-den-tan-cung.md) | Cấm bỏ cuộc sớm — trace tới root cause; bỏ tính năng là quyết định của OWNER | Current | 2026-08-20 |
+| [`../.kiro/steering/conversation-protocol.md`](../.kiro/steering/conversation-protocol.md) | Cách báo cáo: mức bằng chứng [ĐO]/[SUY]/[ĐOÁN] · scope · progress · status · quality · cấm làm văn | Current | 2026-08-23 |
 
 > Steering toàn cục (không nằm trong repo): `~/.kiro/steering/` (workflow, pre-commit-security, PROMPT_TEMPLATE, image-reading-subagent). Chỉ tham chiếu, không sửa ở đây.
 
@@ -49,8 +82,11 @@
 |-----|----------|-----------|----------|
 | [`specs/upcoming-speed-limit-badge.html`](specs/upcoming-speed-limit-badge.html) | Vẽ "giới hạn sắp tới + cự ly" (VietMap) lên cụm (active — A9/B2) | Current | 2026-08-18 |
 | [`specs/waze-vietmap-screen-capture.html`](specs/waze-vietmap-screen-capture.html) | Screen-capture nav (Waze arrow + VietMap camera) học OpenBYD — B3, **Chờ duyệt**, 4 case | Current | 2026-08-19 |
-| [`specs/b3-full-nav-capture.html`](specs/b3-full-nav-capture.html) | **B3 FULL**: đọc mũi tên+làn+camera+text (Waze/VietMap/GMaps) + menu chọn nguồn + bắn cụm/HUD + overlay cụm (như speed badge). **Draft/chờ duyệt** | Current | 2026-08-20 |
+| [`specs/b3-full-nav-capture.html`](specs/b3-full-nav-capture.html) | **B3 FULL**: đọc mũi tên+làn+camera+text (Waze/VietMap/GMaps) + menu chọn nguồn + bắn cụm/HUD + overlay cụm (như speed badge). **Draft/chờ duyệt** | Current | 2026-08-23 |
 | [`specs/b3-data-flow.html`](specs/b3-data-flow.html) | **B3 DATA FLOW**: input→process→output (đường nào, data nào, vẽ gì/thế nào) — 2 sơ đồ SVG. Reference | Current | 2026-08-20 |
+| [`specs/b3-glyph-locator-cast-invariant.html`](specs/b3-glyph-locator-cast-invariant.html) | **B3.27**: dò glyph BẤT BIẾN với cấu hình cast (user chỉnh dpi/size/vị-trí, cast 1 hoặc 2 app) — thay mọi rect crop cố định. §4.2 + Reviewer Log Pass 2/3 = bộ cổng hiện hành (B3.47 vòng 3 + 3b) | Current | 2026-08-23 |
+| [`specs/b3-53-fixed-rect-ncc.html`](specs/b3-53-fixed-rect-ncc.html) | **B3.53**: nhánh NCC MỀM chấm crop lấy bằng rect KHÔNG-phải-mũi-tên ra SAI HƯỚNG — bảng số 2 ứng viên + vá `classifyStrict` (tier rect cố định) + vá `CaptureBounds.target` (tier a11y, Pass 2) + bảng giá phủ sóng (off-car xanh, chưa on-car) | Current | 2026-08-23 |
+| [`specs/b-multiapp-nav-safety.html`](specs/b-multiapp-nav-safety.html) | **Scope B**: an toàn khi >1 app dẫn — một-package-một-khung · dwell chống nhảy nguồn · guard hợp lý hoá cự ly · cổng kênh DATA/IMAGE | Current | 2026-08-22 |
 | [`specs/speed-limit-cluster-hud-oncar-ready.html`](specs/speed-limit-cluster-hud-oncar-ready.html) | Speed-limit cluster badge + HAL port + HUD probe (on-car ready) | Current | 2026-08-17 |
 | [`specs/speed-badge-placement-vietmap-logging.html`](specs/speed-badge-placement-vietmap-logging.html) | UI đặt vị trí badge + dời nguồn VietMap + log toàn tín hiệu | Current | 2026-08-17 |
 | [`specs/v2-accessibility-navsource-handoff.html`](specs/v2-accessibility-navsource-handoff.html) | a11y NavScreenSource đa app (GMaps/Waze/VietMap) | Current | 2026-08-17 |
@@ -91,7 +127,7 @@
 - [`specs/nav-oncar-fixes-1.14.html`](specs/nav-oncar-fixes-1.14.html) — 1.14 on-car fixes
 - [`specs/seal-hud-sign-candidate-expansion.html`](specs/seal-hud-sign-candidate-expansion.html) — HUD/sign candidate expansion
 - [`specs/seal-hud-sign-vehicle-test-t10.html`](specs/seal-hud-sign-vehicle-test-t10.html) — kế hoạch T10 HUD + biển tốc độ
-- [`specs/seal-nav-hud-speed-sign-offcar.html`](specs/seal-nav-hud-speed-sign-offcar.html) — Seal nav HUD + speed sign off-car
+- [`specs/seal-nav-hud-speed-sign-offcar.html`](specs/seal-nav-hud-speed-sign-offcar.html) — 🔒 **BYTE-SEALED** — Seal nav HUD + speed sign off-car. Không có §Nhật ký trong file (R2.6 miễn trừ — xem §Doc niêm phong bên dưới); nhật ký của spec này ghi ở `PROJECT-BACKLOG.md`
 - [`specs/vietmap-widget-bridge.html`](specs/vietmap-widget-bridge.html) — VietMap widget bridge POC
 - [`specs/voicekey-rework-1.19.html`](specs/voicekey-rework-1.19.html) — 1.19 voice-key UX rework
 - [`specs/windshield-hud-enable.html`](specs/windshield-hud-enable.html) — bật dẫn đường trên HUD kính
@@ -103,6 +139,10 @@
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
 | [`diagnostics/b3-emulator-e2e-2026-08-20.md`](diagnostics/b3-emulator-e2e-2026-08-20.md) | **Test B3 end-to-end trên emulator (Waze/VietMap/GMaps dẫn thật)**: Waze rẽ-TRÁI classify ĐÚNG `amap=2` end-to-end; môi trường lặp lại (adb root/960×720/verbose); bug B3.10/B3.11/B3.12 + RESUME POINT | Current | 2026-08-20 |
+| [`diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md`](diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md) | **Cổng dò glyph VietMap — chẩn đoán + bản vá đã đo lại** (§7 vòng 3, §7.7 vòng 3b): cổng cũ trả **icon POI bản đồ ở 60/87 khung** thay vì im lặng ⇒ thay trần dp bằng tỉ số + **neo trái** (dò đúng 27→86, đảo mồi 60→0); vòng 3b đóng thêm 3 đường false-positive — `windowRect=null` ⇒ mũi tên app KHÁC (Hamming 0) · dpi khai ≤124 ⇒ icon status bar ở 87/87 · rơi về rect Waze cố định ⇒ 2 ca SAI HƯỚNG | Current | 2026-08-23 |
+| [`diagnostics/b3-cluster-arrow-e2e-emulator-1920x720-2026-08-21.md`](diagnostics/b3-cluster-arrow-e2e-emulator-1920x720-2026-08-21.md) | Mốc B3.e2e — chuỗi "đọc cụm → đẩy HUD" thông off-car ở đúng 1920×720 (log thật) | Current | 2026-08-21 |
+| [`diagnostics/hal-register-latch-on-identity-switch-2026-08-22.md`](diagnostics/hal-register-latch-on-identity-switch-2026-08-22.md) | HAL latch khi đổi danh tính nguồn — nền cho bất biến MỘT-PACKAGE-MỘT-KHUNG (SB.1) | Current | 2026-08-22 |
+| [`diagnostics/8hare-gemini-voicekey-vietmap-autostart-2026-08-21.md`](diagnostics/8hare-gemini-voicekey-vietmap-autostart-2026-08-21.md) | Voice-key → Gemini (keyevent 231, recipe 8hare) + VietMap autostart headless-friendly | Current | 2026-08-21 |
 | [`diagnostics/multi-app-nav-source-channels-2026-08-20.md`](diagnostics/multi-app-nav-source-channels-2026-08-20.md) | Ma trận kênh nguồn (GMaps/VietMap/Waze nền vs visible) + khung two-track (data không phải overlay) + bác lừa/clone overlay | Current | 2026-08-20 |
 | [`diagnostics/VEHICLE-TEST-V2.md`](diagnostics/VEHICLE-TEST-V2.md) | Checklist thử trên xe + ma trận Stage 11 (execution NOT STARTED) | Current | 2026-07-26 |
 | [`diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md`](diagnostics/factory-hud-nav-RE-avenues-2026-08-19.md) | Tổng hợp MỌI đường RE để HUD **zin** hiện nav + xếp hạng khả thi×chi phí (nghi phạm `0x38B00030` chưa bác; HUD Taobao ≠ zin) | Current | 2026-08-19 |
@@ -117,12 +157,13 @@
 | [`diagnostics/nav-output-architecture-2026-08-16.html`](diagnostics/nav-output-architecture-2026-08-16.html) | Kiến trúc 2 đường ra Navigation + bảng field | Current | 2026-08-16 |
 | [`diagnostics/re-maneuver-icon-tables-2026-08-14.md`](diagnostics/re-maneuver-icon-tables-2026-08-14.md) | Bảng RE icon AMAP/HUD CAN + enrich Maneuver | Current | 2026-08-14 |
 | [`diagnostics/gemini-assistant-voicekey-oncar-2026-08-13.md`](diagnostics/gemini-assistant-voicekey-oncar-2026-08-13.md) | Thủ tục on-car Gemini trợ lý + nút mic → Gemini | Current | 2026-08-13 |
-| [`diagnostics/hud-sign-re/README.md`](diagnostics/hud-sign-re/README.md) | Workspace RE HUD + speed-sign T0–T9 (corpus, evidence, expansion) | Current | 2026-08-18 |
+| [`diagnostics/hud-sign-re/README.md`](diagnostics/hud-sign-re/README.md) | 🔒 **BYTE-SEALED** — Entry-doc workspace RE HUD + speed-sign (T0–T9): corpus, evidence, expansion (đại diện cho cả thư mục `diagnostics/hud-sign-re/`). Header trạng thái/mục đích **ở dòng này**, KHÔNG được thêm vào trong file (xem §Doc niêm phong bên dưới) | Current | 2026-08-18 |
 
 ### Historical / context — giữ tại chỗ
 
 - [`diagnostics/oncar-handoff-voicekey-2026-08-14.md`](diagnostics/oncar-handoff-voicekey-2026-08-14.md) — handoff on-car voice-key 1.19 (đã qua)
 - [Cụm-centre render root cause (08-21)](diagnostics/cluster-centre-render-rootcause-2026-08-21.md) — vì sao HAL guide rc=0 mà centre trống; đường đúng = NaviInfo flatbuffer qua AutoContainer.sendInfo2(4) trên cụm fission. Current, 2026-08-21.
+- [8hare RE → voice-key Gemini + VietMap autostart (08-21)](diagnostics/8hare-gemini-voicekey-vietmap-autostart-2026-08-21.md) — keyevent 231 + full assistant recipe; VietMap pidof-guard + headless-boot. Verified off-car (emulator). Current, 2026-08-21.
 - `diagnostics/artifacts/` — evidence logcat/env cast 2026-07-30 (đọc-only)
 - Scripts diagnostics (tooling, không phải doc): `diagnostics/nav-log.ps1`, `diagnostics/nav-debug.ps1`, `diagnostics/autotest.ps1`, `diagnostics/cluster-cast-test.ps1`
 
@@ -152,6 +193,19 @@
 |-----|----------|-----------|----------|
 | [`_handoff/stage-e1-done.md`](_handoff/stage-e1-done.md) | Handoff E1 — refactor docs 9-loại + tạo INDEX (file report này) | Session | 2026-08-19 |
 | [`_handoff/stage-e2-done.md`](_handoff/stage-e2-done.md) | Handoff E2 — tạo `../.kiro/steering/project-context.md` (steering luôn-bật) | Session | 2026-08-19 |
+| [`_handoff/stage-b1b2-done.md`](_handoff/stage-b1b2-done.md) | Handoff B1/B2 — autostart VietMap + design badge "giới hạn sắp tới" | Session | 2026-08-19 |
+| [`_handoff/stage-b3spec-done.md`](_handoff/stage-b3spec-done.md) | Handoff B3 — spec screen-capture (4 case) trước khi code | Session | 2026-08-19 |
+| [`_handoff/stage-b4-done.md`](_handoff/stage-b4-done.md) | Handoff B4 — diagnostics hygiene (screenRead INVALID khi stale) | Session | 2026-08-19 |
+| [`_handoff/stage-b3-core-done.md`](_handoff/stage-b3-core-done.md) | Handoff B3 core — NavGlyphLocator + registry mực + roster NavApps | Session | 2026-08-22 |
+| [`_handoff/.b3-app-plan.md`](_handoff/.b3-app-plan.md) | Kế hoạch nhánh :app của B3 (nháp phiên) | Session | 2026-08-22 |
+| [`_handoff/re-hud-track1-hudservice.md`](_handoff/re-hud-track1-hudservice.md) | RE HUD track 1 — HudService | Session | 2026-08-21 |
+| [`_handoff/re-hud-track2-firmware-gate.md`](_handoff/re-hud-track2-firmware-gate.md) | RE HUD track 2 — cổng firmware | Session | 2026-08-21 |
+| [`_handoff/re-hud-track3-coding-path.md`](_handoff/re-hud-track3-coding-path.md) | RE HUD track 3 — đường coding | Session | 2026-08-21 |
+| [`_handoff/re-hud-track4-hal-can.md`](_handoff/re-hud-track4-hal-can.md) | RE HUD track 4 — HAL/CAN | Session | 2026-08-21 |
+| [`_handoff/re-hud-track5-priorart.md`](_handoff/re-hud-track5-priorart.md) | RE HUD track 5 — prior art | Session | 2026-08-21 |
+| [`_handoff/re-hud-coding-path.md`](_handoff/re-hud-coding-path.md) | RE HUD — tổng hợp đường coding | Session | 2026-08-21 |
+| [`_handoff/re-roadname-gap.md`](_handoff/re-roadname-gap.md) | RE — khoảng trống tên đường trên HUD | Session | 2026-08-21 |
+| [`_handoff/re-showroom-ref.md`](_handoff/re-showroom-ref.md) | RE — tham chiếu showroom | Session | 2026-08-21 |
 | [`_handoff/stage-e4-done.md`](_handoff/stage-e4-done.md) | Handoff E4 — template §Nhật ký triển khai + `decisions/` ADR (README + 3 ADR) | Session | 2026-08-19 |
 | [`_handoff/off-car-plan-2026-08-17.md`](_handoff/off-car-plan-2026-08-17.md) | Tổng hợp phiên on-car 08-17 + kế hoạch off-car | Session | 2026-08-17 |
 | [`_handoff/progress-2026-08-18-findings-offcar-oncar.md`](_handoff/progress-2026-08-18-findings-offcar-oncar.md) | Findings đã implement off-car + kế hoạch verify on-car | Session | 2026-08-18 |

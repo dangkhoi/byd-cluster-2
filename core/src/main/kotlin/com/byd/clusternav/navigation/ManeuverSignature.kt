@@ -53,7 +53,7 @@ object ManeuverSignature {
         return s
     }
 
-    /** Grayscale 0/1 của chuỗi bit (cho NCC). Dùng chung registry dựng-sẵn + Waze (DRY, B3.6). */
+    /** Grayscale 0/1 của chuỗi bit (cho NCC). CHỈ [grayRegistry] (38 mục GMaps) dùng — xem KDoc [matchNCC]. */
     private fun grayBits(bits: String): FloatArray = FloatArray(bits.length) { if (bits[it] == '1') 1f else 0f }
 
     /** Registry dựng sẵn: chuỗi 225-bit -> LongArray(4) (đóng gói MSB-first y như ki0.a). */
@@ -62,23 +62,22 @@ object ManeuverSignature {
     }
 
     // ── B3.6: template mũi tên Waze/VietMap ([WazeArrowRegistry]) — đóng gói LAZY, đóng-gói-lại KHI registry đổi
-    //    (theo WazeArrowRegistry.version). Production registry RỖNG ⇒ hai list rỗng ⇒ 0 chi phí thêm. Khớp CÙNG
-    //    đường Hamming (match) / NCC (matchNCC) như 38 mục GMaps ⇒ TÊN Waze đi qua nameToAmap/Hal/Maneuver y hệt.
+    //    (theo WazeArrowRegistry.version).
+    //
+    // ⚠ CHỈ [classifyWazeInk] đọc list này. [match]/[matchNCC] (đường large-icon notification) KHÔNG đọc —
+    //   xem KDoc [match] để biết vì sao (gỡ 08-23 vòng 1, [P0]). Vì vậy KHÔNG có bản grayscale: nhánh NCC
+    //   không tồn tại cho registry mực.
     @Volatile private var wazeVersion = -1
     @Volatile private var wazePacked: List<Pair<LongArray, String>> = emptyList()
-    @Volatile private var wazeGray: List<Pair<FloatArray, String>> = emptyList()
 
-    private fun syncWaze() {
+    private fun wazePackedRegistry(): List<Pair<LongArray, String>> {
         val v = WazeArrowRegistry.version
-        if (v == wazeVersion) return
-        val raw = WazeArrowRegistry.raw()
-        wazePacked = raw.map { (bits, name) -> packBits(bits) to name }
-        wazeGray = raw.map { (bits, name) -> grayBits(bits) to name }
-        wazeVersion = v
+        if (v != wazeVersion) {
+            wazePacked = WazeArrowRegistry.raw().map { (bits, name) -> packBits(bits) to name }
+            wazeVersion = v
+        }
+        return wazePacked
     }
-
-    private fun wazePackedRegistry(): List<Pair<LongArray, String>> { syncWaze(); return wazePacked }
-    private fun wazeGrayRegistry(): List<Pair<FloatArray, String>> { syncWaze(); return wazeGray }
 
     /**
      * Kết quả MỘT lần khớp, trả TƯỜNG MINH cùng nhau.
@@ -90,10 +89,52 @@ object ManeuverSignature {
      * return sớm mà KHÔNG ghi field khi ảnh null/quá nhỏ, nên tên đọc được có thể là tên CŨ còn sót.
      * Một dòng dữ liệu chẩn đoán mang tên sai còn tệ hơn không có dòng nào.
      */
-    data class Match(val name: String, val amap: Int?)
+    data class Match(
+        val name: String,
+        val amap: Int?,
+        /** Mã icon HAL gốc (enum HudController) suy từ [name]; null khi không khớp. */
+        val hal: Int? = null,
+        /** [Maneuver] CÓ HƯỚNG — CHỈ họ vòng xuyến; null cho mọi tên khác (caller fallback `fromAmapIcon`). */
+        val maneuver: Maneuver? = null,
+    )
 
     /** Không có ảnh để chấm (null / nhỏ hơn 8×8) — KHÁC "(không khớp)" (có ảnh, chấm rồi, trượt registry). */
     const val NO_INPUT = "(không ảnh)"
+
+    /**
+     * Chấm khung **bbox mực** do `NavGlyphLocator` dò ra, khớp **CHỈ** với [WazeArrowRegistry] — đường
+     * screen-capture (B3). Trả [Match] như [classifyDetailed].
+     *
+     * VÌ SAO TÁCH RIÊNG, KHÔNG DÙNG [classifyDetailed] (đo 2026-08-22): hai registry nằm ở HAI QUY ƯỚC CROP
+     * khác nhau — 38 mục [ManeuverRegistry] là "khung vẽ có lề" (sinh từ bounds view a11y `navBarDirection`
+     * của OpenBYD), còn [WazeArrowRegistry] là "bbox mực sát glyph". Khớp chéo quy ước KHÔNG chỉ trượt mà
+     * còn ra **SAI hướng**: 4/9 khung thật cho `off_ramp_normal_left` (→ AMAP 4 = chếch trái) thay vì
+     * `turn_normal_left` (→ AMAP 2 = rẽ trái) — một mũi tên sai hướng trên cụm/HUD tệ hơn hẳn không có gì.
+     *
+     * Registry rỗng ⇒ luôn trả "(không khớp)" — an toàn, không bao giờ mượn tạm template GMaps.
+     *
+     * ⚠ CHỈ HAMMING, **KHÔNG có nhánh NCC** (gỡ 08-22 vòng 1 — [P1]). VÌ SAO: [matchNccIn] là khớp MỀM
+     * (ngưỡng [NCC_MIN] = 0.45) và registry này KHÔNG có lớp "không biết". Mà
+     * [com.byd.clusternav.navigation.screencapture.NavGlyphLocator] + `handleArrowByGlyph` chạy cho MỌI app
+     * (không lọc package), nên một glyph mũi tên bất kỳ lọt qua locator sẽ tương quan ≥ 0.45 với MỘT template
+     * nào đó ⇒ kết quả là **bốc thăm giữa các hướng**. Trên xe đang lăn bánh, mũi tên SAI HƯỚNG nguy hiểm hơn
+     * hẳn không hiện gì (CLAUDE.md — degrade-safe: thiếu dữ liệu thì IM LẶNG, tuyệt đối không đoán bừa).
+     *
+     * Hamming một mình đủ vì bộ template được TỈA để mọi cặp KHÁC khoá quyết định cách nhau ≥ 2×[MAX_HAMMING]+1
+     * = 37 bit (bất biến khoá bằng `WazeArrowRegistryTest.moi cap template KHAC khoa quyet dinh phai cach >= 37 bit`
+     * — đo 08-23 vòng 2: nhỏ nhất **41 bit**). Bất đẳng thức tam giác ⇒ khung nằm trong 18 bit của template
+     * ĐÚNG thì cách MỌI template khác-khoá ≥ 19 bit ⇒ không thể thắng. Glyph chưa có template ⇒ "(không khớp)"
+     * ⇒ `handleArrowByGlyph` trả false ⇒ rơi xuống đường rect cố định (đường cũ, đã có test).
+     */
+    fun classifyWazeInk(bmp: PixelFrame?): Match {
+        if (bmp == null || bmp.width < 8 || bmp.height < 8) return Match(NO_INPUT, null)
+        val s = signature(bmp) ?: return Match("(mờ)", null)
+        val name = matchIn(s.bits, wazePackedRegistry())?.first
+            ?: return Match("(không khớp)", null)
+        val amap = nameToAmap(name)
+        note("waze-ink '$name' -> amap=$amap")
+        return Match(name, amap, nameToHal(name), nameToManeuver(name))
+    }
 
     /** -> mã AMAP NEW_ICON từ ảnh mũi tên, hoặc null nếu mờ/không khớp. */
     fun classify(bmp: PixelFrame?): Int? = classifyDetailed(bmp).amap
@@ -110,7 +151,59 @@ object ManeuverSignature {
         val amap = nameToAmap(name)
         set(name, amap)
         note("sig '$name' -> amap=$amap")
-        return Match(name, amap)
+        return Match(name, amap, nameToHal(name), nameToManeuver(name))
+    }
+
+    /**
+     * Như [classifyDetailed] nhưng **CHỈ HAMMING — KHÔNG có nhánh NCC** (B3.53, 08-23). Dành cho caller crop
+     * bằng một **rect PHỎNG ĐOÁN** thay vì đo được khung glyph.
+     *
+     * VÌ SAO CÓ HÀM NÀY (lỗi CÓ THẬT, [ĐO] 08-23 — không phải phòng xa). `CaptureRouter` tra rect ARROW cố
+     * định theo `(target, W, H)` chứ **không theo package**, nên `CaptureCalibration.WAZE_ARROW_BANNER_D240`
+     * — hiệu chuẩn trên banner **Waze** — cũng được áp lên khung **VietMap**. Crop sai chỗ đó vẫn có mực,
+     * vẫn ra chữ ký, và [matchNCC] là khớp MỀM (ngưỡng [NCC_MIN] = 0.45, không có lớp "không biết") nên nó
+     * **luôn tìm được một cái tên**. Đo trên 87 khung VietMap ghép từ asset (fixture
+     * `core/src/test/resources/diagnostics/vietmap-glyph/`), crop qua đúng rect cố định:
+     * ```
+     * depart_right      -> maneuver_roundabout_enter_and_exit_cw_normal_left  amap=11  (đúng: 3)   Hamming 27
+     * fork_slight_right -> maneuver_turn_normal_right                         amap=3   (đúng: 5)   Hamming 37
+     * fork              -> maneuver_turn_normal_right                         amap=3               Hamming 38
+     * ```
+     * Cả 3 đều **trượt Hamming rất xa** (27/37/38 ≫ [MAX_HAMMING] = 18) và chỉ ra được mã nhờ NCC ⇒ hướng
+     * hiển thị là bốc thăm. Mũi tên SAI HƯỚNG trên xe đang lăn bánh nguy hiểm hơn hẳn không hiện gì.
+     *
+     * ⚠ KHÔNG được đem hàm này thay [classifyDetailed] ở đường **notification large-icon** — đó là đường NCC
+     * SINH RA ĐỂ PHỤC VỤ (GMaps đổi style icon ⇒ chữ ký lệch > 18 bit ⇒ "vực im lặng") và là đường đã chạy
+     * thật ngoài hiện trường (CLAUDE.md §6). [ĐO] trên 418 khung GMaps nhiễu-hình-học (dịch 1 ô / dilate):
+     * bỏ NCC ở đó làm **256/418 khung đổi kết quả**. Ngược lại, ở tier rect-cố-định thì trên 3 khung Waze
+     * THẬT đã lưu fixture, delta = **0** (hai khung khớp bằng Hamming 15 và 18; khung "compact" vốn đã
+     * `(không khớp)` vì NCC cũng không cứu được). Khoá bằng
+     * `FixedRectSoftMatchTest` (:core) + `ScreenCaptureNavSourceContractTest` (:app).
+     *
+     * Ranh giới quyết định: rect ĐO ĐƯỢC **cho đúng target đang chấm** (a11y node chọn cho ARROW, hoặc bbox
+     * mực do `NavGlyphLocator` dò) ⇒ giả định "crop đúng quy ước khung vẽ" có căn cứ ⇒ giữ nguyên đường cũ.
+     * Rect **hiệu chuẩn sẵn** ⇒ chính cái giả định đó là thứ đang bị nghi ngờ ⇒ chỉ chấp nhận khớp CỨNG. Đây
+     * là phép ĐO (khớp trong quả cầu Hamming 18 bit của một template), KHÔNG phải rẽ nhánh theo tên gói
+     * (CLAUDE.md §7).
+     *
+     * ⚠ ĐÍNH CHÍNH 08-23 (vòng review): mệnh đề "rect a11y là bounds đo được của chính node mũi tên" chỉ
+     * đúng TỪ bản vá `CaptureBounds.target`. Trước đó holder tier-1 không mang mục tiêu, nên với VietMap
+     * (`CaptureTarget.forPackage` = CAMERA) plan ARROW nhận rect **icon camera** mà vẫn mang nhãn
+     * `A11Y_DYNAMIC` ⇒ vẫn đi đường khớp MỀM. Xem KDoc
+     * `com.byd.clusternav.navigation.screencapture.CaptureBounds.target`.
+     *
+     * KHÔNG ghi [lastName]/[lastAmap] (giống [classifyWazeInk]) — hai field đó là state chung, xem KDoc của chúng.
+     */
+    fun classifyStrict(bmp: PixelFrame?): Match {
+        if (bmp == null || bmp.width < 8 || bmp.height < 8) return Match(NO_INPUT, null)
+        val s = signature(bmp) ?: return Match("(mờ)", null)
+        val name = match(s.bits) ?: run {
+            note("no strict match (Hamming>$MAX_HAMMING) — rect cố định không khớp bố cục nào đã hiệu chuẩn")
+            return Match("(không khớp)", null)
+        }
+        val amap = nameToAmap(name)
+        note("sig-strict '$name' -> amap=$amap")
+        return Match(name, amap, nameToHal(name), nameToManeuver(name))
     }
 
     private fun set(n: String, a: Int) { lastName = n; lastAmap = a }
@@ -244,25 +337,18 @@ object ManeuverSignature {
     }
     private const val NCC_MIN = 0.45f              // ngưỡng khớp mềm (thực nghiệm; dưới = coi như không ra)
 
-    private fun matchNCC(q: FloatArray): String? {
-        var mq = 0f; for (v in q) mq += v; mq /= q.size
-        var vq = 0f; for (v in q) { val dq = v - mq; vq += dq * dq }
-        if (vq < 1e-6f) return null
-        var best: String? = null; var bestNcc = NCC_MIN
-        // B3.6: 38 mục GMaps ([grayRegistry]) + template Waze/VietMap ([wazeGrayRegistry]) — CÙNG công thức NCC.
-        for (reg in arrayOf(grayRegistry, wazeGrayRegistry())) {
-            for ((t, name) in reg) {
-                if (t.size != q.size) continue
-                var mt = 0f; for (v in t) mt += v; mt /= t.size
-                var cov = 0f; var vt = 0f
-                for (i in q.indices) { val dq = q[i] - mq; val dt = t[i] - mt; cov += dq * dt; vt += dt * dt }
-                if (vt < 1e-6f) continue
-                val ncc = cov / kotlin.math.sqrt(vq * vt)
-                if (ncc > bestNcc) { bestNcc = ncc; best = name }
-            }
-        }
-        return best
-    }
+    /**
+     * Khớp MỀM chỉ trong 38 mục GMaps — **KHÔNG quét [WazeArrowRegistry]** (gỡ 08-23 vòng 1, [P0]; xem [match]).
+     *
+     * VÌ SAO NHÁNH NÀY LÀ CHỖ NGUY HIỂM NHẤT để trộn registry: lập luận an toàn duy nhất mà repo có cho việc
+     * để hai registry cạnh nhau là bất đẳng thức tam giác trên HAMMING (biên 2×18+1 = 37, khoá bằng
+     * `WazeArrowRegistryTest.template muc KHONG BAO GIO lot nguong Hamming cua mot khung GMaps`). NCC KHÔNG
+     * phải Hamming — nó là tương quan trên tỉ-lệ-lấp-ô, nên một template cách 39 bit vẫn có thể ghi điểm NCC
+     * CAO HƠN người thắng cũ. Đo 08-23 vòng 2 trên nhiễu HÌNH HỌC (dịch 1 ô + dilate) của 38 khung GMaps:
+     * **33/418 khung đổi mã AMAP** khi nạp thêm registry mực, gồm 11 ca vòng-xuyến→đi-thẳng và 6 ca
+     * im-lặng→có-hướng. Đó là đổi hành vi của đường notification đang chạy ngoài hiện trường (CLAUDE.md §6).
+     */
+    private fun matchNCC(q: FloatArray): String? = matchNccIn(q, grayRegistry)?.first
 
     /** Trung vị histogram (port wm0.a). */
     private fun median(arr: IntArray, n: Int): Int {
@@ -274,25 +360,72 @@ object ManeuverSignature {
         return 0
     }
 
-    /** Khớp gần nhất theo Hamming ≤18 (port wm0.d) trên CẢ registry dựng-sẵn (38 GMaps) LẪN Waze (B3.6). null nếu không có. */
-    private fun match(sig: LongArray): String? {
-        // B3.11: chữ ký QUÁ THƯA (crop trống / không có glyph) → KHÔNG khớp (chặn false-positive all-zero).
+    /**
+     * Khớp gần nhất theo Hamming ≤ [MAX_HAMMING] (port wm0.d) trong ĐÚNG MỘT registry — lõi dùng chung của
+     * [match] (38 mục GMaps) và [classifyWazeInk] ([WazeArrowRegistry]). Trả (tên, khoảng cách) hoặc null nếu
+     * chữ ký quá thưa / không mục nào trong ngưỡng.
+     *
+     * ⚠ Tham số [reg] là MỘT registry, không phải danh sách registry: hai bộ template nằm ở hai QUY ƯỚC CROP
+     * khác nhau nên không bao giờ được quét chung (xem KDoc [match]).
+     */
+    private fun matchIn(
+        sig: LongArray,
+        reg: List<Pair<LongArray, String>>,
+        exactWins: Boolean = false,
+    ): Pair<String, Int>? {
         var setBits = 0
         for (k in 0 until WORDS) setBits += java.lang.Long.bitCount(sig[k])
-        if (setBits < MIN_SIG_BITS) return null
-        var best: String? = null; var bestD = Int.MAX_VALUE
-        // B3.6: exact (d==0) short-circuit ưu tiên khớp CHÍNH XÁC bất kể registry; glyph Waze không trùng d==0
-        // với GMaps (đó là lý do B3.6 tồn tại) nên rơi xuống Waze; template Waze d==0 ⇒ thắng ngay.
-        for (reg in arrayOf(registry, wazePackedRegistry())) {
-            for ((r, name) in reg) {
-                var d = 0
-                for (k in 0 until WORDS) d += java.lang.Long.bitCount(sig[k] xor r[k])
-                if (d == 0) return name
-                if (d <= MAX_HAMMING && d < bestD) { bestD = d; best = name }
-            }
+        if (setBits < MIN_SIG_BITS) return null      // B3.11: crop trống → không khớp bừa
+        var best: String? = null
+        var bestD = Int.MAX_VALUE
+        for ((r, name) in reg) {
+            var d = 0
+            for (k in 0 until WORDS) d += java.lang.Long.bitCount(sig[k] xor r[k])
+            if (d == 0 && exactWins) return name to 0
+            if (d <= MAX_HAMMING && d < bestD) { bestD = d; best = name }
         }
-        return best
+        return best?.let { it to bestD }
     }
+
+    /**
+     * Khớp NCC trong ĐÚNG một registry. Trả (tên, điểm NCC) hoặc null nếu không mục nào vượt [NCC_MIN].
+     *
+     * Call site DUY NHẤT là [matchNCC] (38 mục GMaps). [classifyWazeInk] CỐ Ý không có nhánh mềm nào — xem
+     * KDoc của nó.
+     */
+    private fun matchNccIn(q: FloatArray, reg: List<Pair<FloatArray, String>>): Pair<String, Float>? {
+        var mq = 0f; for (v in q) mq += v; mq /= q.size
+        var vq = 0f; for (v in q) { val dq = v - mq; vq += dq * dq }
+        if (vq < 1e-6f) return null
+        var best: String? = null; var bestNcc = NCC_MIN
+        for ((t, name) in reg) {
+            if (t.size != q.size) continue
+            var mt = 0f; for (v in t) mt += v; mt /= t.size
+            var cov = 0f; var vt = 0f
+            for (i in q.indices) { val dq = q[i] - mq; val dt = t[i] - mt; cov += dq * dt; vt += dt * dt }
+            if (vt < 1e-6f) continue
+            val ncc = cov / kotlin.math.sqrt(vq * vt)
+            if (ncc > bestNcc) { bestNcc = ncc; best = name }
+        }
+        return best?.let { it to bestNcc }
+    }
+
+    /**
+     * Khớp Hamming CHỈ trong 38 mục GMaps ([registry]) — quy ước "KHUNG VẼ CÓ LỀ".
+     *
+     * ⚠ **KHÔNG quét [WazeArrowRegistry]** (gỡ 08-23 vòng 1, [P0]). Trước đó [match]/[matchNCC] quét CHUNG hai
+     * registry, tức đem crop quy ước "khung vẽ" đi khớp template quy ước "bbox mực" — đúng cái lai quy ước mà
+     * KDoc [classifyWazeInk] đã đo là cho SAI hướng (4/9 khung ra `off_ramp_normal_left` thay vì
+     * `turn_normal_left`). Hai quy ước ⇒ HAI matcher, không trộn:
+     *
+     *   · large-icon notification GMaps + rect cố định screen-capture → [match]/[matchNCC] → 38 mục GMaps;
+     *   · bbox mực do `NavGlyphLocator` dò → [classifyWazeInk] → [WazeArrowRegistry].
+     *
+     * Lợi ích của việc trộn = 0 (đường notification chỉ còn GMaps đi tới), rủi ro thì đo được: 33/418 khung
+     * GMaps nhiễu-hình-học đổi mã AMAP — xem [matchNCC]. Khoá bằng
+     * `WazeArrowRegistryTest.khung GMaps NHIEU HINH HOC — registry muc khong duoc doi ket qua`.
+     */
+    private fun match(sig: LongArray): String? = matchIn(sig, registry, exactWins = true)?.first
 
     /** Tên maneuver (app gốc) -> mã AMAP NEW_ICON của ta (đặc thù trước, generic sau). */
     private fun nameToAmap(name: String): Int = when {

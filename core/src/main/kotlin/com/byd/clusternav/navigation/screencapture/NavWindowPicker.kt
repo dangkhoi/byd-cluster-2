@@ -35,6 +35,29 @@ object NavWindowPicker {
      * Chọn window nav tốt nhất. null nếu không có window TYPE_APPLICATION của nav pkg nào (⇒ gate không mở
      * theo đường window-enum; caller vẫn có thể dựa nguồn khác).
      */
+    /**
+     * Xếp hạng MỌI cửa sổ nav ứng viên, tốt nhất trước — để caller thử lần lượt thay vì cược vào một cái.
+     *
+     * VÌ SAO (08-22): [pick] chọn theo DIỆN TÍCH, không có khái niệm "app nào đang DẪN". Ca thật: người dùng
+     * cài cả Waze zin lẫn WazeMod; chỉ MỘT bản dẫn tại một thời điểm (bản kia nằm im). Nếu bản đứng im lại có
+     * cửa sổ to hơn thì nó thắng — rồi đọc view-id trả rỗng, mà `CaptureForegroundSource` đã bị lái sang nó.
+     * Có danh sách xếp hạng thì caller thử tiếp ứng viên sau; **"đọc được dữ liệu dẫn đường" mới là bằng
+     * chứng đang dẫn**, diện tích chỉ là phỏng đoán.
+     */
+    fun rank(windows: List<WinInfo>, navPkgs: Set<String>): List<Pick> =
+        windows
+            .filter { it.type == TYPE_APPLICATION && it.pkg in navPkgs && !it.bounds.isEmpty() }
+            .sortedWith(
+                compareByDescending<WinInfo> { area(it.bounds) }
+                    .thenByDescending { it.focused }
+                    // chốt cuối TẤT ĐỊNH: không bao giờ để kết quả phụ thuộc thứ tự duyệt của hệ thống
+                    .thenBy { it.pkg },
+            )
+            .map { Pick(it.pkg, it.bounds, it.displayId) }
+            // `getWindows()` và `getWindowsOnAllDisplays()` trả TRÙNG cùng một cửa sổ (đo 08-22: ranked ra
+            // [wazemod, wazemod]) → khử trùng để không đọc lại y hệt một app hai lần mỗi nhịp.
+            .distinct()
+
     fun pick(windows: List<WinInfo>, navPkgs: Set<String>): Pick? {
         var best: WinInfo? = null
         for (w in windows) {

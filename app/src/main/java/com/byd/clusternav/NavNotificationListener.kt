@@ -19,8 +19,6 @@ import com.byd.clusternav.contracts.SpeedLimitSource
 import com.byd.clusternav.vietmapwidget.VietMapWidgetBridge
 import com.byd.clusternav.vietmapwidget.VietMapWidgetFreshness
 import com.byd.clusternav.vietmapwidget.VietMapWidgetOwner
-import com.byd.clusternav.modules.wazehud.WazeHudSource
-import com.byd.clusternav.modules.wazehud.WazeHudAvailability
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
 import com.byd.clusternav.screencapture.ScreenCaptureNavSource
 import android.content.Context
@@ -45,19 +43,20 @@ class NavNotificationListener : NotificationListenerService() {
         // Token cự ly (m/km/ft/mi) — dấu hiệu noti dẫn đường, dùng khi category không phải navigation.
         private val DIST_TOKEN = Regex("""\b\d+([.,]\d+)?\s?(m|km|ft|mi)\b""", RegexOption.IGNORE_CASE)
         // "Đã đến nơi" — phát hiện KẾT-THÚC-NAV dùng chung ở NavArrivalGuard.isArrivalText (R7/#2).
-        val MAPS_PACKAGES = setOf(
-            "com.google.android.apps.maps",
-            "app.revanced.android.apps.maps",
-            // ★ Revive: NotificationParser đã biết đọc field-đảo của VietMap (đường ở title, cự ly ở text —
-            // xem NotificationParser.kt) từ trước. Gói xác nhận qua dump thật (WmParseTest: "vn.vietmap.live/.MainActivity").
-            "vn.vietmap.live",
-            // WazeMod — HUD signal source, dùng song song GMaps
-            "com.chisadin.wazemod",
-            "com.waze",
-        )
+        /**
+         * Roster **KÊNH NOTIFICATION** — nguồn sự thật duy nhất ở
+         * [com.byd.clusternav.navigation.NavApps.NOTIFICATION] (đọc KDoc ở đó để biết ai trong/ngoài và VÌ SAO).
+         *
+         * ⚠ ĐÂY KHÔNG PHẢI [com.byd.clusternav.navigation.NavApps.ALL] nữa (đổi 08-23). Trước đó nó trỏ ALL, nên
+         * VietMap đi qua `handle()` ⇒ `SourceArbiter.shouldFeed(pkg, …, DATA)` đóng mốc `lastDataByPkg[vietmap]`
+         * ⇒ `isDataFresh(vietmap)` = true trong 6 s ⇒ **kênh IMAGE của chính VietMap bị chặn** ⇒ mũi tên
+         * screen-capture không bao giờ lên được cụm (backlog B3.42). Gói ra khỏi roster này **không mất kênh
+         * nào khác**: a11y (`NavApps.ALL` + XML) và widget/screen-capture giữ nguyên.
+         */
+        val MAPS_PACKAGES = com.byd.clusternav.navigation.NavApps.NOTIFICATION
     }
 
-    // ★ Revive (2026-08-17): speed-sign owner (VietMap/Waze speed-limit signal). Port ở 1.21 = Noop (chưa chạy) —
+    // Speed-sign owner: giới hạn tốc độ từ widget VietMap → badge cụm + HAL. (Comment cũ "Noop" đã lỗi thời) —
     // đây là base research (xem NavigationSpeedSignOwner + docs/specs/waze-vietmap-signal-revival.html).
     private val speedSignOwner by lazy { NavigationSpeedSignOwner.get(applicationContext) }
 
@@ -71,11 +70,10 @@ class NavNotificationListener : NotificationListenerService() {
     // được arrow → dùng lại hướng trước thay vì rớt straight. Reset ở ranh giới phiên (đến nơi / gỡ noti).
     @Volatile private var lastManeuverIcon: Int = -1
 
-    // B3 T6: đầu ra nguồn ẢNH (NavOutputOwner → BydHal cụm/HUD) + overlay cụm (display-1). Khởi/dừng cùng
-    // ScreenCaptureNavSource (gated Prefs.enabled). Owner tick đọc ScreenCaptureSignal → push BydHal + (qua
-    // overlaySink) cập nhật overlay. @Volatile: set ở luồng lifecycle.
+    // B3 (đơn giản hoá 08-21): đầu ra nguồn ẢNH — NavOutputOwner đọc ScreenCaptureSignal → push BydHal (cụm-lane
+    // + HUD đọc-CAN qua pushNavigation). Cụm hiện UI THẬT của app cast (KHÔNG tự vẽ overlay nữa). Khởi/dừng cùng
+    // ScreenCaptureNavSource (gated Prefs.enabled). @Volatile: set ở luồng lifecycle.
     @Volatile private var navOutputOwner: NavOutputOwner? = null
-    @Volatile private var navClusterOverlay: com.byd.clusternav.navoverlay.NavClusterOverlay? = null
     // DEBUG-only (BuildConfig.DEBUG → KHÔNG có trong release OTA): receiver inject 1 frame làn+camera TỔNG HỢP
     // qua `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME` để test overlay render off-car (emulator).
     private var debugFrameReceiver: android.content.BroadcastReceiver? = null
@@ -88,7 +86,9 @@ class NavNotificationListener : NotificationListenerService() {
     // Touched ONLY on the listener callback thread (onNotificationPosted + the onListenerConnected
     // activeNotifications scan both run on the main looper), so a plain HashMap with no lock is safe. Skips
     // CONSECUTIVE-IDENTICAL notifs (GMaps redraws the same frame ~1/s) so the raw CSV isn't flooded. Bounded to
-    // the five nav packages. NOT reset at session boundaries — it never feeds the cluster, purely a flood guard.
+    // the five nav packages (`NavApps.ALL` — the gate of its owner [recordRawNotif]; NOT the notification-channel
+    // roster `NavApps.NOTIFICATION`, xem KDoc ở đó). NOT reset at session boundaries — it never feeds the
+    // cluster, purely a flood guard.
     private val lastRaw = HashMap<String, String>()
 
     /** Hệ thống THẢ binding (head-unit hay làm lúc chạy) → clear typed sources before teardown. */
@@ -111,8 +111,6 @@ class NavNotificationListener : NotificationListenerService() {
         // để KHÔNG chặn keep-alive stop ở trên (B1 1.30) nếu nguồn tín hiệu ném lỗi.
         runCatching {
             speedSignOwner.onProviderDisconnected(SpeedLimitSource.VIETMAP)
-            speedSignOwner.onProviderDisconnected(SpeedLimitSource.WAZE)
-            stopWazeHudSource(clearFirst = false)
             val bridge = VietMapWidgetBridge.get(applicationContext)
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
@@ -120,9 +118,8 @@ class NavNotificationListener : NotificationListenerService() {
         // B3: binding dropped → gate closed → stop the capture source (symmetric to the signal teardown above).
         runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
             .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
-        // B3 T6: dừng đầu ra nguồn ảnh (owner keep-alive + overlay) đối xứng với capture source.
+        // B3: dừng đầu ra nguồn ảnh (owner keep-alive) đối xứng với capture source.
         runCatching { navOutputOwner?.stop() }.onFailure { Log.w(TAG, "nav output owner stop failed", it) }
-        runCatching { navClusterOverlay?.hide() }.onFailure { Log.w(TAG, "nav overlay hide failed", it) }
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.UNKNOWN) }
             .onFailure { Log.e(TAG, "permission state update failed", it) }
         runCatching {
@@ -141,15 +138,14 @@ class NavNotificationListener : NotificationListenerService() {
         // verbose drive AND cleans data a previous verbose session left behind even if verbose is now OFF, so a
         // data-collection build can never fill the car's storage. Off-thread + degrade-safe (never throws).
         runCatching { DiagStorageCap.enforce(applicationContext, force = true) }
-        // ★ Revive: khởi động nguồn tín hiệu (speed-sign sync + VietMap widget bridge + Waze HUD logcat poll).
-        // GIỮ hành vi 1.21: chạy TRƯỚC cổng Prefs.enabled (nguồn poll độc lập). ⚠️ Waze poll logcat ~4000×/h
-        // (hao pin — bản chất 1.21); base research, tối ưu sau (spec revival Q4). Cô lập trong runCatching.
+        // Khởi động nguồn tín hiệu: speed-sign sync + VietMap widget bridge. (Nhánh poll logcat của Waze đã
+        // gỡ 08-22 — nó chạy trước cả cổng Prefs.enabled và tốn ~4000 lệnh shell/giờ để nhận về 0 dòng.)
+        // Cô lập trong runCatching.
         runCatching {
             speedSignOwner.syncFromPrefs()
             val bridge = VietMapWidgetBridge.get(applicationContext)
             bridge.start(VietMapWidgetOwner.NAVIGATION)
             bridge.addListener(speedLimitPusher)
-            startWazeHudSource()
         }.onFailure { Log.e(TAG, "signal source start failed", it) }
         if (!Prefs.enabled(applicationContext)) return
         SourceArbiter.clear()
@@ -158,25 +154,23 @@ class NavNotificationListener : NotificationListenerService() {
         Log.i(TAG, "listener connected -> authoritative coordinator ready")
         // B3 (screen-capture nav): gate is now open (master Nav+HUD ON + listener bound) → start the capture
         // source. Its per-tick self-gate (SourceArbiter.isFresh || a11y foreground) decides whether to actually
-        // capture, mirroring the WazeHudSource start above. Degrade-safe; never blocks the connect path.
+        // capture. Degrade-safe; never blocks the connect path.
         runCatching { ScreenCaptureNavSource.get(applicationContext).start() }
             .onFailure { Log.w(TAG, "screen-capture source start failed", it) }
-        // B3 T6: start OUTPUT owner (ScreenCaptureSignal → BydHal cụm/HUD payload, SONG SONG) + cluster overlay
-        // (display-1: dải làn dưới speed-badge + camera phải speed-sign). Owner tick 250ms đọc signal → push +
-        // (overlaySink) cập nhật overlay. Degrade-safe; không chặn connect. Dừng ở onListenerDisconnected.
+        // B3 (đơn giản hoá 08-21): start OUTPUT owner (ScreenCaptureSignal → BydHal cụm-lane + HUD đọc-CAN qua
+        // pushNavigation). Cụm hiện app CAST trực tiếp (không tự vẽ overlay). Degrade-safe; không chặn connect.
         runCatching {
-            val overlay = navClusterOverlay
-                ?: com.byd.clusternav.navoverlay.NavClusterOverlay(applicationContext).also { navClusterOverlay = it }
-            overlay.show()
             val owner = navOutputOwner ?: NavOutputOwner(applicationContext).also { navOutputOwner = it }
-            owner.overlaySink = { lane, cam, arrow, _ -> overlay.update(lane, cam, arrow) }
             owner.start()
-        }.onFailure { Log.w(TAG, "nav output owner/overlay start failed", it) }
+        }.onFailure { Log.w(TAG, "nav output owner start failed", it) }
         maybeRegisterDebugFrameReceiver()
         // QUAN TRỌNG: nav có thể ĐÃ dẫn trước khi listener bind (cài/mở app sau khi đang dẫn, hoặc xe đỗ
         // -> noti đứng yên, onNotificationPosted không kích hoạt). Quét noti hiện tại + bơm ngay.
         runCatching {
             activeNotifications?.forEach { sbn ->
+                // Cùng thứ tự như `onNotificationPosted`: đo trước (cả 5 gói), rồi mới tới cổng kênh.
+                if (sbn.packageName !in com.byd.clusternav.navigation.NavApps.ALL) return@forEach
+                recordRawNotif(sbn)
                 if (sbn.packageName in MAPS_PACKAGES) handle(sbn)
             }
         }.onFailure { Log.e(TAG, "scan active notifications failed", it) }
@@ -184,10 +178,9 @@ class NavNotificationListener : NotificationListenerService() {
 
     /**
      * DEBUG-only (gate `BuildConfig.DEBUG` → KHÔNG có trong release OTA): đăng ký receiver inject 1 frame nav
-     * TỔNG HỢP (làn 4 cột [← mờ · ↑ sáng · ↑ sáng · → mờ] + camera 300m + arrow LEFT) vào `ScreenCaptureSignal`
-     * khi nhận `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME`. Để test overlay render OFF-CAR: đặt pref
-     * `overlay_display_id=0` (render trên màn chính emulator) rồi broadcast → owner tick đọc signal → overlaySink
-     * → overlay vẽ dải làn + chip camera. Idempotent; degrade-safe.
+     * TỔNG HỢP (làn + camera) vào `ScreenCaptureSignal` khi nhận `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME`.
+     * Owner tick đọc signal → BydHal push (cụm-lane + HUD đọc-CAN). Test đường HAL push (HAL null off-car → chỉ log;
+     * on-car đẩy thật). Idempotent; degrade-safe.
      */
     private fun maybeRegisterDebugFrameReceiver() {
         if (!BuildConfig.DEBUG || debugFrameReceiver != null) return
@@ -251,8 +244,6 @@ class NavNotificationListener : NotificationListenerService() {
         // ★ Revive: teardown tín hiệu (cô lập).
         runCatching {
             speedSignOwner.onSourceStopped(SpeedLimitSource.VIETMAP)
-            speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
-            stopWazeHudSource(clearFirst = false)
             val bridge = VietMapWidgetBridge.get(applicationContext)
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
@@ -260,16 +251,11 @@ class NavNotificationListener : NotificationListenerService() {
         // B3: service dying → stop the capture source (releases executor future + offscreen mirror).
         runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
             .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
-        // B3 T6: service dying → CLOSE the output owner (shuts down its keep-alive scheduler) + cluster overlay
-        // (unregisters its DisplayManager.DisplayListener + detaches display-1 views). onListenerDisconnected only
-        // stop()s/hide()s them (reused across bind drops); onDestroy is the real teardown, so — symmetric to the
-        // capture-source stop above — release them here or a new service instance on rebind would accumulate a
-        // stale scheduler thread + a stale DisplayListener each destroy→recreate cycle (this head unit drops its
-        // binding often). Null out so any later (re)connect on a fresh instance rebuilds cleanly. Degrade-safe.
+        // B3: service dying → CLOSE output owner (shuts down its keep-alive scheduler). onListenerDisconnected chỉ
+        // stop() (tái dùng qua các lần bind); onDestroy là teardown thật — release ở đây, nếu không rebind sẽ tích
+        // luỹ scheduler thread cũ mỗi destroy→recreate (head unit này hay drop bind). Null để (re)connect dựng sạch.
         runCatching { navOutputOwner?.close() }.onFailure { Log.w(TAG, "nav output owner close failed", it) }
-        runCatching { navClusterOverlay?.close() }.onFailure { Log.w(TAG, "nav overlay close failed", it) }
         navOutputOwner = null
-        navClusterOverlay = null
         // DEBUG-only: gỡ receiver inject frame nav tổng hợp (nếu đã đăng ký).
         runCatching { debugFrameReceiver?.let { unregisterReceiver(it) } }
         debugFrameReceiver = null
@@ -278,10 +264,23 @@ class NavNotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
-        if (sbn.packageName !in MAPS_PACKAGES) return
+        // Cổng 1 — roster ĐỌC-ĐƯỢC: mọi app dẫn đường ta quan tâm. GIỮ NGUYÊN như trước 08-23 để cái lưới an
+        // toàn `ensureBridgeStarted` dưới đây không hẹp đi: nó CHỈ bật lại cầu widget VietMap (speed badge) và
+        // TUYỆT ĐỐI KHÔNG chạm SourceArbiter ⇒ chạy nó cho một notification VietMap là vô hại, mà bỏ đi thì
+        // một máy chỉ dùng VietMap mất đường hồi phục sau khi process bị giết mà onListenerConnected không
+        // re-fire (đúng ca hàm này sinh ra để chữa).
+        if (sbn.packageName !in com.byd.clusternav.navigation.NavApps.ALL) return
         if (!Prefs.enabled(applicationContext)) return        // công tắc tổng TẮT -> không đẩy cụm
         // Safety net: ensure the connected flag is set even if onListenerConnected was not re-fired after process restart
         ensureBridgeStarted()
+        // MÁY ĐO đứng TRƯỚC cổng 2 (08-23 vòng 3): chẩn đoán thô phải phủ CẢ 5 gói `NavApps.ALL`, không co
+        // theo roster kênh. Nó KHÔNG chạm SourceArbiter / feed cụm — cùng lý do và cùng chỗ đặt như
+        // `ensureBridgeStarted` ngay trên.
+        recordRawNotif(sbn)
+        // Cổng 2 — roster KÊNH NOTIFICATION: chỉ app có DỮ LIỆU DẪN ĐƯỜNG trong notification mới được đi tiếp.
+        // Đi tiếp = `handle()` = `SourceArbiter.shouldFeed(…, DATA)` = đóng mốc DATA của gói đó. Xem KDoc
+        // [MAPS_PACKAGES] / `NavApps.NOTIFICATION`.
+        if (sbn.packageName !in MAPS_PACKAGES) return
         runCatching { handle(sbn) }.onFailure { Log.e(TAG, "handle failed", it) }
     }
 
@@ -293,14 +292,16 @@ class NavNotificationListener : NotificationListenerService() {
             val bridge = VietMapWidgetBridge.get(applicationContext)
             bridge.start(VietMapWidgetOwner.NAVIGATION)
             bridge.addListener(speedLimitPusher)
-            startWazeHudSource()
         }.onFailure { Log.e(TAG, "signal source start (safety net) failed", it) }
         Log.i(TAG, "listener connected (safety net from onNotificationPosted)")
     }
 
-    // ─── ★ Revive (2026-08-17): nguồn tín hiệu speed-limit (VietMap widget push + Waze HUD logcat poll) ───
-    // Bản chất 1.21: speed ports = Noop (do-nothing), WazeHudSource poll logcat qua dadb-shell ~4000×/giờ (hao pin).
-    // Đây là base research — "làm nó chạy thật" (port HAL, bỏ poll) là feature riêng sau (spec revival Q4).
+    // ─── Nguồn tín hiệu speed-limit: CHỈ widget VietMap ────────────────────────────────────────────────
+    // 2026-08-22: gỡ hẳn nhánh Waze HLP (WazeHudSource). Nó poll `logcat -s WazeHudLink` qua dadb mỗi 900ms
+    // (~4000 lệnh shell/giờ) và chạy VÔ ĐIỀU KIỆN — không theo lựa chọn nguồn, thậm chí TRƯỚC cổng
+    // Prefs.enabled — để rồi nhận về 0 dòng: WazeMod chỉ phát tag đó khi có peer HUD BT/BLE (đo 08-22 trên
+    // máy không HUD: Waze đang dẫn, logcat rỗng). Bỏ đi là bớt hao pin mà không mất tín hiệu nào.
+    // Comment cũ "speed ports = Noop" LỖI THỜI: đường VietMap dưới đây chạy thật, chính nó vẽ badge trên cụm.
     private val speedLimitPusher: (com.byd.clusternav.vietmapwidget.VietMapWidgetSnapshot) -> Unit = { snapshot ->
         speedSignOwner.onSourceSelected(Prefs.speedLimitSource(applicationContext))
         if (snapshot.speedFreshness == VietMapWidgetFreshness.FRESH) {
@@ -335,67 +336,8 @@ class NavNotificationListener : NotificationListenerService() {
         }.onFailure { Log.w(TAG, "upcoming badge push failed", it) }
     }
 
-    private var wazeHudSource: WazeHudSource? = null
 
-    private fun startWazeHudSource() {
-        if (wazeHudSource != null) return
-        // Read logcat via the privileged dadb shell (uid 2000). An app-uid `logcat` cannot see
-        // WazeMod's logs without effective READ_LOGS; the shell has full log access (see WazeHudSource).
-        val source = WazeHudSource { cmd ->
-            runCatching {
-                val r = com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
-                    .coordinator(applicationContext).executeShell(cmd)
-                if (r.success) r.stdout else null
-            }.getOrNull()
-        }
-        source.availabilityListener = { availability ->
-            when (availability) {
-                WazeHudAvailability.AVAILABLE -> Unit
-                WazeHudAvailability.UNAVAILABLE ->
-                    speedSignOwner.onProviderDisconnected(SpeedLimitSource.WAZE)
-                WazeHudAvailability.STOPPED ->
-                    speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
-            }
-        }
-        source.listener = listener@{ state ->
-            val ctx = applicationContext
-            val masterEnabled = Prefs.enabled(ctx)
-            speedSignOwner.onMasterEnabled(masterEnabled)
-            speedSignOwner.onSourceSelected(Prefs.speedLimitSource(ctx))
 
-            // Navigation requires an active route; speed acquisition below remains route-independent.
-            if (masterEnabled && state.navigating) {
-                val navMode = Prefs.sourceMode(ctx)
-                if ((navMode == Prefs.PREFER_WAZE || navMode == Prefs.AUTO) &&
-                    SourceArbiter.shouldFeed("com.chisadin.wazemod", navMode, System.currentTimeMillis())) {
-                    ClusterBroadcaster.selectSource("com.chisadin.wazemod")
-                    val navState = source.toNavState(state)
-                    ClusterBroadcaster.emitLane(ctx, navState)
-                    ClusterBroadcaster.emitHud(ctx, navState)
-                    ClusterNavLaneWidget.onNavActive(ctx)
-                }
-            }
-
-            // HLP lim=0/missing is a real clear event. Never gate speed on `navigating`.
-            speedSignOwner.onSpeedLimit(
-                source = SpeedLimitSource.WAZE,
-                valueKph = state.speedLimitKmh,
-                observedAtMonotonicMs = SystemClock.elapsedRealtime(),
-            )
-        }
-        source.start()
-        wazeHudSource = source
-        Log.i(TAG, "WazeHudLink logcat source started (dadb-shell poll)")
-    }
-
-    private fun stopWazeHudSource(clearFirst: Boolean = true) {
-        val source = wazeHudSource ?: return
-        if (clearFirst) speedSignOwner.onSourceStopped(SpeedLimitSource.WAZE)
-        source.listener = null
-        source.availabilityListener = null
-        source.stop()
-        wazeHudSource = null
-    }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         sbn ?: return
@@ -424,6 +366,54 @@ class NavNotificationListener : NotificationListenerService() {
         }
     }
 
+    /**
+     * CHẨN ĐOÁN THÔ (T2b) — ghi MỌI notification của [com.byd.clusternav.navigation.NavApps.ALL] vào CSV kéo
+     * được, kể cả loại mà `NavNotifLog` (đã parse) buộc phải giấu: "Waze is running", VietMap "Ứng dụng đang
+     * chạy", status WazeMod, và loại chỉ có nội dung ở `subText`/`bigText` (title+text rỗng).
+     *
+     * ⚠ ĐỨNG NGOÀI [handle] LÀ CỐ Ý (chuyển ra 08-23 vòng 3 — [P2]). Trước đó nó nằm trong [handle], mà VIỆC B
+     * thu [MAPS_PACKAGES] về `NavApps.NOTIFICATION` = chỉ GMaps ⇒ máy đo chết đúng với VietMap/Waze — hai app
+     * mà repo đang còn câu hỏi mở phải trả bằng phép đo (CLAUDE.md §14 tầng 1: notification VietMap có
+     * `category=navigation` không, Waze có bao giờ mang cự ly không). Gỡ máy đo đi rồi thì câu hỏi vĩnh viễn
+     * ở mức "chưa biết".
+     *
+     * KHÔNG PHẢI ĐƯỜNG DỮ LIỆU: hàm này TUYỆT ĐỐI không chạm `SourceArbiter` / feed cụm / nav state, nên gọi nó
+     * cho một gói ngoài roster kênh KHÔNG mở lại cái khoá DATA→IMAGE mô tả ở KDoc `NavApps.NOTIFICATION`.
+     * verbose-gated (mặc định TẮT) + off-main (`NavNotifRawLog` có Executor daemon riêng) + degrade-safe.
+     *
+     * Gộp bản TRÙNG LIÊN TIẾP theo gói ([lastRaw]) để không ngập vì GMaps vẽ lại ~1 khung/giây. Khoá gộp gồm 4
+     * ô chữ + `category` + có-large-icon, nên chuyển trạng thái status→nav (category lật) hay mũi tên
+     * xuất hiện/biến mất vẫn được ghi là bản KHÁC. SOH (\u0001) ngăn ô: nó không bao giờ có trong chữ notif.
+     *
+     * [lastRaw] không khoá: cả hai call site (`onNotificationPosted` và vòng quét trong `onListenerConnected`)
+     * đều chạy trên luồng callback của listener (main looper) — giữ nguyên bất biến từ trước khi tách hàm.
+     */
+    private fun recordRawNotif(sbn: StatusBarNotification) {
+        if (!NavLog.verbose) return
+        // runCatching ôm CẢ phần đọc extras, không chỉ lời gọi ghi: trước khi tách hàm, khối này nằm trong
+        // `runCatching { handle(sbn) }` của `onNotificationPosted` nên đã được che. `Bundle.getCharSequence`
+        // là đường unparcel — một notification hỏng không được phép làm chết callback của listener.
+        runCatching {
+            val n = sbn.notification ?: return
+            val ex = n.extras ?: return
+            val title = ex.getCharSequence("android.title")?.toString()?.trim().orEmpty()
+            val text = ex.getCharSequence("android.text")?.toString()?.trim().orEmpty()
+            val sub = ex.getCharSequence("android.subText")?.toString()?.trim().orEmpty()
+            val big = ex.getCharSequence("android.bigText")?.toString()?.trim().orEmpty()
+            val category = n.category ?: ""
+            val hasLargeIcon = n.getLargeIcon() != null
+            val rawKey = "$title\u0001$text\u0001$sub\u0001$big\u0001$category\u0001$hasLargeIcon"
+            if (lastRaw[sbn.packageName] == rawKey) return
+            lastRaw[sbn.packageName] = rawKey
+            NavNotifRawLog.record(
+                applicationContext, sbn.packageName, category,
+                n.category == Notification.CATEGORY_NAVIGATION,
+                DIST_TOKEN.containsMatchIn(title) || DIST_TOKEN.containsMatchIn(text),
+                hasLargeIcon, title, text, sub, big,
+            )
+        }.onFailure { Log.w(TAG, "raw notif log failed", it) }
+    }
+
     private fun handle(sbn: StatusBarNotification) {
         val n = sbn.notification ?: return
         val ex = n.extras ?: return
@@ -431,33 +421,10 @@ class NavNotificationListener : NotificationListenerService() {
         val text = ex.getCharSequence("android.text")?.toString()?.trim().orEmpty()
         val sub = ex.getCharSequence("android.subText")?.toString()?.trim().orEmpty()
         val big = ex.getCharSequence("android.bigText")?.toString()?.trim().orEmpty()
-        // RAW notif capture (T2b, diagnostic + ADDITIVE — runs BEFORE the empty-title/text guard, the arrival
-        // guard AND the `if (!isNav && !hasDist) return` drop below, so it logs EVERY notification from the five
-        // nav packages — even the non-nav ones the parsed NavNotifLog necessarily hides ("Waze is running",
-        // VietMap "Ứng dụng đang chạy", WazeMod status) AND ones whose content lives only in subText/bigText
-        // (empty title+text). verbose-gated (default OFF) + off-main (NavNotifRawLog owns its own daemon
-        // Executor) + degrade-safe. NEVER touches SourceArbiter / cluster feed / nav state. Consecutive-identical
-        // per package is collapsed (lastRaw, listener-thread only → no lock) to kill GMaps' ~1/s identical redraws.
-        if (NavLog.verbose) {
-            val category = n.category ?: ""
-            val hasLargeIcon = n.getLargeIcon() != null
-            // Collapse key spans the 4 raw text fields PLUS category + large-icon presence, so a status→nav
-            // transition (category flips) or an arrow appearing/disappearing with otherwise-identical text is
-            // still recorded as DISTINCT — while true per-frame redraws (all fields identical) stay collapsed,
-            // killing GMaps' ~1/s identical frames. \u0001 (SOH) separates fields: it never occurs in notif text.
-            val rawKey = "$title\u0001$text\u0001$sub\u0001$big\u0001$category\u0001$hasLargeIcon"
-            if (lastRaw[sbn.packageName] != rawKey) {
-                lastRaw[sbn.packageName] = rawKey
-                runCatching {
-                    NavNotifRawLog.record(
-                        applicationContext, sbn.packageName, category,
-                        n.category == Notification.CATEGORY_NAVIGATION,
-                        DIST_TOKEN.containsMatchIn(title) || DIST_TOKEN.containsMatchIn(text),
-                        hasLargeIcon, title, text, sub, big,
-                    )
-                }.onFailure { Log.w(TAG, "raw notif log failed", it) }
-            }
-        }
+        // RAW notif capture ĐÃ CHUYỂN RA [recordRawNotif], gọi ở `onNotificationPosted` NGAY TRƯỚC cổng
+        // [MAPS_PACKAGES] (08-23 vòng 3 — [P2]). VÌ SAO: đó là MÁY ĐO, không phải đường dữ liệu; mà từ VIỆC B
+        // chỉ GMaps đi tới được `handle()`, nên để nó nằm ở đây là tự tay gỡ mất máy đo cho đúng hai app đang
+        // còn câu hỏi mở ("notification VietMap có `category=navigation` không?" — CLAUDE.md §14 tầng 1).
         if (title.isEmpty() && text.isEmpty()) return
         // ĐÃ ĐẾN NƠI (R7/#2): GMaps/VietMap báo "Arrived/đã đến" → PHÁT STOP/CLEAR cụm (về đồng hồ),
         // KHÔNG cắm frame kẹt heart-beat STALE_MS. Trước đây nhánh này ingest 1 frame icon-đích (15) và
@@ -465,13 +432,13 @@ class NavNotificationListener : NotificationListenerService() {
         // "GMaps đã báo tới nơi mà cụm kẹt 3.5 km đi thẳng"). Giờ đóng đường về gauges ngay.
         if (NavArrivalGuard.isArrivalText(title, text, big)) {
             // R3: "đã đến" cũng phải qua trọng tài — app NỀN báo đến KHÔNG được đè cụm đang do app khác giữ.
-            if (!SourceArbiter.shouldFeed(sbn.packageName, Prefs.sourceMode(applicationContext), System.currentTimeMillis())) return
-            arrivalGuard.reset(); lastManeuverIcon = -1; lastNavLogKey = null
-            runCatching { TurnDistanceInterpolator.reset() }
-            runCatching { NavRepository.stop(applicationContext) }
-                .onFailure { Log.e(TAG, "arrival stop failed", it) }
-            ClusterNavLaneWidget.onNavIdle()
-            Log.i(TAG, "đã đến nơi (${sbn.packageName}) → clear cụm (stop)")
+            if (!SourceArbiter.shouldFeed(sbn.packageName, Prefs.sourceMode(applicationContext), System.currentTimeMillis())) {
+                // …NHƯNG nếu chính gói này đang GIỮ cụm mà vừa bị cổng nguồn loại (B3.48, xem
+                // [stopClusterOwnedBy]) thì lệnh dừng KHÔNG được nuốt: đó đúng là hồi quy R7/#2.
+                if (SourceArbiter.release(sbn.packageName)) stopClusterOwnedBy(sbn.packageName, "đã đến nơi (nguồn vừa bị cổng loại)")
+                return
+            }
+            stopClusterOwnedBy(sbn.packageName, "đã đến nơi")
             return
         }
         // NHẬN noti dẫn đường: category=navigation HOẶC có TOKEN CỰ LY trong title/text (bản GMaps patched/ReVanced
@@ -487,7 +454,11 @@ class NavNotificationListener : NotificationListenerService() {
 
         // Trọng tài chọn nguồn (theo chế độ Prefs): nếu không tới lượt thì BỎ QUA frame này.
         if (!SourceArbiter.shouldFeed(sbn.packageName, Prefs.sourceMode(applicationContext), System.currentTimeMillis())) {
-            Log.i(TAG, "bỏ qua ${sbn.packageName}: nguồn khác đang giữ cụm")
+            // B3.48 — CẮT NGUỒN THÌ PHẢI KÈM LỆNH DỪNG. `release` vừa HỎI vừa nhả: true ⇔ gói vừa bị loại
+            // đúng là gói đang GIỮ cụm ⇒ không còn ai nuôi khung ⇒ đóng cụm về đồng hồ NGAY, thay vì để
+            // nhịp tim ghim khung cuối (xem [stopClusterOwnedBy] để biết ghim bao lâu và vì sao chết người).
+            if (SourceArbiter.release(sbn.packageName)) stopClusterOwnedBy(sbn.packageName, "nguồn bị cổng loại")
+            else Log.i(TAG, "bỏ qua ${sbn.packageName}: nguồn khác đang giữ cụm")
             return
         }
         ClusterBroadcaster.selectSource(sbn.packageName)
@@ -574,6 +545,44 @@ class NavNotificationListener : NotificationListenerService() {
             SegmentShotDecision.segmentChanged(prevNavKey, navKey, prevManeuverIcon, classifiedIcon)) {
             runCatching { SegmentShotCapturer.get(applicationContext).onSegmentChange() }
         }
+    }
+
+    /**
+     * ĐÓNG CỤM VỀ ĐỒNG HỒ vì [pkg] không còn được nuôi khung nữa. Chuỗi teardown y nguyên nhánh "đã đến nơi"
+     * (R7/#2) — chỉ tách ra thành hàm để **cửa thứ hai** dùng chung, không đổi một bước nào.
+     *
+     * HAI CỬA gọi hàm này:
+     *  1. "đã đến nơi" — app báo Arrived/đã đến.
+     *  2. **B3.48** — cổng nguồn TỪ CHỐI đúng gói đang GIỮ cụm (user đổi sang `PREFER_X` mà gói này ngoài
+     *     nhóm X). Caller phải tự hỏi bằng `SourceArbiter.release(pkg)` trước, giống `onNotificationRemoved`.
+     *
+     * VÌ SAO CỬA 2 BẮT BUỘC PHẢI CÓ (cơ chế tất định từ source, chưa đo trên xe — CLAUDE.md §2 mức "nghi là"
+     * cho hệ quả, "đã chứng minh" cho cơ chế): cổng chỉ CẮT nguồn, nó không phát lệnh dừng. Không có lệnh
+     * dừng thì hai nhịp tim vẫn phát lại **khung CUỐI** của gói vừa bị cấm:
+     *   · `AmapEmissionArbiter.heartbeat` 400 ms tới `validUntilMs = observedAt + freshForMs`, mà
+     *     `freshForMs = ClusterBroadcaster.STALE_MS` = **180 s**;
+     *   · `NavigationHudOwner.keepAliveTick` 250 ms re-assert cùng khung đó lên HAL tới trần tuổi
+     *     `HudKeepAlivePolicy.DEFAULT_MAX_AGE_MS` = **180 s**.
+     * ⇒ cụm + HUD hiện MỘT MŨI TÊN RẼ VỚI CỰ LY ĐỨNG YÊN trong lúc xe đang chạy — đúng lỗi hiện trường mà
+     * R7/#2 sinh ra để chữa ("GMaps đã báo tới nơi mà cụm kẹt 3.5 km đi thẳng"). Owner chốt 2026-08-23 là
+     * *"không hiện gì"*; ghim khung chết là *"hiện SAI"*, không phải im lặng.
+     *
+     * ⚠ ĐÂY KHÔNG PHẢI fallback/timeout/degrade cho `PREFER_*` (thứ owner đã cấm bù): nó không cho gói nào
+     * lên thay, không nới cổng, không hẹn giờ mới — nó THI HÀNH đúng chữ "im lặng".
+     *
+     * ⚠ CỬA 2 KHÔNG BAO GIỜ BẮN Ở AUTO, theo cấu tạo (cửa 1 thì có — "đã đến nơi" vốn chạy ở mọi chế độ, y
+     * như trước): biểu thức AUTO của `SourceArbiter.allows` là
+     * `h == null || h == pkg || stale`, nên `!allows(pkg)` ⇒ `h != pkg` ⇒ `release(pkg)` = false. Bất biến đó
+     * được khoá bằng test `SourceArbiterAllowsTest.AUTO - cong tu choi thi goi bi tu choi KHONG BAO GIO la
+     * nguon dang giu`.
+     */
+    private fun stopClusterOwnedBy(pkg: String, why: String) {
+        arrivalGuard.reset(); lastManeuverIcon = -1; lastNavLogKey = null
+        runCatching { TurnDistanceInterpolator.reset() }
+        runCatching { NavRepository.stop(applicationContext) }
+            .onFailure { Log.e(TAG, "$why: stop failed", it) }
+        ClusterNavLaneWidget.onNavIdle()
+        Log.i(TAG, "$why ($pkg) → clear cụm (stop)")
     }
 
     private fun loadIconBitmap(n: Notification): Bitmap? {

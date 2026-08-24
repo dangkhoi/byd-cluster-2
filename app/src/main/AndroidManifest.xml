@@ -4,8 +4,9 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- READ_LOGS: required to read WazeMod HLP/1 data from logcat tags WazeHudLink / WazeHudLink-BLE -->
-    <uses-permission android:name="android.permission.READ_LOGS" />
+    <!-- 2026-08-22: gỡ READ_LOGS. Quyền này chỉ để đọc tag logcat WazeHudLink của WazeMod (nguồn HLP) —
+         nguồn đó đã gỡ vì đo được 0 dòng khi không có HUD BLE. Không code nào của app đọc logcat nữa
+         (nhật ký chẩn đoán do app tự ghi ra file, không đọc ngược logcat). -->
     <!-- Tự rebind nav listener sau khi khởi động lại máy (RebindReceiver). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- ADB loopback (socket 127.0.0.1:5555) để rebind listener từ trong app. -->

@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.navigation.Maneuver
+import com.byd.clusternav.testsupport.KotlinSource
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -28,17 +29,63 @@ class HudManeuverEncodingTest {
         app("src/main/java/com/byd/clusternav/NavRepository.kt").toFile().readText()
     }
 
+    /**
+     * Ý ĐỊNH KHOÁ: icon HUD phải mã hoá qua bảng CAN ([Maneuver.toHudIcon], trái=1/phải=2), KHÔNG qua bảng
+     * AMAP NEW_ICON (bảng đó đảo trái/phải trên HUD).
+     *
+     * 08-23: quyết định icon quay lại NẰM TRONG `NavRepository` sau khi gỡ `CaptureArrowFallback` — nên test
+     * cũng quay về bám một file, đúng như trước 08-22.
+     */
     @Test
     fun `HUD write encodes via CAN toHudIcon, not the AMAP maneuverCode`() {
         assertTrue(
-            navRepo.contains("frame.content.maneuver?.toHudIcon()"),
-            "owner.push must encode the HUD icon via Maneuver.toHudIcon() (CAN turn-id table)",
+            navRepo.contains("frame.content.maneuver?.toHudIcon() ?: 11"),
+            "the HUD icon must encode via Maneuver.toHudIcon() (CAN turn-id table), fallback 11 = straight",
+        )
+        // Quét đúng DÒNG quyết định icon HUD (không quét cả file: `toNavState()` dùng `toAmapIcon()` cho LÀN
+        // cụm qua broadcast AUTONAVI — đó là bảng ĐÚNG cho làn, chỉ sai nếu chảy vào HUD).
+        val hudIconLine = navRepo.lineSequence().first { it.contains("val hudIcon =") }
+        assertFalse(
+            hudIconLine.contains("toAmapIcon()"),
+            "the HUD icon decision must NOT use the AMAP NEW_ICON table (it mirrors L/R on the HUD)",
         )
         assertFalse(
             navRepo.contains("icon = frame.content.maneuverCode"),
             "owner.push must NOT feed the AMAP maneuverCode into the CAN HUD feature (that mirrors L/R)",
         )
     }
+
+    /**
+     * KHOÁ HỒI QUY (08-23) — **đường notification KHÔNG mượn gì từ kênh screen-capture**.
+     *
+     * VÌ SAO PHẢI KHOÁ, chứ không chỉ xoá code: cơ chế mượn (`CaptureArrowFallback`, 08-22) trông rất hợp lý
+     * trên giấy nên rất dễ được thêm lại. Phản biện đã chứng minh nó KHÔNG BAO GIỜ bắn được cho VietMap —
+     * nhánh mượn chỉ chạy trên một frame notification, mà đúng lúc đó `NavNotificationListener` vừa gọi
+     * `SourceArbiter.shouldFeed` (kênh DATA) ⇒ kênh IMAGE của cùng app bị chặn ⇒ `ScreenCaptureSignal.arrow`
+     * không có gì để mượn — và ép nó chạy được thì HAI owner cùng ghi INSTRUMENT_GUIDE_INFO_SIMPLE_SET.
+     * Owner chốt VietMap đi HẲN đường screen-capture (08-23).
+     *
+     * Test này ĐỎ = ai đó vừa nối lại kênh ảnh vào đường notification GMaps — đường đang chạy NGOÀI HIỆN
+     * TRƯỜNG (CLAUDE.md §6). Muốn làm thì phải có spec, không phải một bản vá.
+     */
+    @Test
+    fun `duong notification KHONG doc kenh screen-capture`() {
+        assertFalse(navRepo.contains("CaptureArrowFallback"), "cơ chế mượn mũi tên-capture đã gỡ, không thêm lại")
+        assertFalse(
+            stripComments(navRepo).contains("ScreenCaptureSignal"),
+            "NavRepository (đường notification) không được đọc tín hiệu kênh ảnh",
+        )
+        // Và nguồn duy nhất của mũi tên vẫn là chính notification (hoặc số lối ra vòng xuyến).
+        assertTrue(
+            navRepo.contains("val hudIcon = if (exitN in 1..10) 24 + exitN else frame.content.maneuver?.toHudIcon() ?: 11"),
+            "icon HUD chỉ đến từ maneuver của notification / số lối ra vòng xuyến",
+        )
+    }
+
+    // §4.1 DRY + FAIL-OPEN: bản regex chép tay ở đây (2 bản) coi `//` trong string literal là comment ⇒
+    // nuốt luôn phần thi hành đứng sau trên cùng dòng ⇒ guard mù mà vẫn xanh. Đã chuyển sang scanner
+    // có trạng thái dùng chung, có test riêng (`KotlinSourceTest`).
+    private fun stripComments(src: String): String = KotlinSource.stripComments(src)
 
     /**
      * Track B (2026-08-14): the enriched Maneuver values must encode to the correct CAN turn-id on the HUD

@@ -37,7 +37,8 @@ enum class CaptureTarget {
     ;
 
     companion object {
-        private val VIETMAP_PKGS = setOf("vn.vietmap.live")
+        /** §7 — dùng roster [com.byd.clusternav.navigation.NavApps], KHÔNG chép lại tên gói ở đây. */
+        private val VIETMAP_PKGS = com.byd.clusternav.navigation.NavApps.VIETMAP
 
         /**
          * TẤT CẢ target cần thử cho [pkg] trong MỘT nhịp (B3.8). VietMap khi dẫn hiện CẢ HAI: banner mũi tên
@@ -116,8 +117,22 @@ data class DisplayGeometry(
     val displayH: Int,
     val mainDisplayId: Int = 0,
     val clusterDisplayId: Int = 1,
+    /**
+     * Mật độ điểm ảnh THẬT của display (dpi), đọc từ dòng configuration của `am stack list` (vd `240dpi`).
+     * 0 = chưa biết → caller dùng [DENSITY_DEFAULT]. Cần vì người dùng CHỈNH được dpi của cụm khi cast
+     * (`wm density <dpi> -d <vd>` trong `CastShell`), mà kích thước glyph mũi tên tỉ lệ thẳng với dpi.
+     */
+    val densityDpi: Int = 0,
 ) {
     val fullRect: CropRect get() = CropRect(0, 0, displayW, displayH)
+
+    /** dpi dùng để quy đổi dp→px; rơi về [DENSITY_DEFAULT] khi chưa đọc được. */
+    val effectiveDensityDpi: Int get() = if (densityDpi > 0) densityDpi else DENSITY_DEFAULT
+
+    companion object {
+        /** mdpi = 160 là gốc quy đổi dp; 240 là dpi mặc định của cụm đã đo trên xe/emulator. */
+        const val DENSITY_DEFAULT = 240
+    }
 }
 
 /**
@@ -149,13 +164,67 @@ data class AppLocation(
     val leftPercent: Int = 50,
     val foreground: Boolean = true,
     val navFresh: Boolean = true,
+    /**
+     * Ô CHỮ NHẬT THẬT app đang chiếm trên display (từ `am stack list`), KHÔNG phải cả display.
+     *
+     * VÌ SAO (08-22): trên cụm người dùng chỉnh được kích thước / dpi / vị trí cửa sổ cast và có thể cast
+     * MỘT hoặc HAI app (`CastShell`: `wm size`, `wm density`, `am task resize`, chia đôi). Mọi vùng quan tâm
+     * phải neo vào Ô NÀY thay vì vào display, nếu không sẽ trượt ngay khi người dùng đổi bố cục. Resolver đã
+     * parse sẵn bounds này từ trước nhưng VỨT ĐI — chỉ giữ lại `slotSide`/`leftPercent`.
+     *
+     * null = không thấy task (đường a11y-hint) → caller dùng cả display.
+     */
+    val windowRect: CropRect? = null,
+    /**
+     * dpi của display app đang nằm, đọc từ dòng configuration của `am stack list` (0 = chưa biết).
+     * Đi kèm [windowRect] vì cả hai đều do người dùng chỉnh khi cast, và cả hai cùng đến từ MỘT output.
+     */
+    val densityDpi: Int = 0,
 )
 
 /**
  * Bounds động do a11y publish (`NavAccessibilitySource`), kèm mốc thời gian để router quyết "còn tươi"
  * (§4.4 tầng 1). Toạ độ tuyệt đối trong không gian ảnh display.
  */
-data class CaptureBounds(val rect: CropRect, val capturedAtMs: Long)
+data class CaptureBounds(
+    val rect: CropRect,
+    val capturedAtMs: Long,
+    /**
+     * Package RUNTIME của cửa sổ mà rect được đo trong đó (§R-BI). **null = chưa gán chủ ⇒ consumer bỏ qua
+     * tầng-1** (rơi về rect cố định, đường cũ đã có test) — vì rect mũi tên/camera của app A vẫn crop ra
+     * pixel hợp lệ trong ảnh app B, tức có thể ra **SAI HƯỚNG**, nguy hiểm hơn cả ca làn.
+     *
+     * Mặc định null chỉ để [CaptureRouter] và test của nó (đo tầng bounds, không đo danh tính) không phải
+     * viết lại; producer THẬT ([CaptureBoundsSource.publish]) luôn bắt buộc truyền pkg.
+     */
+    val pkg: String? = null,
+    /**
+     * **MỤC TIÊU mà rect này được ĐO CHO** ([CaptureTarget.ARROW] = node mũi tên, [CaptureTarget.CAMERA] =
+     * node icon camera). null = chưa khai ⇒ [CaptureRouter.computeBounds] **BỎ QUA tầng-1** (rơi về rect
+     * cố định — đường cũ đã có test).
+     *
+     * ⚠ VÌ SAO PHẢI CÓ (lỗi CÓ THẬT, [ĐO] 08-23 — B3.53 vòng review). Holder này là **MỘT Ô** và trước bản
+     * vá nó chỉ mang `rect` + `pkg`, không mang mục tiêu; còn [CaptureRouter.computeBounds] áp snapshot đó
+     * cho **MỌI** target. Với VietMap, producer a11y (`NavAccessibilityService.maybePublishCaptureBounds`)
+     * chọn node bằng [CaptureTarget.forPackage] = [CaptureTarget.CAMERA] ⇒ rect trong ô là của **icon
+     * camera**; nhưng [CaptureRouter.routePlans] cũng phát plan [CaptureTarget.ARROW] cho VietMap và plan đó
+     * nhận **y hệt** rect camera, gắn nhãn [BoundsSource.A11Y_DYNAMIC]:
+     * ```
+     * PLAN target=ARROW  bounds=CropRect(1500,300,1620,420) src=A11Y_DYNAMIC   ← rect của node CAMERA
+     * PLAN target=CAMERA bounds=CropRect(1500,300,1620,420) src=A11Y_DYNAMIC
+     * ```
+     * Crop icon camera rồi đem chấm mũi tên vẫn có mực ⇒ vẫn ra chữ ký, mà tier [BoundsSource.A11Y_DYNAMIC]
+     * ở `ScreenCaptureNavSource.handleArrow` dùng khớp MỀM (`classify` = Hamming **?: NCC** 0.45) nên nó tìm
+     * được một cái tên. [ĐO] crop 87 khung VietMap qua [CaptureCalibration.VIETMAP_CAMERA_SEED]: khớp mềm ra
+     * mã **1** khung (`arrive_straight` → amap 12, đúng phải 9), khớp cứng ra **0**. Đây ĐÚNG cùng một lớp
+     * lỗi mà B3.53 vá ở tier rect-cố-định — bản vá đó chặn một nửa cửa, nửa này là nửa còn lại.
+     *
+     * Gate ở [CaptureRouter.computeBounds] là `a11y.target == target`: rect đo cho CAMERA chỉ phục vụ plan
+     * CAMERA, đo cho ARROW chỉ phục vụ plan ARROW. Waze/GMaps (`targetsForPackage` = [ARROW], producer khai
+     * ARROW) **không đổi một nhịp nào** — CLAUDE.md §6. Rẽ theo MỤC TIÊU ĐO ĐƯỢC, không theo tên gói (§7).
+     */
+    val target: CaptureTarget? = null,
+)
 
 /**
  * Kết quả của [CaptureRouter.route] (đơn) / [CaptureRouter.routePlans] (đa-target, B3.8): case đã chọn + vùng

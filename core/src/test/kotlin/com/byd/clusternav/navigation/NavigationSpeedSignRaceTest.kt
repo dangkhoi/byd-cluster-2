@@ -28,11 +28,11 @@ class NavigationSpeedSignRaceTest {
         try {
             coordinator.onProcessRestart(1)
             cluster.clearHistory(); hud.clearHistory()
-            coordinator.onSourceSelected(com.byd.clusternav.contracts.SpeedLimitSource.WAZE)
+            coordinator.onSourceSelected(com.byd.clusternav.contracts.SpeedLimitSource.VIETMAP)
             coordinator.onOutputEnabled(SpeedSignOutput.CLUSTER, true)
             coordinator.onOutputEnabled(SpeedSignOutput.HUD, true)
             coordinator.onMasterEnabled(true)
-            coordinator.onSpeedLimit(com.byd.clusternav.contracts.SpeedLimitSource.WAZE, 50, clock.get(), 1)
+            coordinator.onSpeedLimit(com.byd.clusternav.contracts.SpeedLimitSource.VIETMAP, 50, clock.get(), 1)
 
             val start = CountDownLatch(1)
             val done = CountDownLatch(2)
@@ -40,7 +40,7 @@ class NavigationSpeedSignRaceTest {
                 start.await()
                 repeat(100) { value ->
                     coordinator.onSpeedLimit(
-                        com.byd.clusternav.contracts.SpeedLimitSource.WAZE,
+                        com.byd.clusternav.contracts.SpeedLimitSource.VIETMAP,
                         60 + value % 3,
                         clock.incrementAndGet(),
                         1,

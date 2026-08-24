@@ -72,11 +72,11 @@ class NavigationOutputIsolationTest {
         try {
             coordinator.onProcessRestart(1)
             cluster.clearHistory(); hud.clearHistory()
-            coordinator.onSourceSelected(SpeedLimitSource.WAZE)
+            coordinator.onSourceSelected(SpeedLimitSource.VIETMAP)
             coordinator.onOutputEnabled(SpeedSignOutput.CLUSTER, true)
             coordinator.onOutputEnabled(SpeedSignOutput.HUD, true)
             coordinator.onMasterEnabled(true)
-            assertTrue(coordinator.onSpeedLimit(SpeedLimitSource.WAZE, 80, now++, 1))
+            assertTrue(coordinator.onSpeedLimit(SpeedLimitSource.VIETMAP, 80, now++, 1))
             coordinator.onOutputEnabled(SpeedSignOutput.CLUSTER, false)
 
             assertEquals(listOf(SpeedLimitClearReason.OUTPUT_DISABLED),

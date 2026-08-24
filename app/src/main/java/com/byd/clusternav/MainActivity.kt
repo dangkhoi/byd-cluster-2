@@ -40,7 +40,8 @@ class MainActivity : Activity() {
     private lateinit var navSourceActive: TextView
     private val cast = MainActivityCastController(this)
     private val navClusterStatus = com.byd.clusternav.modules.clustercast.NavClusterOp39Status(this)
-    // ★ Revive (2026-08-17): speed-sign owner (VietMap/Waze speed-limit signal). Port 1.21 = Noop — base research.
+    // Speed-sign owner: nhận giới hạn tốc độ từ widget VietMap → badge cụm + HAL 0x4B40001C.
+    // (Comment cũ ghi "Port 1.21 = Noop" đã LỖI THỜI — đường này chạy thật, chính nó vẽ badge trên cụm.)
     private val speedSign by lazy { NavigationSpeedSignOwner.get(applicationContext) }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -125,6 +126,10 @@ class MainActivity : Activity() {
             NavRepository.setOutputEnabled(this, NavigationOutputTarget.CLUSTER_LANE, true)
             speedSign.onOutputEnabled(SpeedSignOutput.CLUSTER, true)
         }
+        // Chốt nguồn biển báo MỘT lần lúc khởi tạo. Trước 08-22 lời gọi này nằm trong listener của spinner
+        // chọn nguồn; spinner đã gỡ (chỉ còn một nguồn thật) nên phải khẳng định tường minh ở đây, nếu không
+        // owner chỉ được set nguồn qua syncFromPrefs/pusher và MainActivity không còn bảo đảm gì.
+        speedSign.onSourceSelected(Prefs.speedLimitSource(this))
         // #6 (R1 · docs/specs/cast-nav-ux-release-v104.html): the independent nav→HUD output is
         // hidden from the UI (cb_hud/txt_hud_status = gone) and force-disabled here exactly once.
         // There is no user-reachable path to re-enable it. Navigation still flows to the cluster
@@ -143,20 +148,48 @@ class MainActivity : Activity() {
         Prefs.setInterpolate(this, true)
         Prefs.setAccBooster(this, true)
 
-        // ★ Revive (2026-08-17): nav-source selector (Auto/GMaps/Waze Mod) + speed-source selector (VietMap/Waze).
+        // Nav-source selector (Auto/GMaps/Waze Mod/VietMap). Nguồn tốc độ không còn selector (chỉ VietMap).
         // Owner Q1 = revive tất cả. Waze-Mod nav-source chạy song song GMaps; speed-source chọn nguồn tín hiệu biển
-        // báo (port 1.21 = Noop — base research). Xem docs/specs/waze-vietmap-signal-revival.html.
+        // báo. Xem docs/specs/waze-vietmap-signal-revival.html.
         // Navigation source selector (turn-by-turn direction)
         val navSourceSpinner = findViewById<android.widget.Spinner>(R.id.spinner_nav_source)
         // T3 (b3-full-nav-capture · R2): AUTO / GMaps / Waze / VietMap → Prefs.setSourceMode (SourceArbiter honours it).
-        val navSources = arrayOf("Tự động (app dẫn trước)", "Google Maps", "Waze Mod", "VietMap")
+        // Nhãn kèm NĂNG LỰC THẬT của từng nguồn (08-22) — ba nguồn KHÔNG ngang nhau, và trước đây menu
+        // trình bày như nhau khiến người dùng chọn xong không hiểu vì sao cụm im:
+        //   • Google Maps — notification: mũi tên + cự ly + đường, chạy NỀN hẳn (nguồn đầy đủ duy nhất).
+        //   • VietMap     — notification cho đường + cự ly ở nền; MŨI TÊN chỉ có khi app hiển thị (capture).
+        //   • Waze       — mục này là NHÓM {com.waze, com.chisadin.wazemod}, không phải một gói: hai bản
+        //                    dùng chung bộ resource-id nên đọc y hệt nhau (đo aapt2 08-22). Cự ly + tên đường
+        //                    + ETA đọc được qua view-id a11y; mũi tên vẫn cần app hiển thị (capture).
+        val navSources = arrayOf(
+            "Tự động (app dẫn trước)",
+            "Google Maps — chạy nền, đủ mũi tên + cự ly",
+            "Waze / Waze Mod — cần hiện trên màn chính hoặc cụm",
+            // ĐÍNH CHÍNH 2026-08-23 (B3.44 + B3.48): nhãn cũ hứa "nền có cự ly" — SAI kể từ B3.44.
+            // `NavApps.NOTIFICATION` nay CHỈ còn GMaps ⇒ VietMap không còn kênh nền nào cấp cự ly; cả mũi tên
+            // lẫn cự ly đều đi đường ẢNH, tức app PHẢI hiển thị. Và từ B3.48, chọn đích danh VietMap mà
+            // VietMap không dẫn thì cụm IM LẶNG (không nhường cho GMaps nữa) — nhãn phải nói đúng chuyện đó,
+            // nếu không người dùng chọn xong sẽ không hiểu vì sao cụm trống.
+            "VietMap — cần app hiện (mũi tên + cự ly qua ảnh)",
+        )
         val navSourceModes = intArrayOf(Prefs.AUTO, Prefs.PREFER_GMAPS, Prefs.PREFER_WAZE, Prefs.PREFER_VIETMAP)
         navSourceSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, navSources)
         val currentNavMode = Prefs.sourceMode(this)
         navSourceSpinner.setSelection(navSourceModes.indexOf(currentNavMode).coerceAtLeast(0))
         navSourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                Prefs.setSourceMode(this@MainActivity, navSourceModes[pos])
+                // B3.49 — ĐỔI MENU PHẢI CÓ HIỆU LỰC TỨC THÌ. Ghi prefs KHÔNG đủ: `NavOutputOwner.tick` không
+                // đọc Prefs/SourceArbiter, nó bắn theo độ tươi của ScreenCaptureSignal (6 s) ⇒ mũi tên app cũ
+                // còn nằm trên cụm tới 6 giây sau khi tài xế đã chọn app khác. NavSourceModeSwitch bỏ NGAY các
+                // kênh ảnh mà cổng mode mới không cho phép — và CHỈ những kênh đó (xem KDoc: vì sao không
+                // SourceArbiter.clear(), vì sao không ScreenCaptureSignal.clear()).
+                // So với mode ĐANG LƯU là bắt buộc: Spinner bắn onItemSelected cả lúc setSelection() khi dựng
+                // màn hình, chạy vô điều kiện = mỗi lần mở app lại xoá oan kênh của app đang dẫn.
+                com.byd.clusternav.navigation.NavSourceModeSwitch.onModeSelected(
+                    previousMode = Prefs.sourceMode(this@MainActivity),
+                    selectedMode = navSourceModes[pos],
+                    persist = { mode -> Prefs.setSourceMode(this@MainActivity, mode) },
+                )
                 refresh()   // reflect the mode change in the active-source line immediately
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
@@ -164,23 +197,11 @@ class MainActivity : Activity() {
         // Active nav source (SourceArbiter.activeSource) — kept current by refresh().
         navSourceActive = findViewById(R.id.txt_nav_source_active)
 
-        // Speed + Alert source selector
-        val speedSourceSpinner = findViewById<android.widget.Spinner>(R.id.spinner_speed_source)
-        val speedSources = arrayOf("VietMap (widget)", "Waze Mod (HLP)")
-        val speedSourceModes = intArrayOf(
-            com.byd.clusternav.navigation.NavSourceMode.SPEED_VIETMAP,
-            com.byd.clusternav.navigation.NavSourceMode.SPEED_WAZE,
-        )
-        speedSourceSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, speedSources)
-        val currentSpeedMode = Prefs.speedSource(this)
-        speedSourceSpinner.setSelection(speedSourceModes.indexOf(currentSpeedMode).coerceAtLeast(0))
-        speedSourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                Prefs.setSpeedSource(this@MainActivity, speedSourceModes[pos])
-                speedSign.onSourceSelected(Prefs.speedLimitSource(this@MainActivity))
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
+        // ── Nguồn tốc độ: BỎ selector (08-22) ─────────────────────────────────────────────────────
+        // Chỉ còn MỘT nguồn có thật — widget VietMap (proven: data 50/60/70/80 + đếm lùi cự ly). Lựa chọn
+        // "Waze Mod (HLP)" đã gỡ khỏi cả code lẫn UI: đo trên máy không có HUD BLE thì `logcat WazeHudLink`
+        // trả 0 dòng khi Waze ĐANG dẫn, tức chọn nó = badge trắng im lặng, không báo gì cho người dùng.
+        // Một selector chỉ có một lựa chọn thì không phải lựa chọn — bỏ hẳn cho khỏi hiểu nhầm.
 
         // Chế độ hiển thị nav trên CỤM — ghi SET_NAVI_SCREEN_STATUS_SET (0x4C10E015) qua NavigationHudOwner
         // (đọc pref mỗi frame → áp dụng LIVE khi đang dẫn). ⚠️ value↔menu OEM chưa map chắc: dò trên xe rồi chốt.
@@ -647,6 +668,7 @@ class MainActivity : Activity() {
         // Đích = 2 mục đặc biệt (ghim đầu) + toàn bộ app có launcher (reuse ClusterCast.listInstalledApps).
         val targetSpecs: List<Pair<String, String>> = listOf(
             Lang.t("Trợ lý mặc định hệ thống", "System default assistant") to Prefs.VK_TARGET_ASSIST,
+            Lang.t("Trợ lý qua phím cứng (Gemini · 231)", "System assistant via hard key (Gemini · 231)") to Prefs.VK_TARGET_GEMINI_KEY,
             Lang.t("Nhận dạng giọng nói", "Speech recognizer") to Prefs.VK_TARGET_RECOGNIZER,
         ) + com.byd.clusternav.modules.clustercast.ClusterCast.listInstalledApps(this).map { it.label to it.pkg }
         targetSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, targetSpecs.map { it.first })
@@ -656,7 +678,23 @@ class MainActivity : Activity() {
         targetSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
                 if (vkTgtFirstCallback) { vkTgtFirstCallback = false; if (pos == vkTgtInitialPos) return }
-                targetSpecs.getOrNull(pos)?.let { Prefs.setVoiceKeyTargetSpec(this@MainActivity, it.second) }
+                targetSpecs.getOrNull(pos)?.let {
+                    Prefs.setVoiceKeyTargetSpec(this@MainActivity, it.second)
+                    // Chọn Gemini (sentinel 231 HOẶC lỡ chọn thẳng app Gemini/Google) → đặt luôn trợ lý hệ thống = Google/Gemini
+                    // (full recipe 8hare, một lần) để keyevent 231 mở Gemini dạng ASSISTANT (voice), không phải app home.
+                    if (com.byd.clusternav.modules.voicekey.AssistantLauncher.isGeminiVoiceSpec(it.second)) {
+                        Toast.makeText(this@MainActivity, Lang.t("Đang đặt Gemini làm trợ lý hệ thống…", "Setting Gemini as system assistant…"), Toast.LENGTH_SHORT).show()
+                        Thread {
+                            val err = com.byd.clusternav.modules.voicekey.AssistantLauncher.setSystemAssistant(this@MainActivity)
+                            runOnUiThread {
+                                Toast.makeText(this@MainActivity,
+                                    if (err.isEmpty()) Lang.t("Đã đặt trợ lý = Google/Gemini. Giữ nút mic để NÓI (không mở app).", "Assistant set to Google/Gemini. Long-press mic to TALK (not open app).")
+                                    else err,
+                                    Toast.LENGTH_LONG).show()
+                            }
+                        }.start()
+                    }
+                }
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
@@ -686,39 +724,15 @@ class MainActivity : Activity() {
     }
 
     /**
-     * B1 (owner 2026-08-19): "badge bật → VietMap tự chạy để widget có nguồn". When the speed-limit badge
-     * display is enabled ([Prefs.badgeEnabled], default ON) and VietMap ([VIETMAP_PACKAGE]) is installed, launch
-     * it once on app open so its home-widget — the ALERT/speed-limit source the cluster badge mirrors — has a
-     * live process feeding data. Fully degrade-safe: a missing VietMap (null launch intent, incl. not visible)
-     * or any launch failure is a silent no-op, never crashing Home. Best-effort skip when VietMap already appears
-     * foreground (don't yank it). Called at the END of [onCreate] (fresh creation only, not every resume).
+     * B1 (owner 2026-08-19, SỬA 2026-08-21 sau test on-car): "badge bật → VietMap tự chạy để widget có nguồn speed-limit".
+     * Sửa 2 bug: (1) guard cũ `isAppForeground` dùng `runningAppProcesses` — Android 10+ chỉ thấy process của CHÍNH mình
+     * → luôn trả false → LUÔN relaunch VietMap dù đã chạy; (2) `startActivity(VietMap)` → VietMap ĐÈ lên app mình.
+     * Nay: kiểm VietMap chạy chưa bằng `pidof` qua dadb (uid shell = tin cậy cross-app); CHỈ start khi CHƯA chạy;
+     * sau khi start thì đưa ClusterNav lại foreground (relaunch launcher qua shell — không BAL-block, không recreate)
+     * để VietMap KHÔNG đè. Chạy nền, degrade-safe. Gọi ở CUỐI [onCreate] (chỉ khi tạo mới).
      */
     private fun maybeAutoStartVietMap() {
-        if (!Prefs.badgeEnabled(this)) return
-        val launch = runCatching { packageManager.getLaunchIntentForPackage(VIETMAP_PACKAGE) }
-            .getOrNull() ?: return                    // not installed / not visible → no-op
-        if (isAppForeground(VIETMAP_PACKAGE)) return  // best-effort: already up → don't relaunch
-        runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            .onFailure { android.util.Log.w("MainActivity", "auto-start VietMap failed: ${it.message}") }
-    }
-
-    /**
-     * Best-effort foreground check with NO special permission: reads [android.app.ActivityManager]'s running
-     * processes for [pkg] at IMPORTANCE_FOREGROUND. Post-Android-10 this usually returns only our own processes,
-     * so it degrades to `false` (→ we launch), which is the intended default. Degrade-safe (runCatching → false).
-     */
-    private fun isAppForeground(pkg: String): Boolean = runCatching {
-        val am = getSystemService(ACTIVITY_SERVICE) as? android.app.ActivityManager
-            ?: return@runCatching false
-        am.runningAppProcesses?.any {
-            it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
-                it.pkgList?.contains(pkg) == true
-        } ?: false
-    }.getOrDefault(false)
-
-    private companion object {
-        // B1 (owner 2026-08-19): VietMap package — auto-launched on open when the speed badge is enabled so its
-        // home-widget (the badge's speed-limit source) has a live process. Same pkg used across vietmapwidget.
-        private const val VIETMAP_PACKAGE = "vn.vietmap.live"
+        // Case MỞ APP: start VietMap nếu chưa chạy, rồi đưa ClusterNav lại trước. (Boot headless → BootSetupService.)
+        VietMapAutostart.ensureRunning(this, returnToSelfPkg = packageName)
     }
 }

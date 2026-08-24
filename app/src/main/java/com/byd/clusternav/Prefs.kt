@@ -15,7 +15,6 @@ object Prefs {
     private const val FILE = "clusternav_prefs"
     private const val K_ENABLED = "enabled"
     private const val K_SOURCE = "source_mode"
-    private const val K_SPEED_SOURCE = "speed_source"
     private const val K_MARQUEE = "marquee"
 
     private fun sp(ctx: Context) =
@@ -31,19 +30,17 @@ object Prefs {
     fun sourceMode(ctx: Context): Int = sp(ctx).getInt(K_SOURCE, AUTO)
     fun setSourceMode(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_SOURCE, v).apply()
 
-    // Display id cho NAV CLUSTER OVERLAY. Mặc định 1 (cụm đồng hồ). CHỈ để test off-car (emulator 1 display):
-    // đặt 0 để overlay render trên màn chính mà xem được — prod luôn 1 (không ai set 0 trên xe). Prod-safe.
-    private const val K_OVERLAY_DISPLAY = "overlay_display_id"
-    fun overlayDisplayId(ctx: Context): Int = sp(ctx).getInt(K_OVERLAY_DISPLAY, 1)
-
-    // ★ Revive (2026-08-17): nguồn tín hiệu tốc độ/biển báo (VietMap/Waze). Speed port ở 1.21 = Noop
-    // (chưa chạy) — đây là base để research/hoàn thiện. Giữ alias giá trị ở :core (NavSourceMode.SPEED_*).
-    fun speedSource(ctx: Context): Int = sp(ctx).getInt(K_SPEED_SOURCE, com.byd.clusternav.navigation.NavSourceMode.SPEED_VIETMAP)
-    fun setSpeedSource(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_SPEED_SOURCE, v).apply()
-    fun speedLimitSource(ctx: Context): SpeedLimitSource = when (speedSource(ctx)) {
-        com.byd.clusternav.navigation.NavSourceMode.SPEED_WAZE -> SpeedLimitSource.WAZE
-        else -> SpeedLimitSource.VIETMAP
-    }
+    /**
+     * Nguồn biển báo tốc độ. **Chỉ còn MỘT nguồn có thật** nên đây là hằng, không phải lựa chọn.
+     *
+     * 2026-08-22: gỡ hẳn lựa chọn "Waze Mod (HLP)" khỏi code + UI. Đường đó đọc tag logcat `WazeHudLink`
+     * của WazeMod, mà WazeMod chỉ phát tag này khi có **peer HUD BT/BLE** kết nối. Đo trên máy không có
+     * HUD BLE, Waze ĐANG dẫn: **0 dòng**. Chọn nó = badge trắng im lặng, người dùng không hiểu vì sao.
+     * Nguồn còn lại (widget VietMap) đã proven bằng data thật (50/60/70/80 + đếm lùi cự ly).
+     *
+     * Khoá prefs cũ (chuỗi "speed_source") KHÔNG còn được đọc; máy đã lưu giá trị Waze cũng tự về VietMap.
+     */
+    fun speedLimitSource(ctx: Context): SpeedLimitSource = SpeedLimitSource.VIETMAP
 
     // Nav-on-cluster: op 39 "simple navigation" (Giữa + ETA) là chế độ DUY NHẤT (owner chốt 2026-08-12).
     // Bỏ hẳn biến thể "nhỏ/ở trên" (không dò được opcode trên xe) + nút chọn mode + nút test trên UI.
@@ -128,6 +125,9 @@ object Prefs {
     const val VK_KEYCODE_DEFAULT = 328   // nút mic vô-lăng giữ trên xe này (đo on-car 2026-08-13). "Học phím mới" nếu xe khác.
     const val VK_TARGET_ASSIST = "__ASSIST__"
     const val VK_TARGET_RECOGNIZER = "__RECOGNIZER__"
+    // 1.20: phát KEYCODE_VOICE_ASSIST (231) qua dadb shell (như app 8hare) → route tới trợ lý hệ thống.
+    // Sạch hơn ACTION_ASSIST (không chooser, không nhầm intent). Chọn target này cũng đặt trợ lý hệ thống = Google/Gemini.
+    const val VK_TARGET_GEMINI_KEY = "__VOICEKEY231__"
     const val VK_TARGET_DEFAULT = "ai.zalo.kiki.car"           // mặc định Kiki (khớp default cũ 0=Kiki)
 
     fun voiceKeyEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_VK_ENABLED, false)

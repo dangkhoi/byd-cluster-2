@@ -16,6 +16,12 @@ object NavParse {
     private val RE_ETA_HR = Regex("""(\d+)\s*(giờ|h|hour|时)""", RegexOption.IGNORE_CASE)
     private val RE_CLOCK = Regex("""\b(\d{1,2}):(\d{2})\b""")
 
+    /**
+     * Đồng hồ CÓ hậu tố AM/PM: `"5:50 PM"`, `"5:50pm"`, `"12:05 a.m."`. Chỉ dùng bởi [extractArrivalClock24].
+     * Không có `\b` ở đuôi vì hậu tố có thể kết bằng dấu chấm (`"p.m."`) — sau dấu chấm không có ranh giới từ.
+     */
+    private val RE_CLOCK_AMPM = Regex("""\b(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?""", RegexOption.IGNORE_CASE)
+
     /** Làm TRÒN cự ly hiển thị theo bước theo độ xa (chống nhảy từng-mét NHƯNG đủ MỊN để đếm ngược mượt).
      *  Bước nhỏ lại (so bản cũ 50/100m) → số trượt đều thay vì "đứng im rồi nhảy cục". */
     fun quantizeDisplay(m: Int): Int = when {
@@ -85,6 +91,51 @@ object NavParse {
             val h = it.groupValues[1].toInt(); val m = it.groupValues[2].toInt()
             if (h in 0..23 && m in 0..59) String.format(Locale.US, "%d:%02d", h, m) else null
         }
+
+    /**
+     * Giờ tới nơi → `"H:MM"` **24 GIỜ**, hiểu cả hậu tố AM/PM. `null` = không đọc được (KHÔNG đoán).
+     *
+     * ── VÌ SAO PHẢI CÓ HÀM RIÊNG, KHÔNG SỬA [extractArrivalClock] (CLAUDE.md §6) ──────────────────────────
+     * [extractArrivalClock] đang nuôi đường notification **GMaps** đang chạy ngoài hiện trường
+     * (`NavRepository.kt` §buildContent, `AmapFrameBuilder.kt` §ETA_TEXT). Sửa nó là lặng lẽ đổi hành vi một
+     * đường đã proven — đúng thứ §6 cấm. Đường mới xuống cuối: hàm này chỉ được gọi từ producer MỚI
+     * (`NavAccessibilityService.probeNavByViewId`, đường view-id của Waze).
+     *
+     * ── LỖI NÓ ĐÓNG (ĐÃ CHỨNG MINH bằng probe 08-23, không suy luận) ──────────────────────────────────────
+     * Waze phơi `lblArrivalTime='5:50 PM'` — chuỗi THẬT đã đo (xem KDoc [NavViewIdSource]). Trước sửa, producer
+     * ghi **thô** chuỗi đó vào `NavViewIdSource.Reading.arrivalClock`, trong khi producer VietMap
+     * ([VietMapDescParser.parseEta]) ghi bản đã chuẩn hoá 24 h ⇒ **một ô, hai miền**. Đo hạ nguồn:
+     * ```
+     * extractArrivalClock("5:50 PM")            = "5:50"            ← MẤT PM ⇒ sai 12 TIẾNG
+     * "5:50 PM".matches("""\d{1,2}:\d{2}""")    = false             ← NavigationFrame.init `require` NÉM
+     * "5:50 PM".split(":")                      = [5, null]         ← BydHal §ETA_H/ETA_M: giờ 5 (đúng 17),
+     *                                                                  phút RỤNG IM LẶNG
+     * ```
+     * Hôm nay `Reading.arrivalClock` chưa có consumer nên chưa hỏng — nhưng consumer ĐẦU TIÊN nhận một trong
+     * ba kết cục trên, và cả ba đều im lặng hoặc nổ trên xe đang chạy. Chuẩn hoá thuộc về **nơi sản xuất**,
+     * không phải chờ consumer tự đoán miền (CLAUDE.md §13).
+     *
+     * ── LUẬT ──────────────────────────────────────────────────────────────────────────────────────────────
+     *  • Có hậu tố ⇒ giờ PHẢI ∈ 1..12 (`"18:21 PM"` là vô nghĩa ⇒ null, không đoán). `12 AM`→0, `12 PM`→12.
+     *  • Không hậu tố ⇒ đã là 24 h, kiểm miền như [extractArrivalClock] (h 0..23, m 0..59).
+     *  • VietMap đi lối "không hậu tố": node (c) của nó khớp `^\d{1,2}:\d{2}$` nên hậu tố không bao giờ tới
+     *    được đây — hàm này là SIÊU TẬP của hành vi cũ, không đổi kết quả đã đo của VietMap.
+     */
+    fun extractArrivalClock24(s: String): String? {
+        RE_CLOCK_AMPM.find(s)?.let {
+            val h12 = it.groupValues[1].toInt()
+            val m = it.groupValues[2].toInt()
+            if (h12 !in 1..12 || m !in 0..59) return null
+            val pm = it.groupValues[3].equals("p", ignoreCase = true)
+            val h = when {
+                pm && h12 < 12 -> h12 + 12   // 5 PM → 17
+                !pm && h12 == 12 -> 0        // 12 AM → 0
+                else -> h12                  // 12 PM → 12; 1..11 AM giữ nguyên
+            }
+            return String.format(Locale.US, "%d:%02d", h, m)
+        }
+        return extractArrivalClock(s)
+    }
 
     /** "10:32" -> "预计今天10:32到达" (parseTime cần 预计 + 到达 + ":"). */
     fun formatEtaCn(clock: String): String = "预计今天${clock}到达"

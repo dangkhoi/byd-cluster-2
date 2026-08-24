@@ -1,6 +1,7 @@
 package com.byd.clusternav.offcar
 
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -14,12 +15,97 @@ import org.junit.jupiter.api.Test
 class LegacyBaselineIdentityTest {
     companion object {
         const val PARENT_BASELINE_SHA256 = "5b49a5ea9c23950dfd3d3112285db1501d85ec30dd26bbac03f5e96398791513"
+
+        /**
+         * Per-file sealed digests of the 13 parent artifacts, restated here **on purpose**.
+         *
+         * Why restated and not shared with `ExpansionTransportFenceTest.PARENT_ARTIFACT_HASHES`:
+         * the seal's whole value is that two independent statements of the same truth must agree —
+         * a single shared constant would be re-pinnable in one edit.
+         *
+         * Why per-file at all (E6a, 2026-08-23): the combined digest alone reports only two opaque
+         * 64-char hashes, which cost three separate investigations before anyone found that exactly
+         * two files had drifted. This map turns the same failure into a file path.
+         *
+         * **If this map disagrees with the bytes on disk, the bytes are wrong — never this map.**
+         * The fix is to restore the file (`git checkout <pre-drift-commit> -- <path>`), never to
+         * re-pin the constant to whatever the file currently hashes to: re-pinning IS breaking the seal.
+         */
+        val PARENT_ARTIFACT_SHA256 = mapOf(
+            "docs/diagnostics/hud-sign-re/README.md" to
+                "f854683acbda36c69f899a5d3a3bdc326c0df966dc49b24059eb2d94ccb1ee46",
+            "docs/diagnostics/hud-sign-re/candidate-report.html" to
+                "af3c3db29e29b5c4cd4ebd0a0d4ef863de5a7a2d7f60c527bbe989596ce3eb36",
+            "docs/diagnostics/hud-sign-re/corpus-completeness.json" to
+                "87610a0e7a54e7d634dbcad8a423906a494e2add2e6e50b61828e1ee7217db79",
+            "docs/diagnostics/hud-sign-re/evidence-index.json" to
+                "ac3fd27701e6b05c5037594b35d314b49ddadaeb0315d8a64c3a3da0bef980b9",
+            "docs/diagnostics/hud-sign-re/first-launch-emulator-result.json" to
+                "e60e63dced72dbc0d742476883930088385c5812b29d176f145f42430540ae39",
+            "docs/diagnostics/hud-sign-re/m1-nav-hud-plan.json" to
+                "c8eff7210e093fa1b2e32328abeddf37fa51d919d524df851e4ecd634d289bf9",
+            "docs/diagnostics/hud-sign-re/m2-hud-road-plan.json" to
+                "dffb04d3e26beadd9fd7f813870fca6712d5f213f4145787280ddb4718437faf",
+            "docs/diagnostics/hud-sign-re/m3-cluster-sign-plan.json" to
+                "ac2de2631de73ab2ddd2ad4efa2f33e805fae2d8007091e2ae3497c64625fb7e",
+            "docs/diagnostics/hud-sign-re/m4-hud-sign-plan.json" to
+                "51fc71db1050baa816e9df2e1250a196c1d6e608a48df228e5318d6077c910d1",
+            "docs/diagnostics/hud-sign-re/native/libbydcluster-diff.json" to
+                "d2d7f63ee1916905e8ef21ea58242f22f4e2c02a5a1e0b3854766341f77e9464",
+            "docs/diagnostics/hud-sign-re/traceability.json" to
+                "332ae311ed642441c7ec8640fc4c389e1e7865813eafef8b1442645ff3791e60",
+            "docs/diagnostics/hud-sign-re/zero-hit-report.txt" to
+                "55acd8bf51a0baf9f397b8765162f063fc1686d9544b3fdbc83eaa96955f273f",
+            "docs/specs/seal-nav-hud-speed-sign-offcar.html" to
+                "781ff2b47f38d51deec66a47464ab78f37d781970499fdc64b86386423a28f87",
+        )
+
+        /**
+         * Names the drifted file(s) before any combined-digest assertion gets the chance to fail
+         * with an anonymous 64-char hash, or with an "array contents differ at index [n]" byte
+         * diff against a pack regenerated from those same drifted parents.
+         *
+         * Shared **body**, deliberately NOT shared **constants**: every caller passes its own
+         * restatement of the seal ([PARENT_ARTIFACT_SHA256] here,
+         * `ExpansionTransportFenceTest.PARENT_ARTIFACT_HASHES` there), so re-pinning the seal
+         * still costs two independent edits — see the KDoc on [PARENT_ARTIFACT_SHA256].
+         *
+         * Call this FIRST in every test whose failure mode is "a sealed parent file drifted".
+         * [ĐO] 2026-08-23: restoring the two files E6a fixed, then re-drifting them, turns exactly
+         * five tests red — `LegacyBaselineIdentityTest` x2, `ExpansionTransportFenceTest` x2,
+         * `ExpansionTraceabilityTest` x1. Until this guard reached all five, three of them reported
+         * only opaque digests ("expected <5b49a5ea...> but was <2329ccc6...>", "array contents
+         * differ at index [29]") and that opacity cost three separate investigations.
+         */
+        fun assertSealedParentFilesOnDisk(root: Path, sealed: Map<String, String>) {
+            assertEquals(sealed.keys.toList(), LegacyBaselineIdentity.PARENT_PATHS)
+            val drifted = LegacyBaselineIdentity.PARENT_PATHS.mapNotNull { relative ->
+                val path = root.resolve(relative).normalize()
+                val actual = if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
+                        .joinToString("") { "%02x".format(it) }
+                } else {
+                    "<missing file>"
+                }
+                val expected = sealed.getValue(relative)
+                if (actual == expected) null else "  $relative\n    sealed = $expected\n    on disk = $actual"
+            }
+            assertTrue(
+                drifted.isEmpty(),
+                "SEALED PARENT FILE(S) DRIFTED — restore the bytes, do NOT re-pin the constants:\n" +
+                    drifted.joinToString("\n") +
+                    "\n  Fix: git checkout <commit-before-the-edit> -- <path listed above>" +
+                    "\n  These files are byte-sealed (docs/README.md marks them); they take no header, " +
+                    "no status line, no back-filled section.",
+            )
+        }
     }
 
     private val root: Path get() = Path.of(System.getProperty("clusternav.root")).toAbsolutePath().normalize()
 
     @Test
     fun `exact 13 parent files reproduce trusted full-byte digest without mutation`() {
+        assertSealedParentFilesOnDisk(root, PARENT_ARTIFACT_SHA256)
         assertEquals(PARENT_BASELINE_SHA256, LegacyBaselineIdentity.PARENT_BASELINE_SHA256)
         assertEquals(13, LegacyBaselineIdentity.PARENT_PATHS.size)
         assertEquals(LegacyBaselineIdentity.PARENT_PATHS.sorted(), LegacyBaselineIdentity.PARENT_PATHS)
@@ -41,6 +127,7 @@ class LegacyBaselineIdentityTest {
 
     @Test
     fun `framing uses u32be path length path UTF-8 and raw inner digest`() {
+        assertSealedParentFilesOnDisk(root, PARENT_ARTIFACT_SHA256)
         val artifacts = LegacyBaselineIdentity.PARENT_PATHS.map { relative ->
             LegacyBaselineArtifact(relative, ExpansionHashing.sha256(Files.readAllBytes(root.resolve(relative))))
         }

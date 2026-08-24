@@ -1,4 +1,6 @@
 package com.byd.clusternav.vietmapwidget
+
+import com.byd.clusternav.navigation.NavApps
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
@@ -14,7 +16,9 @@ import android.util.Log
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.ExecutionException
-private const val VIETMAP_PACKAGE = "vn.vietmap.live"
+// §7 — MỘT nguồn sự thật cho tên gói (sửa 08-23 vòng 2b). Trước đây mỗi file widget tự chép chuỗi
+// "vn.vietmap.live"; `NavPackageRosterSyncTest` không canh tới đây nên bản chép này trôi im lặng.
+private const val VIETMAP_PACKAGE = NavApps.VIETMAP_LIVE
 /**
  * VietMap widget bridge — binding lifecycle, per-provider independence, generation-bound callbacks.
  *

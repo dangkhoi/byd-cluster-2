@@ -1,5 +1,7 @@
 package com.byd.clusternav.vietmapwidget
 
+import com.byd.clusternav.navigation.NavApps
+
 import android.appwidget.AppWidgetHostView
 import android.content.Context
 import android.content.pm.PackageManager
@@ -19,7 +21,9 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
-private const val VIETMAP_PACKAGE = "vn.vietmap.live"
+// §7 — MỘT nguồn sự thật cho tên gói (sửa 08-23 vòng 2b). Trước đây mỗi file widget tự chép chuỗi
+// "vn.vietmap.live"; `NavPackageRosterSyncTest` không canh tới đây nên bản chép này trôi im lặng.
+private const val VIETMAP_PACKAGE = NavApps.VIETMAP_LIVE
 private const val MAX_HASH_EDGE = 256
 private const val TAG = "WidgetExtract"
 

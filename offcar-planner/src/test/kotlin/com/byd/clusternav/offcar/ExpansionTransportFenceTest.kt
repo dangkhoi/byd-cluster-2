@@ -108,6 +108,7 @@ class ExpansionTransportFenceTest {
 
     @Test
     fun `parent baseline and T11 retain exact hashes while authorized T10 may be absent`() {
+        LegacyBaselineIdentityTest.assertSealedParentFilesOnDisk(root, PARENT_ARTIFACT_HASHES)
         val baseline = LegacyBaselineIdentity.capture(root)
         assertEquals(LegacyBaselineIdentity.PARENT_BASELINE_SHA256, baseline.parentCombinedSha256)
         assertEquals(PARENT_ARTIFACT_HASHES, baseline.artifacts.associate { it.path to it.fullSha256 })
@@ -145,6 +146,7 @@ class ExpansionTransportFenceTest {
 
     @Test
     fun `generation has no side effects outside the 12 expansion outputs`() {
+        LegacyBaselineIdentityTest.assertSealedParentFilesOnDisk(root, PARENT_ARTIFACT_HASHES)
         val before = repositorySnapshotOutsideOutputs()
         val parentBefore = LegacyBaselineIdentity.parentCombinedSha256(root)
         val t11Before = T11_HASHES.mapValues { (relative, _) -> sha256(Files.readAllBytes(root.resolve(relative))) }
@@ -482,8 +484,23 @@ class ExpansionTransportFenceTest {
         private val T10_SOURCE_PATHS = pathSet(".gitignore|app/build.gradle.kts|app/src/test/java/com/byd/clusternav/BuildArtifactNamingTest.kt|app/src/test/java/com/byd/clusternav/MainProbeSurfaceAbsenceTest.kt|app/src/testVehicleTest/java/com/byd/clusternav/VehicleTestSurfaceContractTest.kt|app/src/vehicleTest/AndroidManifest.xml|app/src/vehicleTest/java/com/byd/clusternav/HudSignProbeActivity.kt|app/src/vehicleTest/java/com/byd/clusternav/HudSignProbeReceiver.kt|car-integration/build.gradle.kts|car-integration/src/main/kotlin/com/byd/clusternav/vehicleprobe/DadbVehicleTransport.kt|car-integration/src/main/kotlin/com/byd/clusternav/vehicleprobe/HudSignSessionRunner.kt|car-integration/src/main/kotlin/com/byd/clusternav/vehicleprobe/T10LocalAuthorization.kt|car-integration/src/main/kotlin/com/byd/clusternav/vehicleprobe/T10ResultStore.kt|car-integration/src/main/kotlin/com/byd/clusternav/vehicleprobe/T10RunnerMain.kt|car-integration/src/test/kotlin/com/byd/clusternav/vehicleprobe/DadbVehicleTransportTest.kt|car-integration/src/test/kotlin/com/byd/clusternav/vehicleprobe/HudSignSessionRunnerTest.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecClusterDiagnosticsCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecClusterLifecycleCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecClusterProjectionCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecHudCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecModels.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecNavigationCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/CarExecSpeedSignCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/T10FixedOperationCatalog.kt|core/src/main/kotlin/com/byd/clusternav/carexec/T10RollbackExecutor.kt|core/src/main/kotlin/com/byd/clusternav/carexec/T10SessionEngine.kt|core/src/test/kotlin/com/byd/clusternav/carexec/CarExecCatalogTest.kt|core/src/test/kotlin/com/byd/clusternav/carexec/T10SessionSafetyTest.kt|docs/_handoff/session-2026-08-10-hud-sign-t10-offcar-complete.md|docs/_handoff/session-2026-08-10-hud-sign-t10-preparation.md|gradle/authorized-apk-tasks.gradle.kts|gradle/exact-source-tasks.gradle.kts|scripts/evidence/gen-exact-source.py|scripts/evidence/tests/test_hud_sign_t10_evidence.py|scripts/evidence/verify-hud-sign-t10.py|scripts/vehicle/run-seal-hud-sign-matrix.sh|scripts/verify-seal-hud-sign-vehicle-test-t10.sh|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/T10Canonical.kt|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/T10Identity.kt|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/T10Ledger.kt|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/T10Session.kt|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/T10Transport.kt|vehicle-contracts/src/main/resources/t10-contracts.schema.json|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/T10ContractsTest.kt")
         private val POST_BUILD_PATHS = pathSet("docs/_handoff/hud-sign-t10-exact-source.json|docs/_handoff/hud-sign-vehicle-test-candidate.json|docs/diagnostics/hud-sign-re/vehicle/d-h0-hud-physical-temp-result.json|docs/diagnostics/hud-sign-re/vehicle/d-m1-nav-hud-result.json|docs/diagnostics/hud-sign-re/vehicle/d-m2-hud-road-result.json|docs/diagnostics/hud-sign-re/vehicle/d-m3-cluster-sign-result.json|docs/diagnostics/hud-sign-re/vehicle/d-m4-hud-sign-result.json")
         private val T11_PATHS = pathSet("app/src/main/java/com/byd/clusternav/vehicle/BydPropertyGateway.kt|app/src/main/java/com/byd/clusternav/vehicle/ClusterSpeedSignPort.kt|app/src/main/java/com/byd/clusternav/vehicle/HudSignSettingsController.kt|app/src/main/java/com/byd/clusternav/vehicle/HudSpeedSignPort.kt|app/src/main/java/com/byd/clusternav/vehicle/HudVehicleProfile.kt|app/src/main/java/com/byd/clusternav/vehicle/SpeedSignVehicleProfile.kt|app/src/main/res/layout/activity_main.xml|app/src/main/res/values/strings.xml|docs/_handoff/hud-sign-release-candidate.json|docs/diagnostics/hud-sign-re/vehicle/p-m1-nav-hud-result.json|docs/diagnostics/hud-sign-re/vehicle/p-m2-hud-road-result.json|docs/diagnostics/hud-sign-re/vehicle/p-m3-cluster-sign-result.json|docs/diagnostics/hud-sign-re/vehicle/p-m4-hud-sign-result.json")
+        /**
+         * ⚠ CẬP NHẬT 2026-08-24 — owner duyệt, KHÔNG phải sửa lén.
+         *
+         * `activity_main.xml` đổi vì gỡ ô chọn "Nguồn tốc độ" khỏi mục biển-báo-tốc-độ-trên-cụm: sau khi
+         * B3.30 gỡ hẳn kênh Waze Mod (HLP) — đo thật, `logcat -s WazeHudLink` 0 dòng khi Waze đang dẫn, không
+         * HUD BLE — ô đó chỉ còn ĐÚNG MỘT mục (widget VietMap), tức một nút bấm-không-làm-gì.
+         * Owner chốt 08-22: *"cái nào work thì để, không thì remove hẳn, cả code + UI để khỏi nhầm"*
+         * và xác nhận lại 08-24: *"bỏ là đúng, chỉ có vietmap, và không phải chọn gì nữa"*.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 4738ceb6…4946ec.
+         * Chức năng KHÔNG mất: badge vẫn lấy từ widget VietMap, dòng trạng thái `txt_speed_source_bind` giữ nguyên.
+         *
+         * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
+         * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
+         */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "4738ceb6ffaa87b24f0058a7e99c9d9e2a187d8913a59e3b50effbc34d4946ec",
+            "app/src/main/res/layout/activity_main.xml" to "fddc1ef5ccef7fbdd3e61193451aa294c9162116b796a8e508eaf168a64a694d",
             "app/src/main/res/values/strings.xml" to "4b068200722b3a6d26620f1adf7d550e7497f29262fa9bc7a30d3684daec6fa1",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

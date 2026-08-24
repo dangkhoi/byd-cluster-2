@@ -72,4 +72,55 @@ class NavParseTest {
     @Test fun `formatEtaCn bọc đúng khung 预计到达`() {
         assertEquals("预计今天10:32到达", NavParse.formatEtaCn("10:32"))
     }
+
+    /**
+     * KHOÁ §6 — [NavParse.extractArrivalClock] nuôi đường notification GMaps đang chạy ngoài hiện trường.
+     * Hàm 24 h mới KHÔNG được đụng nó: bốn ca này là hợp đồng cũ, phải giữ y hệt.
+     */
+    @Test fun `extractArrivalClock 12h KHONG doi - duong GMaps giu nguyen`() {
+        assertEquals("5:50", NavParse.extractArrivalClock("5:50 PM"))   // vẫn MẤT PM — cố ý, không sửa ở đây
+        assertEquals("18:21", NavParse.extractArrivalClock("18:21"))
+        assertEquals("0:04", NavParse.extractArrivalClock("00:04"))
+        assertNull(NavParse.extractArrivalClock("25:99 sai giờ"))
+    }
+
+    /**
+     * KHOÁ lỗi HAI MIỀN ĐỒNG HỒ trong MỘT ô holder (`NavViewIdSource.Reading.arrivalClock`).
+     *
+     * Waze phơi `lblArrivalTime='5:50 PM'` (chuỗi ĐÃ ĐO — KDoc `NavViewIdSource`), VietMap phơi `"00:04"`.
+     * Trước sửa, producer Waze ghi THÔ ⇒ đo được ba kết cục hạ nguồn, cả ba đều hỏng:
+     *   • `extractArrivalClock("5:50 PM")` = "5:50"  → sai 12 TIẾNG
+     *   • `NavigationFrame.init` require `\d{1,2}:\d{2}` → "5:50 PM" **NÉM**
+     *   • `BydHal` §ETA_H `split(":")` → [5, null] → giờ sai + phút rụng im lặng
+     * Test này khoá **phép đổi miền** (THUẦN, off-car). Việc producer có THẬT SỰ gọi nó không thì `:app`
+     * khoá bằng quét source: `NavSourceDwellWiringContractTest.producer view-id CHUAN HOA dong ho ve 24h…`
+     * (hàm này chạm `AccessibilityNodeInfo` nên không chạy được trên android.jar stub của JVM).
+     */
+    @Test fun `extractArrivalClock24 doi AM PM sang 24h`() {
+        assertEquals("17:50", NavParse.extractArrivalClock24("5:50 PM"))
+        assertEquals("5:50", NavParse.extractArrivalClock24("5:50 AM"))
+        assertEquals("0:05", NavParse.extractArrivalClock24("12:05 AM"))   // nửa đêm, KHÔNG phải 12:05
+        assertEquals("12:05", NavParse.extractArrivalClock24("12:05 PM"))  // trưa, giữ 12
+        assertEquals("23:59", NavParse.extractArrivalClock24("11:59 PM"))
+        assertEquals("17:50", NavParse.extractArrivalClock24("5:50pm"))    // không khoảng trắng
+        assertEquals("17:50", NavParse.extractArrivalClock24("5:50 p.m."))  // dạng có dấu chấm
+        assertEquals("17:50", NavParse.extractArrivalClock24("Đến nơi 5:50 PM · 3,2 km"))
+    }
+
+    /** Không hậu tố ⇒ đã là 24 h: hàm mới là SIÊU TẬP, trả y hệt bản cũ (gồm cả ca VietMap đã đo). */
+    @Test fun `extractArrivalClock24 giu nguyen chuoi 24h khong hau to`() {
+        assertEquals("18:21", NavParse.extractArrivalClock24("18:21"))
+        assertEquals("0:04", NavParse.extractArrivalClock24("00:04"))       // node (c) VietMap ĐÃ ĐO
+        assertEquals("10:32", NavParse.extractArrivalClock24("10:32 · 5.2 km"))
+    }
+
+    /** Degrade-safe: mơ hồ/vô nghĩa ⇒ null, TUYỆT ĐỐI không đoán ra một giờ sai. */
+    @Test fun `extractArrivalClock24 im lang khi vo nghia`() {
+        assertNull(NavParse.extractArrivalClock24("18:21 PM"))   // 24 h mà lại có hậu tố ⇒ không đoán
+        assertNull(NavParse.extractArrivalClock24("0:30 PM"))    // giờ 0 không tồn tại trong 12 h
+        assertNull(NavParse.extractArrivalClock24("13:00 AM"))
+        assertNull(NavParse.extractArrivalClock24("25:99 sai giờ"))
+        assertNull(NavParse.extractArrivalClock24("không có giờ"))
+        assertNull(NavParse.extractArrivalClock24(""))
+    }
 }

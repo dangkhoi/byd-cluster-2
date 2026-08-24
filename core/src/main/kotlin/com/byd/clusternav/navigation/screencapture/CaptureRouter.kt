@@ -25,6 +25,23 @@ object CaptureCalibration {
     val WAZE_ARROW_WAZEMOD_960x720 = CropRect(38, 38, 120, 110)
 
     /**
+     * **Khung vẽ mũi tên của banner Waze** — đo THẬT trên emulator ở density 240, hai lần, HAI kích thước màn:
+     * cụm **1920×720** và màn chính **1920×1080** (2026-08-21/22, WazeMod đang dẫn tới Cửa Nam). CẢ HAI ra
+     * CÙNG một rect và cùng khớp `maneuver_turn_normal_right` (Hamming 18 ≤ 18) ⇒ banner Waze neo theo **dp
+     * (density)**, KHÔNG theo chiều cao màn — nên một hằng số phục vụ cả hai geometry.
+     *
+     * Đây là **KHUNG VẼ**, KHÔNG phải bbox mực tight: đo cả 38 mục [ManeuverRegistry] thì mực glyph luôn kết
+     * thúc ở hàng 13/15 (`row1=13` cho 38/38) ⇒ template có LỀ. Crop tight (B3.9) làm glyph lấp đầy 15×15 ⇒
+     * Hamming 44 > 18 ⇒ classify null. Nguồn khung ở OpenBYD = a11y `<wazePkg>:id/navBarDirection`
+     * (`BydAccessibilityService.java:257`) — bản WazeMod dựng Compose không phơi view-id đó nên ta đi rect.
+     *
+     * ⚠ MỨC BẰNG CHỨNG (§2): "nhiều khả năng". Đúng trên HAI geometry nhưng vẫn CÙNG một maneuver (rẽ phải)
+     * và Hamming 18 = **sát trần**. Cần thêm maneuver khác (trái/thẳng/quay-đầu) mới lên "đã chứng minh".
+     * Density khác 240 CHƯA đo (rect 960×720 ở trên đo lúc density 160 và theo quy ước tight cũ ⇒ không so được).
+     */
+    val WAZE_ARROW_BANNER_D240 = CropRect(78, 50, 158, 163)
+
+    /**
      * Seed icon camera VietMap — CHƯA có template/rect thật (OQ4). Đặt tạm ở góc trên-phải vùng chỉ đường
      * (nơi VietMap hay vẽ cảnh báo). Giá trị phải hiệu chỉnh trên xe; ở đây chỉ để pipeline có bounds hợp lệ.
      */
@@ -36,6 +53,12 @@ object CaptureCalibration {
     private val TABLE: Map<Key, CropRect> = mapOf(
         // Geometry-specific: đo thật trên WazeMod @960×720 (banner ở top-left). geom = kích thước bitmap chụp.
         Key(CaptureTarget.ARROW, 960, 720) to WAZE_ARROW_WAZEMOD_960x720,
+        // CỤM trên xe = 1920×720 (fission). Không có entry này thì rơi về seed OpenBYD (182×80) → chữ ký ~4 bit
+        // → dưới MIN_SIG_BITS → kênh mũi tên CÂM trên xe (đo 2026-08-21).
+        Key(CaptureTarget.ARROW, 1920, 720) to WAZE_ARROW_BANNER_D240,
+        // Màn CHÍNH xe = 1920×1080. Đo thật 08-22: CÙNG rect với cụm (banner Waze neo theo dp) → CASE 1/2
+        // hết câm. Trước đó rơi seed OpenBYD 182×80 ⇒ chữ ký ~4 bit ⇒ null.
+        Key(CaptureTarget.ARROW, 1920, 1080) to WAZE_ARROW_BANNER_D240,
         // Default (geometry khác): seed OpenBYD — vẫn cần calibrate trên xe.
         Key(CaptureTarget.ARROW, null, null) to WAZE_ARROW_OPENBYD,
         Key(CaptureTarget.CAMERA, null, null) to VIETMAP_CAMERA_SEED,
@@ -156,8 +179,10 @@ object CaptureRouter {
 
     /**
      * (b) 3 tầng bounds (§4.4). Trả (rect, tầng):
-     *   1. a11y động nếu có & còn tươi (now - capturedAt ≤ freshMs) → clamp vào NỬA app (Case 2/3 split) để
-     *      loại nhiễu app kia. Toạ độ a11y đã tuyệt đối nên tự đúng, chỉ cần clamp.
+     *   1. a11y động nếu có & còn tươi (now - capturedAt ≤ freshMs) **& đo ĐÚNG CHO [target] này** → clamp
+     *      vào NỬA app (Case 2/3 split) để loại nhiễu app kia. Toạ độ a11y đã tuyệt đối nên tự đúng, chỉ
+     *      cần clamp. Về điều kiện "đúng target" xem KDoc [CaptureBounds.target] — rect đo cho node CAMERA
+     *      từng được áp nguyên xi cho plan ARROW của cùng app (lỗi có thật, [ĐO] 08-23).
      *   2. rect cố định hiệu chỉnh theo (target, geom); Case-2 nửa PHẢI thì offset +W*leftPercent/100.
      *   3. lane-seg: HOÃN (chưa vòng này) → nếu cả 1&2 trượt, trả EMPTY + [BoundsSource.NONE].
      */
@@ -170,8 +195,9 @@ object CaptureRouter {
         now: Long,
         freshMs: Long,
     ): Pair<CropRect, BoundsSource> {
-        // Tầng 1 — a11y động, còn tươi.
-        if (a11y != null && !a11y.rect.isEmpty() && now - a11y.capturedAtMs <= freshMs) {
+        // Tầng 1 — a11y động, còn tươi, VÀ đo đúng cho target này (xem KDoc CaptureBounds.target: rect của
+        // node CAMERA từng được áp cho plan ARROW ⇒ crop sai chỗ đi vào khớp MỀM ⇒ có thể ra SAI HƯỚNG).
+        if (a11y != null && a11y.target == target && !a11y.rect.isEmpty() && now - a11y.capturedAtMs <= freshMs) {
             val clamped = a11y.rect.clampTo(appRegion(case, loc, geom))
             if (!clamped.isEmpty()) return clamped to BoundsSource.A11Y_DYNAMIC
         }

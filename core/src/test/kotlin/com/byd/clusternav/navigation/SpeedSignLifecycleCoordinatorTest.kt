@@ -36,8 +36,8 @@ class SpeedSignLifecycleCoordinatorTest {
     @Test
     fun `source switch disconnect stop and master off clear each source once`() {
         sources().forEach { source ->
-            val other = if (source == SpeedLimitSource.WAZE) SpeedLimitSource.VIETMAP else SpeedLimitSource.WAZE
-            assertGlobalClear(source, SpeedLimitClearReason.SOURCE_SWITCHED) { it.coordinator.onSourceSelected(other) }
+            // Bỏ ca SOURCE_SWITCHED: chỉ còn một nguồn thật nên "đổi sang nguồn khác" KHÔNG còn xảy ra được
+            // (onSourceSelected cùng nguồn thì return sớm). Nhánh đó nay bất khả đạt trong sản phẩm.
             assertGlobalClear(source, SpeedLimitClearReason.PROVIDER_DISCONNECTED) {
                 it.coordinator.onProviderDisconnected(source)
                 it.coordinator.onProviderDisconnected(source)
@@ -158,7 +158,8 @@ class SpeedSignLifecycleCoordinatorTest {
         fixture.close()
     }
 
-    private fun sources() = listOf(SpeedLimitSource.WAZE, SpeedLimitSource.VIETMAP)
+    // 2026-08-22: chỉ còn MỘT nguồn thật (widget VietMap) — hằng WAZE đã gỡ vì không producer nào sinh ra.
+    private fun sources() = listOf(SpeedLimitSource.VIETMAP)
 
     private class Fixture(val source: SpeedLimitSource) : AutoCloseable {
         val clock = Clock()

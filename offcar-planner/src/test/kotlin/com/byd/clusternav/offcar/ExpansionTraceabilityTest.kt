@@ -204,6 +204,9 @@ class ExpansionTraceabilityTest {
     }
     @Test
     fun `two fresh generations and checked pack are byte identical`() {
+        LegacyBaselineIdentityTest.assertSealedParentFilesOnDisk(
+            root, LegacyBaselineIdentityTest.PARENT_ARTIFACT_SHA256,
+        )
         val parentBefore = LegacyBaselineIdentity.parentCombinedSha256(root)
         val first = temp.resolve("first")
         val second = temp.resolve("second")

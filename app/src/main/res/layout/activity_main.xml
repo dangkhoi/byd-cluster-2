@@ -186,8 +186,8 @@
                 android:contentDescription="Tỉ lệ chia đôi cụm khi chiếu hai app" />
 
             <!-- ── Biển báo tốc độ trên cụm (dời từ Nav+HUD · spec §4.2/§4.3) ─────────────────────────
-                 Nguồn tốc độ VietMap/Waze + trạng thái bind + UI đặt vị trí/cỡ badge trực quan (kéo trong
-                 hình chữ nhật tỉ lệ cụm). Giữ nguyên id spinner_speed_source + btn_vietmap_widget_diag. -->
+                 Nguồn tốc độ (widget VietMap) + trạng thái bind + UI đặt vị trí/cỡ badge trực quan (kéo trong
+                 hình chữ nhật tỉ lệ cụm). Giữ nguyên id btn_vietmap_widget_diag. -->
             <View android:layout_width="match_parent" android:layout_height="1dp"
                 android:layout_marginTop="14dp" android:layout_marginBottom="12dp" android:background="@color/divider" />
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -205,11 +205,8 @@
                 android:checked="true" android:text="Hiện giới hạn sắp tới"
                 android:textColor="@color/text_secondary"
                 android:contentDescription="Bật hoặc tắt biển giới hạn tốc độ sắp tới trên cụm" />
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginTop="10dp" android:text="Nguồn tốc độ + cảnh báo (biển báo · camera)"
-                android:textColor="@color/text_secondary" android:textSize="13sp" />
-            <Spinner android:id="@+id/spinner_speed_source" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
+            <!-- Bỏ spinner chọn nguồn tốc độ (08-22): chỉ còn MỘT nguồn có thật là widget VietMap.
+                 Waze Mod (HLP) đã gỡ — đo trên máy không có HUD BLE: logcat WazeHudLink 0 dòng khi đang dẫn. -->
             <TextView android:id="@+id/txt_speed_source_bind" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Nguồn: chưa kết nối"
                 android:textColor="@color/text_secondary" android:textSize="12sp" />

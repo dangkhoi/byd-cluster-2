@@ -11,13 +11,18 @@
      ĐỌC nav app KHI KHÔNG foreground (như OpenBYD BydAccessibilityService.rootNodeForPackages). Chấp nhận lại
      cost perf; bù bằng enum THROTTLED (chỉ khi có event nav + tối đa ~1/s) → không quét mỗi frame.
      windows hay viewId. notificationTimeout 100→500ms: gộp bớt event khi bản đồ vẽ liên tục.
+     ★ 2026-08-22 BẬT LẠI flagReportViewIds: không có cờ này thì findAccessibilityNodeInfosByViewId() KHÔNG
+     hoạt động — mà đó chính là cách OpenBYD đọc nav Waze (BydAccessibilityService: navBarDistance /
+     navBarStreetLine / lblArrivalTime / lblTimeToDestination / lblDistanceToDestination / navBarDirection /
+     laneGuidanceView). Bỏ cờ ở v0.36 vì lý do PERF của interactive-windows, nhưng reportViewIds chỉ làm
+     system_server đính kèm chuỗi resource-id vào node đã tạo — không thêm observer cửa sổ nào.
      ★ 1.13 (T3) THÊM flagRequestFilterKeyEvents + canRequestFilterKeyEvents: để onKeyEvent nhận PHÍM VẬT LÝ
      app-wide (nút vật lý → trợ lý giọng nói). Cờ này CHỈ định tuyến key event tới service — KHÔNG bắt theo dõi
      cửa sổ nên KHÔNG tái diễn chi phí của interactive-windows đã bỏ ở v0.36. Key event không bị packageNames lọc. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeAnnouncement"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows|flagReportViewIds"
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="500"

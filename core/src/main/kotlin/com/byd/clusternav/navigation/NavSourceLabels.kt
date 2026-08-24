@@ -12,10 +12,12 @@ package com.byd.clusternav.navigation
  */
 object NavSourceLabels {
 
-    // Mirror of SourceArbiter's private package groups (keep in sync — verified by NavSourceLabelsTest).
-    private val GMAPS_PKGS = setOf("com.google.android.apps.maps", "app.revanced.android.apps.maps")
-    private val WAZE_PKGS = setOf("com.chisadin.wazemod", "com.waze")
-    private val VIETMAP_PKGS = setOf("vn.vietmap.live")
+    // 08-22: KHÔNG còn là bản sao — cả đây lẫn SourceArbiter đều đọc [NavApps]. Comment cũ ghi "verified by
+    // NavSourceLabelsTest" là SAI: test đó gọi shouldFeed ở chế độ AUTO, mà nhánh AUTO không đọc ba set này
+    // dòng nào ⇒ xoá sạch cả ba set test vẫn xanh. Đã thay bằng assert thẳng trong test.
+    private val GMAPS_PKGS = NavApps.GMAPS
+    private val WAZE_PKGS = NavApps.WAZE
+    private val VIETMAP_PKGS = NavApps.VIETMAP
 
     /** Brand label for a nav-source MODE ([NavSourceMode.AUTO]/`PREFER_*`). Unknown ⇒ Auto. */
     fun modeLabel(mode: Int): String = when (mode) {

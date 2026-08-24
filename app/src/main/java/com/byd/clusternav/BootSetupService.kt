@@ -67,6 +67,10 @@ class BootSetupService : Service() {
                     // Keep the FGS (process) alive until the grant finishes, bounded so we ALWAYS stop.
                     latch.await(GRANT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 }
+                // BOOT headless: auto-start VietMap (nền, chỉ khi CHƯA chạy) để badge speed-limit có nguồn;
+                // sau khi start thì VỀ HOME (không đè launcher — app mình vốn không foreground trên boot). Đồng bộ
+                // để FGS giữ tiến trình sống tới khi xong. Gate badgeEnabled nằm trong runNow.
+                VietMapAutostart.runNow(applicationContext, returnToSelfPkg = null)
             }.onFailure { Log.e(TAG, "headless boot setup failed", it) }
             finish(startId)
         }, "boot-setup").start()

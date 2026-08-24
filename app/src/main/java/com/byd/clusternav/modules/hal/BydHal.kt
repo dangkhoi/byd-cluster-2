@@ -406,6 +406,43 @@ object BydHal {
         return rc.toString().trim()
     }
 
+    /**
+     * THÊM (B-III, 2026-08-22): **XOÁ TRẮNG ô cự-ly** trên cụm/HUD, giữ nguyên mọi thứ khác.
+     *
+     * VÌ SAO cần một hàm riêng thay vì "cứ ghi -1 qua [pushNavigation]": [pushNavigation] coi `segMeters < 0` là
+     * "BỎ GHI, giữ số cũ" (nhánh `if (segMeters >= 0)` ngay trên). Nên khi [com.byd.clusternav.NavOutputOwner]
+     * mất tin vào cự-ly (guard [com.byd.clusternav.navigation.TurnDistancePlausibility] chưa warmup xong / vừa
+     * đổi nguồn), nếu chỉ truyền -1 thì **số của nguồn CŨ nằm lại trên cụm** — tệ hơn hiện trạng.
+     *
+     * ⚠ MỨC BẰNG CHỨNG (CLAUDE.md §2) — ĐỌC KỸ, ĐỪNG THĂNG HẠNG:
+     *  • **ĐÃ CHỨNG MINH**: `clearNavFrame` (ở trên, cùng file) ghi -1 vào ĐÚNG feature id này và chạy tốt
+     *    trên xe hôm nay.
+     *  • **CHƯA BIẾT**: `clearNavFrame` ghi -1 **kèm `INSTRUMENT_SEND_NAVI_STATUS_SET = 4` trong cùng lời
+     *    gọi**, tức cụm ẨN HẲN widget nav nên chưa bao giờ phải *render* số -1. Hàm này cố ý KHÔNG chạm latch,
+     *    nên đây là lần đầu -1 được ghi vào ô cự-ly **trong khi widget đang hiện**. Firmware coi <0 là "ẩn ô"
+     *    hay render raw (`-1` / `0xFFFFFFFF`) thì **chưa probe on-car** — OQ13 trong spec.
+     *  • Vì vậy KHÔNG được nói "xấu nhất là no-op ⇒ không bao giờ tệ hơn hiện trạng" (câu đó đã bị gỡ khỏi
+     *    KDoc này 08-22 vòng 1): nếu cụm render raw thì tài xế thấy một con số BỊA, tệ hơn hẳn "giữ số cũ".
+     *    Phải chạy probe OQ13 TRƯỚC khi ship đường này ra xe thật.
+     *
+     * CONTENT-only: KHÔNG chạm session latch (SEND_NAVI_STATUS / SET_NAVI_SCREEN_STATUS / SDK — độc quyền của
+     * [com.byd.clusternav.NavigationHudOwner]) và KHÔNG chạm icon (mũi tên vẫn phải hiện: hướng còn đáng tin,
+     * chỉ cự-ly là không).
+     */
+    fun blankNavDistance(instr: Any): String {
+        val rc = StringBuilder()
+        featureId("INSTRUMENT_FRONT_CROSSING_DISTANCE_SET")?.let { id ->
+            rc.append(" FRONT_CROSSING=").append(cachedSetInt(instr, id, NAV_DISTANCE_BLANK))
+        }
+        (featureId("INSTRUMENT_DISTANCE_TARGET_HEAD_SET") ?: CROSSING_DIST_OVERSEA_ID).let { id ->
+            rc.append(" DIST_OVERSEA=").append(cachedSetInt(instr, id, NAV_DISTANCE_BLANK))
+        }
+        return rc.toString().trim()
+    }
+
+    /** Giá trị "không có cự-ly" mà cụm/HUD hiểu là xoá trắng ô — cùng giá trị `clearNavFrame` đang dùng. */
+    const val NAV_DISTANCE_BLANK = -1
+
     /** THÊM (B3 T4): đẩy dải làn vào register cụm — mỗi làn: LANE_n_GUIDANCE_ARROW_SET (mã hướng qua
      *  [NavOutputDecision.laneArrowCode]) + IS_LANE_n_RECOMMENDED_SET (1 sáng / 0 mờ, R4). Tối đa
      *  [MAX_CLUSTER_LANES]. Degrade-safe; làn rỗng → no-op. */

@@ -32,7 +32,7 @@ class SpeedLimitFrameTest {
     fun `clear frame requires null value typed reason and no retained sign metadata`() {
         val clear = SpeedLimitFrame.clear(
             unit = SpeedUnit.KPH,
-            source = SpeedLimitSource.WAZE,
+            source = SpeedLimitSource.VIETMAP,
             sequence = 8,
             observedAtMonotonicMs = 6_000,
             reason = SpeedLimitClearReason.TTL_EXPIRED,
@@ -51,10 +51,10 @@ class SpeedLimitFrameTest {
     @Test
     fun `successor requires increasing sequence and non-regressing monotonic observation`() {
         val first = SpeedLimitFrame.active(
-            50, null, null, SpeedUnit.KPH, SpeedLimitSource.WAZE, 10, 100, 5_100,
+            50, null, null, SpeedUnit.KPH, SpeedLimitSource.VIETMAP, 10, 100, 5_100,
         )
         val next = SpeedLimitFrame.clear(
-            SpeedUnit.KPH, SpeedLimitSource.WAZE, 11, 5_100,
+            SpeedUnit.KPH, SpeedLimitSource.VIETMAP, 11, 5_100,
             SpeedLimitClearReason.TTL_EXPIRED, FreshnessState.STALE,
         )
 
