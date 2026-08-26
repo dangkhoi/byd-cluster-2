@@ -486,6 +486,16 @@ class MainActivity : Activity() {
         Prefs.setNavVerboseLog(this, on)
         NavLog.verbose = on
         if (on) DiagStorageCap.enforce(this, force = true)
+        // Turning collection OFF also FLUSHES the collected diagnostics to a file-manager-visible folder
+        // (/sdcard/Download/ClusterNavLog) so a teammate who forgets the export step can just flip the switch
+        // off and grab the files without adb. Background thread (opens a dadb loopback socket) + degrade-safe.
+        if (!on) {
+            val appCtx = applicationContext
+            Thread {
+                val dest = NavLogExport.exportToSharedStorage(appCtx)
+                android.util.Log.i("MainActivity", "diag-logging OFF → export → ${dest ?: "failed"}")
+            }.start()
+        }
         Toast.makeText(
             this,
             Lang.t("Thu thập dữ liệu chẩn đoán: ", "Diagnostic data collection: ") +

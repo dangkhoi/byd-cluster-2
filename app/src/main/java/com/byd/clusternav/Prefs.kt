@@ -247,7 +247,12 @@ object Prefs {
     // (MainActivity). NavLog phản chiếu vào bộ nhớ để hot-path đọc @Volatile field, KHÔNG chạm SharedPreferences
     // mỗi frame (~4×/s). Bật lên = lại có CSV/PNG chẩn đoán + log ManeuverSig + 3 log per-frame đầy đủ.
     private const val K_NAV_VERBOSE_LOG = "nav_verbose_log"
-    fun navVerboseLog(ctx: Context): Boolean = sp(ctx).getBoolean(K_NAV_VERBOSE_LOG, false)
+    // Default = BuildConfig.DIAG_LOG. In a NORMAL release/debug build DIAG_LOG is FALSE, so this is
+    // `getBoolean(K_NAV_VERBOSE_LOG, false)` exactly as before → A8/D3 preserved (normal use collects NO
+    // logs/PNGs/screenshots, privacy default unchanged). Only a DIAG build (`-PdiagLog=true`) makes DIAG_LOG
+    // true → verbose is pre-ON for a teammate's drive-test WITHOUT them finding the hidden toggle. This is only
+    // a DEFAULT: once the user flips the "Thu thập dữ liệu chẩn đoán" switch, the persisted value wins either way.
+    fun navVerboseLog(ctx: Context): Boolean = sp(ctx).getBoolean(K_NAV_VERBOSE_LOG, BuildConfig.DIAG_LOG)
     fun setNavVerboseLog(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_NAV_VERBOSE_LOG, v).apply()
 
     // Miễn trừ lần đầu (no-warranty / không liên kết BYD / tự chịu rủi ro) — hiện MỘT lần rồi ghim cờ.

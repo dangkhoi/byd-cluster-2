@@ -41,8 +41,16 @@ android {
         applicationId = "com.byd.clusternav2"
         minSdk = 29
         targetSdk = 37
-        versionCode = 28
-        versionName = "1.27"
+        versionCode = 29
+        versionName = "1.28"
+
+        // DIAG build flag — a DIAGNOSTIC log-collection build for a teammate to drive-test VietMap/Waze.
+        // Default FALSE so the normal RELEASE build stays byte-identical (A8/D3: verbose logging default OFF —
+        // normal use collects NO logs/PNGs/screenshots). Only `./gradlew :app:assembleRelease -PdiagLog=true`
+        // (or assembleDebug) flips it to true, which pre-ONs verbose logging via Prefs.navVerboseLog's default
+        // (see Prefs.K_NAV_VERBOSE_LOG) so the tester doesn't have to find the hidden toggle. The persisted
+        // pref still overrides this default once the user flips the switch either way.
+        buildConfigField("boolean", "DIAG_LOG", (project.findProperty("diagLog") == "true").toString())
     }
 
     buildFeatures {

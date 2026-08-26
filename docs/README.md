@@ -177,6 +177,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 |-----|----------|-----------|----------|
 | [`HUONG-DAN.md`](HUONG-DAN.md) | Hướng dẫn dùng ClusterNav (bật Nav+HUD, quyền, cluster mode, voice-key) | Current | 2026-08-16 |
 | [`HUONG-DAN-LAY-LOG.md`](HUONG-DAN-LAY-LOG.md) | Lấy log + ảnh sau lái thử (Cách A không máy tính / B dùng máy tính) | Current | 2026-08-17 |
+| [`HUONG-DAN-LAY-LOG-DIAG.md`](HUONG-DAN-LAY-LOG-DIAG.md) | **Lấy log bản DIAG v1.28** (cho anh em): log bật-sẵn + tự xuất ra `Download/ClusterNavLog`; thu content-desc VietMap/Waze + ảnh mũi tên để tìm thông tin hướng rẽ còn thiếu | Current | 2026-08-26 |
 | [`HUONG-DAN-LAY-LOG-WINDOWS.html`](HUONG-DAN-LAY-LOG-WINDOWS.html) | Lấy log ClusterNav bằng máy Windows | Current | 2026-08-19 |
 | [`HUONG-DAN-THU-DATA-HUD.html`](HUONG-DAN-THU-DATA-HUD.html) | Thu thập data HUD (so sánh provisioning xe anh em) | Current | 2026-08-18 |
 

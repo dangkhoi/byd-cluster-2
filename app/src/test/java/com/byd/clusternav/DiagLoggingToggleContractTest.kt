@@ -30,18 +30,40 @@ class DiagLoggingToggleContractTest {
     private val prefs by lazy { read(app("src/main/java/com/byd/clusternav/Prefs.kt")) }
     private val navLog by lazy { read(app("src/main/java/com/byd/clusternav/NavLog.kt")) }
     private val mainActivity by lazy { read(app("src/main/java/com/byd/clusternav/MainActivity.kt")) }
+    private val buildGradle by lazy { read(app("build.gradle.kts")) }
     private val layoutNarrow by lazy { read(app("src/main/res/layout/activity_main.xml")) }
     private val layoutWide by lazy { read(app("src/main/res/layout-w960dp/activity_main.xml")) }
 
-    // ── Prefs: default-OFF verbose flag ──────────────────────────────────────
+    // ── Prefs: verbose flag now defaults to the DIAG_LOG build flag (release still OFF) ──────────
     @Test
-    fun `prefs declares nav verbose log defaulting to false`() {
+    fun `prefs declares nav verbose log defaulting to the diag-build flag`() {
         assertTrue(prefs.contains("fun navVerboseLog(ctx: Context): Boolean"), "getter declared")
         assertTrue(
-            prefs.contains("getBoolean(K_NAV_VERBOSE_LOG, false)"),
-            "verbose defaults OFF (false) — normal use collects NO logs/PNGs/screenshots",
+            prefs.contains("getBoolean(K_NAV_VERBOSE_LOG, BuildConfig.DIAG_LOG)"),
+            "verbose default is the DIAG_LOG build flag — normal build = false (A8/D3 preserved), diag build = pre-ON",
         )
         assertTrue(prefs.contains("fun setNavVerboseLog(ctx: Context, v: Boolean)"), "setter declared")
+    }
+
+    // ── DIAG_LOG gates the Prefs default: RELEASE default stays OFF (privacy guard NOT weakened) ──
+    @Test
+    fun `diag flag defaults OFF so a normal build keeps verbose OFF unless -PdiagLog=true`() {
+        // Prefs' verbose default is BuildConfig.DIAG_LOG (asserted above). DIAG_LOG is declared in
+        // app/build.gradle.kts as the value of the gradle property `diagLog == "true"`, which is FALSE for a
+        // normally-built release/debug APK. So the privacy default is UNCHANGED (A8/D3: normal use collects no
+        // data); ONLY `-PdiagLog=true` flips DIAG_LOG true to pre-ON verbose for a teammate's drive-test.
+        assertTrue(
+            buildGradle.contains("buildConfigField(\"boolean\", \"DIAG_LOG\""),
+            "DIAG_LOG buildConfigField is declared in app/build.gradle.kts",
+        )
+        assertTrue(
+            buildGradle.contains("project.findProperty(\"diagLog\") == \"true\""),
+            "DIAG_LOG = (diagLog gradle property == \"true\") → defaults FALSE, so RELEASE verbose stays OFF unless -PdiagLog=true",
+        )
+        assertTrue(
+            buildGradle.contains("buildConfig = true"),
+            "buildConfig generation is on so BuildConfig.DIAG_LOG exists at compile time",
+        )
     }
 
     // ── NavLog: gate is pref-only, no BuildConfig.DEBUG auto-on ───────────────

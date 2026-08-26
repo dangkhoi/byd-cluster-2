@@ -149,6 +149,7 @@ class NavAccessibilityService : AccessibilityService() {
         // vehicleTest/release TRÊN XE). Cổng an ninh chuyển xuống LÚC NHẬN broadcast — xem KDoc
         // [registerDebugWindowDump]: không bật "Thu thập dữ liệu chẩn đoán" thì dump là no-op.
         registerDebugWindowDump()
+        registerExportLogs()
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -156,6 +157,8 @@ class NavAccessibilityService : AccessibilityService() {
         stopWindowPump()          // B3.13r: service bị gỡ ⇒ nhịp phải chết theo, không rò Runnable/IPC.
         runCatching { debugWinReceiver?.let { unregisterReceiver(it) } }
         debugWinReceiver = null
+        runCatching { exportLogsReceiver?.let { unregisterReceiver(it) } }
+        exportLogsReceiver = null
         return super.onUnbind(intent)
     }
 
@@ -245,6 +248,39 @@ class NavAccessibilityService : AccessibilityService() {
             debugWinReceiver = rx
             Log.i(TAG, "DEBUG window-dump receiver registered")
         }.onFailure { Log.w(TAG, "debug win receiver register failed", it) }
+    }
+
+    // ─── Export diag logs to a file-manager-visible folder over `am broadcast -a com.byd.clusternav.EXPORT_LOGS`.
+    //     Mirrors [registerDebugWindowDump]'s registration shape (RECEIVER_EXPORTED on SDK33+ so `am broadcast`
+    //     from adb can reach it; a NOT_EXPORTED receiver would be unreachable), and runs the copy on a BACKGROUND
+    //     thread ([NavLogExport] opens a dadb loopback socket — never on the a11y callback thread).
+    //
+    //     Unlike DEBUG_DUMP_WINDOWS this is NOT gated on the verbose pref: it copies ONLY this app's OWN
+    //     diagnostic files (getExternalFilesDir → /sdcard/Download/ClusterNavLog), never other apps' window
+    //     text, so there is no cross-app data exposure to gate. It is the tester's no-adb way to grab the logs.
+    private var exportLogsReceiver: android.content.BroadcastReceiver? = null
+
+    private fun registerExportLogs() {
+        if (exportLogsReceiver != null) return
+        val rx = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                val app = applicationContext
+                Thread {
+                    val dest = com.byd.clusternav.NavLogExport.exportToSharedStorage(app)
+                    Log.i(TAG, "EXPORT_LOGS → ${dest ?: "failed"}")
+                }.start()
+            }
+        }
+        runCatching {
+            val f = android.content.IntentFilter("com.byd.clusternav.EXPORT_LOGS")
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(rx, f, android.content.Context.RECEIVER_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(rx, f)
+            }
+            exportLogsReceiver = rx
+            Log.i(TAG, "EXPORT_LOGS receiver registered")
+        }.onFailure { Log.w(TAG, "EXPORT_LOGS receiver register failed", it) }
     }
 
     /**
