@@ -45,11 +45,18 @@ object LocalDeviceShell {
      * thành nhiều phiên rời sẽ đổi hành vi của một đường tự-chữa vốn đã mong manh — mà giai đoạn này
      * không được đổi hành vi.
      *
-     * Hỏng ⇒ `null`, KHÔNG thử lại, KHÔNG hạn đọc — nguyên vẹn hành vi trước 2026-08-24 cho mọi bên gọi
-     * cũ. Bên gọi nào cần chờ owner bấm "Cho phép gỡ lỗi USB" phải nói ra tường minh qua [sessionResult].
+     * Hỏng ⇒ `null`, KHÔNG thử lại. Mặc định [retry] = [LocalShellRetry.NONE] = **không hạn đọc** =
+     * nguyên vẹn hành vi trước 2026-08-24. Đường NỀN (boot autostart / nav-connect / diag) truyền
+     * [LocalShellRetry.BACKGROUND_READ_CAP] để một socket câm không treo vĩnh viễn (F6). Bên gọi nào cần
+     * CHỜ owner bấm "Cho phép gỡ lỗi USB" phải nói ra tường minh qua [sessionResult] với
+     * [LocalShellRetry.AWAIT_ADB_APPROVAL].
      */
-    fun <T> session(keys: AdbKeyPair, block: (shell: (String) -> LocalShellText) -> T): T? =
-        when (val result = sessionResult(keys, LocalShellRetry.NONE, block = block)) {
+    fun <T> session(
+        keys: AdbKeyPair,
+        retry: LocalShellRetry = LocalShellRetry.NONE,
+        block: (shell: (String) -> LocalShellText) -> T,
+    ): T? =
+        when (val result = sessionResult(keys, retry, block = block)) {
             // Block trả `null` hợp lệ vẫn ra `null` ở đây — đúng như đường cũ, bên gọi không phân biệt được
             // "chạy xong, kết quả null" với "phiên hỏng". Ai cần phân biệt thì dùng [sessionResult].
             is LocalShellResult.Ok -> result.value
@@ -117,9 +124,14 @@ object LocalDeviceShell {
         override fun close() = adb.close()
     }
 
-    /** Cài một APK. Trả về true nếu dadb không ném. */
-    fun installApk(keys: AdbKeyPair, apk: File, vararg options: String): Boolean = runCatching {
-        Dadb.create(HOST, PORT, keys).use { adb -> adb.install(apk, *options) }
+    /**
+     * Cài một APK. Trả về true nếu dadb không ném.
+     * @param socketTimeoutMs hạn ĐỌC socket (F6). [LocalShellRetry.BACKGROUND_READ_CAP] truyền 30 s để OTA
+     *   cài lúc khoá adb chưa cấp KHÔNG treo vĩnh viễn; `<= 0` = đọc vô hạn (hành vi trước 2026-08-25).
+     */
+    fun installApk(keys: AdbKeyPair, apk: File, vararg options: String, socketTimeoutMs: Int = 0): Boolean = runCatching {
+        val adb = if (socketTimeoutMs <= 0) Dadb.create(HOST, PORT, keys) else Dadb.create(HOST, PORT, keys, 0, socketTimeoutMs)
+        adb.use { it.install(apk, *options) }
         true
     }.getOrDefault(false)
 

@@ -205,6 +205,11 @@
                 android:checked="true" android:text="Hiện giới hạn sắp tới"
                 android:textColor="@color/text_secondary"
                 android:contentDescription="Bật hoặc tắt biển giới hạn tốc độ sắp tới trên cụm" />
+            <Switch android:id="@+id/switch_alert_chip" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="4dp" android:minHeight="@dimen/touch_min"
+                android:checked="false" android:text="Hiện cảnh báo/camera VietMap"
+                android:textColor="@color/text_secondary"
+                android:contentDescription="Bật hoặc tắt chip cảnh báo/camera VietMap trên cụm" />
             <!-- Bỏ spinner chọn nguồn tốc độ (08-22): chỉ còn MỘT nguồn có thật là widget VietMap.
                  Waze Mod (HLP) đã gỡ — đo trên máy không có HUD BLE: logcat WazeHudLink 0 dòng khi đang dẫn. -->
             <TextView android:id="@+id/txt_speed_source_bind" android:layout_width="match_parent"

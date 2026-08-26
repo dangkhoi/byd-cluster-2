@@ -510,14 +510,34 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ (giữ lại để trace): activity_main.xml = fddc1ef5…a694d.
          *
+         * ⚠ CẬP NHẬT 2026-08-25 (lần 3) — owner duyệt ("làm maximum có thể, không cần hỏi"), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi lần nữa vì **B3.20 — chip cảnh báo/camera VietMap trên cụm**. Thêm MỘT toggle
+         * `switch_alert_chip` ("Hiện cảnh báo/camera VietMap", **mặc định TẮT** — opt-in, không phá bố trí badge
+         * hiện có) ngay dưới `switch_upcoming_badge`, ở CẢ hai biến thể layout (portrait + `layout-w960dp` xe
+         * render — bài học F3 P0). Chip đọc VietMap sticky ALERTS slot → `RoadAlertChipDecision` (:core) →
+         * `AlertChipView` (cửa sổ overlay thứ 3, đặt PHẢI badge chính). `strings.xml` KHÔNG đổi (nhãn đặt lúc chạy).
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 25fa8836…f202.
+         *
+         * ⚠ CẬP NHẬT 2026-08-25 (lần 4) — owner duyệt ("sửa hết luôn đi"), KHÔNG sửa lén.
+         *
+         * `strings.xml` đổi vì **B3.57 — status per-nguồn** (owner báo on-car: status "Chưa có phiên dẫn đường"
+         * chỉ đúng cho GMaps, không phản ánh khi đọc VietMap/Waze). Sửa `status_need_perm`: "Cần cấp quyền
+         * notification trước" → "Cần quyền truy cập thông báo để đọc dẫn đường" (nói rõ quyền để ĐỌC dẫn đường,
+         * KHÔNG ngụ ý notification là đường duy nhất). Nhãn nguồn per-kênh (GMaps=thông báo · VietMap/Waze=đọc
+         * màn hình) đặt lúc chạy qua `NavSourceLabels` (:core) + `Lang.t`, KHÔNG vào strings.xml.
+         *
+         * Hằng cũ (giữ lại để trace): strings.xml = 4b068200…6fa1.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "25fa883616277e815e49ed270aa1489c7fafcd62fc155dd256a8c8f267e2f202",
-            "app/src/main/res/values/strings.xml" to "4b068200722b3a6d26620f1adf7d550e7497f29262fa9bc7a30d3684daec6fa1",
+            "app/src/main/res/layout/activity_main.xml" to "20dca831c4da2edf28f8058bf20a4d1be8a51fe74ba08031da19cea0ac5f4412",
+            "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')
         private val T10_FIXED = pathSet(".gitignore|app/build.gradle.kts|app/src/test/java/com/byd/clusternav/BuildArtifactNamingTest.kt|app/src/test/java/com/byd/clusternav/MainProbeSurfaceAbsenceTest.kt|docs/_handoff/session-2026-08-10-hud-sign-t10-offcar-complete.md|docs/_handoff/session-2026-08-10-hud-sign-t10-preparation.md|scripts/verify-seal-hud-sign-vehicle-test-t10.sh|vehicle-contracts/src/main/resources/t10-contracts.schema.json")

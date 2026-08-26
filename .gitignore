@@ -99,3 +99,6 @@ docs/diagnostics/nav-logs/
 # Shelved old release/vehicle-test builds — kept locally, NOT committed (closeout 1.30).
 # apk/ keeps only the latest ClusterNav-<ver>-release.apk (OTA payload) tracked via the whitelist above.
 apk/_archive-old-builds/
+
+# B3.52 SVG nháp (input cục bộ, không phải nguồn) — không commit
+scratchpad/

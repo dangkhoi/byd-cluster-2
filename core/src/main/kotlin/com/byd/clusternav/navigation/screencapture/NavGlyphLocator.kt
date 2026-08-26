@@ -1,5 +1,6 @@
 package com.byd.clusternav.navigation.screencapture
 
+import com.byd.clusternav.navigation.ArrayPixelFrame
 import com.byd.clusternav.navigation.PixelFrame
 
 /**
@@ -77,6 +78,13 @@ object NavGlyphLocator {
 
     /** Ngưỡng luma coi là "nền tối" của banner (dùng cho vành bao quanh). */
     const val DARK = 70
+
+    /**
+     * Luma TRUNG BÌNH của ROI banner phải > mức này thì [locateAny] mới coi là **light/day theme** và thử
+     * cực đảo màu. Dark theme (nền + banner tối) có mean thấp hơn nhiều ⇒ không kích hoạt đảo màu ⇒ không đẻ
+     * dương-tính-giả ở ca "dark mode giữa hai khúc, không mũi tên". 128 = giữa thang 0..255.
+     */
+    const val LIGHT_BG_MEAN = 128
 
     /**
      * **SÀN nhìn-được** của chiều cao glyph, theo dp (nhân với dpi khai báo của display).
@@ -333,6 +341,75 @@ object NavGlyphLocator {
             }
         }
         return best
+    }
+
+    /** Kết quả [locateAny]: bbox glyph + có phải phải ĐẢO MÀU khung mới tìm ra (app ở light/day theme). */
+    data class Located(val rect: CropRect, val inverted: Boolean)
+
+    /**
+     * Như [locate] nhưng dò **CẢ HAI CỰC** để phủ light mode LẪN dark mode (owner 2026-08-24).
+     *
+     *  1. **Dark/night theme** (mực SÁNG trên nền TỐI) — gọi [locate] thẳng. Ra ⇒ `Located(rect, inverted=false)`.
+     *  2. **Light/day theme** (mũi tên TỐI trên nền SÁNG) — [locate] cực 1 trả null ⇒ [PixelFrameOps.invert]
+     *     khung rồi [locate] lại. Ra ⇒ `Located(rect, inverted=true)`; caller PHẢI đảo màu crop trước khi khớp
+     *     registry (template là quy ước sáng-trên-tối). bbox ở CÙNG toạ độ (đảo màu không dời pixel).
+     *
+     * [ĐO 2026-08-24] nếu KHÔNG có cực 2: đảo màu ảnh VietMap/Waze dark thật (đang classify được) ⇒ [locate]
+     * trả **null** ⇒ đó chính là "Waze never appears / VietMap dark" khi xe chạy ban ngày. Dark mode: cực 1 ra
+     * ngay nên KHÔNG tốn phép đảo (chi phí 0 cho đường đang chạy tốt); chỉ light mode mới trả giá một lần đảo.
+     */
+    fun locateAny(frame: PixelFrame, window: CropRect, densityDpi: Int): Located? {
+        // ⚡ PERF + SNAPSHOT (F4c review 2026-08-25): [locate] cực 1, [isLightBanner] và [PixelFrameOps.invert]
+        // đều gọi `frame.argb()`. Với khung nền Bitmap trên xe ([BitmapPixelFrame]) MỖI `argb()` là một
+        // `getPixels` TOÀN MÀN (JNI copy + cấp IntArray ~8 MB @1080p). Light/day theme là ca THƯỜNG ban ngày ⇒
+        // để nguyên thì mỗi nhịp (2 Hz) tốn 3 lần getPixels toàn màn. Vật hoá điểm ảnh MỘT lần rồi bọc
+        // [ArrayPixelFrame] để các bước sau đọc thẳng mảng (argb() chỉ trả mảng, không copy). Dark mode: cực 1
+        // ra ngay nên vẫn đúng 1 getPixels như trước (0 phụ phí cho đường đang chạy tốt). KHÔNG đổi hành vi —
+        // cùng điểm ảnh; và còn ĐÚNG HƠN: cả ba bước nay thấy CÙNG một ảnh chụp (bỏ TOCTOU giữa 3 getPixels).
+        val px = frame.argb() ?: return null
+        val flat: PixelFrame = if (frame is ArrayPixelFrame) frame else ArrayPixelFrame(frame.width, frame.height, px)
+        locate(flat, window, densityDpi)?.let { return Located(it, false) }
+        // ⚠ CHẶN DƯƠNG-TÍNH-GIẢ: cực 1 trả null ở HAI ca — (a) dark mode GIỮA hai khúc (không mũi tên), (b)
+        // light mode (mũi tên tối/nền sáng). Chỉ ca (b) mới được thử đảo màu; nếu không, ở ca (a) đảo màu một
+        // khung tối-không-mũi-tên sẽ biến nhiễu bản đồ thành "đảo sáng" giả → có thể khớp nhầm template → SAI
+        // hướng (vi phạm im-lặng>sai-hướng). Cổng: nền ROI banner phải THỰC SỰ sáng mới đảo.
+        if (!isLightBanner(flat, window, densityDpi)) return null
+        val inv = PixelFrameOps.invert(flat) ?: return null
+        locate(inv, window, densityDpi)?.let { return Located(it, true) }
+        return null
+    }
+
+    /**
+     * ROI trên-trái (nơi banner nav nằm) có nền SÁNG (light/day theme) không — luma TRUNG BÌNH > [LIGHT_BG_MEAN].
+     * Dark theme (nền + banner tối) ⇒ mean thấp ⇒ false ⇒ [locateAny] KHÔNG đảo màu (không đẻ dương-tính-giả).
+     * Một pass, không sort (rẻ); chỉ chạy khi cực 1 đã trả null.
+     */
+    private fun isLightBanner(frame: PixelFrame, window: CropRect, densityDpi: Int): Boolean {
+        val w = frame.width; val h = frame.height
+        val px = frame.argb() ?: return false
+        if (px.size < w * h) return false
+        val win = window.clampTo(CropRect(0, 0, w, h))
+        if (win.width <= 0 || win.height <= 0) return false
+        val dpi = if (densityDpi > 0) densityDpi else DisplayGeometry.DENSITY_DEFAULT
+        val scale = dpi / 160f
+        val roiW = minOf((win.width * ROI_W_FRAC).toInt(), (ROI_MAX_W_DP * scale).toInt()).coerceAtLeast(1)
+        val roiH = minOf((win.height * ROI_H_FRAC).toInt(), (ROI_MAX_H_DP * scale).toInt()).coerceAtLeast(1)
+        val rx1 = minOf(win.right, win.left + roiW)
+        val ry1 = minOf(win.bottom, win.top + roiH)
+        if (rx1 <= win.left || ry1 <= win.top) return false
+        var sum = 0L; var n = 0
+        var y = win.top
+        while (y < ry1) {
+            val base = y * w
+            var x = win.left
+            while (x < rx1) {
+                val c = px[base + x]
+                sum += (((c ushr 16) and 0xFF) + ((c ushr 8) and 0xFF) + (c and 0xFF)) / 3
+                n++; x++
+            }
+            y++
+        }
+        return n > 0 && sum / n > LIGHT_BG_MEAN
     }
 
     /**

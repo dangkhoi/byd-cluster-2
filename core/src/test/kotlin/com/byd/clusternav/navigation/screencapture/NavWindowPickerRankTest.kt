@@ -64,4 +64,43 @@ class NavWindowPickerRankTest {
         val r = NavWindowPicker.rank(listOf(win("com.some.other", 1920, 1080), win(mod, 100, 100)), NavApps.ALL)
         assertEquals(listOf(mod), r.map { it.pkg })
     }
+
+    /**
+     * B3.58 FIX 2a — ĐỌC BẤT KỂ DISPLAY. Cửa sổ nav bị CHIẾU LÊN CỤM (displayId=1) và KHÔNG focus vẫn phải
+     * được chọn: đường đọc TEXT a11y (cự-ly/đường/ETA → NavViewIdSource → HUD) phải chạy dù app ở cụm hay màn
+     * chính. `rank` KHÔNG được lọc/hạ bậc theo display; Pick phải GIỮ displayId=1 để transport biết chụp cụm.
+     *
+     * Khoá logic đọc display-agnostic OFF-CAR. Việc chụp pixel thật của display phụ là PHỤ THUỘC XE (emulator
+     * không host/chụp được display phụ — B3.26); ở đây chỉ khoá "cửa sổ cụm vẫn được nhận diện + xếp hạng".
+     */
+    @Test
+    fun `nav window tren CUM (display 1) khong focus VAN duoc chon (B3_58 FIX 2a)`() {
+        val r = NavWindowPicker.rank(
+            listOf(win(NavApps.VIETMAP_LIVE, 1920, 720, focused = false, display = 1)),
+            NavApps.ALL,
+        )
+        assertEquals(1, r.size)
+        assertEquals(NavApps.VIETMAP_LIVE, r.first().pkg)
+        assertEquals(1, r.first().displayId, "Pick phải giữ displayId=1 (cụm) — đường đọc display-agnostic")
+    }
+
+    /**
+     * B3.58 FIX 2a — cửa sổ cụm cạnh tranh với cửa sổ nav màn chính: xếp hạng theo DIỆN TÍCH (không theo
+     * display), và cả hai đều được trả về để caller thử lần lượt. Một cửa sổ trên cụm KHÔNG bị loại chỉ vì
+     * nó không nằm trên display 0.
+     */
+    @Test
+    fun `nav window cum va man chinh — ca hai deu duoc xep hang (khong loc theo display)`() {
+        val r = NavWindowPicker.rank(
+            listOf(
+                win(NavApps.VIETMAP_LIVE, 1920, 720, focused = false, display = 1),   // cụm
+                win(zin, 1200, 600, focused = true, display = 0),                       // màn chính, nhỏ hơn
+            ),
+            NavApps.ALL,
+        )
+        assertEquals(2, r.size, "cả hai cửa sổ nav (cụm + chính) đều phải có mặt")
+        // VietMap trên cụm to hơn ⇒ đứng trước dù không focus và ở display khác 0.
+        assertEquals(NavApps.VIETMAP_LIVE, r.first().pkg)
+        assertEquals(1, r.first().displayId)
+    }
 }

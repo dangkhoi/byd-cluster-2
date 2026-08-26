@@ -3,6 +3,7 @@ package com.byd.clusternav
 import android.content.Context
 import android.util.Log
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellRetry
 import com.byd.clusternav.navigation.NavApps
 
 /**
@@ -38,7 +39,7 @@ object VietMapAutostart {
         if (runCatching { app.packageManager.getLaunchIntentForPackage(PKG) }.getOrNull() == null) return  // chưa cài
         runCatching {
             val keys = AdbKeys.ensure(app)
-            LocalDeviceShell.session(keys) { sh ->
+            LocalDeviceShell.session(keys, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                 if (sh("pidof $PKG").output.trim().isNotEmpty()) {
                     Log.i(TAG, "VietMap đã chạy → bỏ auto-start (không đè)")
                 } else {

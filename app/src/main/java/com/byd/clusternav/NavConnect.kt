@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellRetry
 import com.byd.clusternav.carexec.LocalShellText
 import com.byd.clusternav.modules.navaccess.AccessibilityRebind
 import dadb.AdbKeyPair
@@ -76,7 +77,7 @@ object NavConnect {
         try {
             return runCatching {
                 val keyPair = AdbKeys.ensure(app)
-                val allowed = LocalDeviceShell.session(keyPair) { sh ->
+                val allowed = LocalDeviceShell.session(keyPair, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                     sh("cmd notification allow_listener $COMP").ok
                 }
                 if (allowed != true) {
@@ -146,7 +147,7 @@ object NavConnect {
         try {
             return runCatching {
                 val keyPair = AdbKeys.ensure(app)
-                LocalDeviceShell.session(keyPair) { sh ->
+                LocalDeviceShell.session(keyPair, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                     val cur = sh("settings get secure enabled_accessibility_services").output.trim()
                     val has = cur.split(':').any { it.trim() == ACC_COMP }
                     if (!has) {
@@ -215,7 +216,7 @@ object NavConnect {
                 if (recoveredSameSession) {
                     Log.w(TAG, "accessibility rebind: khôi phục RE-ADDED (an toàn) sau lỗi")
                 } else {
-                    val freshOk = LocalDeviceShell.session(keyPair) { s2 -> reAdd.forEach { s2(it) }; true } ?: false
+                    val freshOk = LocalDeviceShell.session(keyPair, LocalShellRetry.BACKGROUND_READ_CAP) { s2 -> reAdd.forEach { s2(it) }; true } ?: false
                     if (freshOk) Log.w(TAG, "accessibility rebind: khôi phục RE-ADDED qua phiên MỚI (an toàn)")
                     else Log.e(TAG, "accessibility rebind: khôi phục re-add THẤT BẠI cả phiên cũ lẫn phiên MỚI")
                 }
@@ -251,7 +252,7 @@ object NavConnect {
         try {
             runCatching {
                 val keyPair = AdbKeys.ensure(app)   // key CHUNG, sinh nguyên tử + khoá chung (chống đua với các client dadb khác)
-                LocalDeviceShell.session(keyPair) { sh ->
+                LocalDeviceShell.session(keyPair, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                     sh("cmd notification disallow_listener $COMP")
                     Thread.sleep(1500)
                     sh("cmd notification allow_listener $COMP")

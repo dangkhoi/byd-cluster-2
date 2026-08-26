@@ -270,7 +270,7 @@ object BydHal {
     fun writeNavFrame(
         ctx: Context, icon: Int, segMeters: Int, road: String, screenMode: Int = NAV_SCREEN_MODE_ON,
         routeSeconds: Int = -1, routeMeters: Int = -1, arrivalClock: String? = null,
-        keepAlive: Boolean = false,
+        keepAlive: Boolean = false, writeSurface: Boolean = true,
     ): String {
         val sys = systemBypassContext()
         val instr = device(INSTRUMENT, sys, bypass(ctx)) ?: return "InstrumentDevice null (không ghi được)"
@@ -283,8 +283,12 @@ object BydHal {
             (featureId(name) ?: rawId).let { id -> rc.append(" $tag=").append(cachedSetInt(instr, id, v)) }
         }
         // TASK 2: status + screen-mode là cờ SESSION LATCH → CHỈ ghi lúc real push; BỎ ở keep-alive (đỡ churn ~4×/s).
+        // TÁCH NỘI DUNG / BỀ MẶT (2026-08-24, docs/diagnostics/nav-io-asis-2026-08-24.html §B, owner OQ1/OQ4):
+        //  • SEND_NAVI_STATUS = latch "đang dẫn", thuộc NỘI DUNG (HUD kính đọc) ⇒ ghi theo real-push, KHÔNG gate writeSurface.
+        //  • SET_NAVI_SCREEN_STATUS = dựng BỀ MẶT nav giữa CỤM (tranh display cụm với Cast) ⇒ chỉ ghi khi writeSurface
+        //    (caller truyền = navOnlyMode: Cast OFF). Cast ON ⇒ writeSurface=false ⇒ chỉ nội dung lên HUD, KHÔNG dựng cụm.
         if (!keepAlive) w("INSTRUMENT_SEND_NAVI_STATUS_SET", 2)
-        if (!keepAlive) featureId("SET_NAVI_SCREEN_STATUS_SET")?.let { id -> setting?.let { s -> rc.append(" NAVI_SCREEN=").append(cachedSetInt(s, id, screenMode)) } }
+        if (!keepAlive && writeSurface) featureId("SET_NAVI_SCREEN_STATUS_SET")?.let { id -> setting?.let { s -> rc.append(" NAVI_SCREEN=").append(cachedSetInt(s, id, screenMode)) } }
         // CONTENT (LUÔN ghi, kể cả keep-alive): guidance icon + dualIcon + cự ly + tên đường.
         w("INSTRUMENT_GUIDE_INFO_SIMPLE_SET", icon)
         w("INSTRUMENT_GUIDE_INFO_AND_ROAD_AHEAD_DISTANCE_SET", icon)   // OpenBYD "dualIcon" (0x43F01030) — ghi icon vào cả feature này

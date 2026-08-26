@@ -33,6 +33,21 @@ class NavSourceLabelsTest {
     }
 
     /**
+     * B3.57 — kênh ĐỌC theo roster: GMaps = notification (đường proven), VietMap/Waze = đọc màn hình (a11y +
+     * chụp), null/gói lạ = unknown. Khoá bằng roster THẬT ([NavApps]) để dòng trạng thái không còn ngầm định
+     * "chỉ có notification" khi nguồn đang dẫn là VietMap/Waze.
+     */
+    @Test fun `readChannel classifies by roster — GMaps notification, VietMap Waze screen-read`() {
+        assertEquals(NavReadChannel.NOTIFICATION, NavSourceLabels.readChannel("com.google.android.apps.maps"))
+        assertEquals(NavReadChannel.NOTIFICATION, NavSourceLabels.readChannel("app.revanced.android.apps.maps"))
+        assertEquals(NavReadChannel.SCREEN_READ, NavSourceLabels.readChannel("vn.vietmap.live"))
+        assertEquals(NavReadChannel.SCREEN_READ, NavSourceLabels.readChannel("com.waze"))
+        assertEquals(NavReadChannel.SCREEN_READ, NavSourceLabels.readChannel("com.chisadin.wazemod"))
+        assertEquals(NavReadChannel.UNKNOWN, NavSourceLabels.readChannel(null))
+        assertEquals(NavReadChannel.UNKNOWN, NavSourceLabels.readChannel("com.some.other.nav"))
+    }
+
+    /**
      * BOUNDARY (W5.3): the exact package string the arbiter records as activeSource must map to a branded
      * label (not fall through to the raw package). Feeds the arbiter each known nav package and asserts the
      * label of the resulting activeSource is branded.

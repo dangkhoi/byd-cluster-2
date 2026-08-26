@@ -158,7 +158,8 @@ object NavRepository {
 
     /** I4 (1.14): áp NGAY chế độ hiển thị cụm vừa đổi ở UI (re-assert qua owner). No-op nếu chưa có phiên/owner. */
     fun reapplyClusterMode(context: Context) {
-        hudOwner?.reapply()
+        // Bề mặt cụm chỉ dựng khi Cast OFF (invariant tách 08-24, [P2] review) — truyền navOnlyMode xuống reapply.
+        hudOwner?.reapply(navOnlyMode(context))
     }
 
     fun snapshot(context: Context, interaction: InteractionContext = InteractionContext.UNKNOWN): NavigationUiState =
@@ -191,11 +192,15 @@ object NavRepository {
             // HAL guidance liên tục — GIẢ THUYẾT combo này là trigger để HUD kính lái mirror nav (M1 lâu nay). RE §3:
             // IS_BYD_MAP=true+TYPE=1 VẪN render cụm (không hỏng cụm strip). Probe — revert 1 dòng nếu on-car hỏng.
             ClusterBroadcaster.emitLane(context, frame.toNavState(), byd = true)
-            // Cluster CENTER "Giữa + ETA" via the proven HAL path (SET_NAVI_SCREEN_STATUS + GUIDE_INFO_SIMPLE) —
-            // replaces the no-op ch1000 op39. TWO-TRACK: only in nav-only mode (Cast master OFF); when Cast is ON
-            // the Cast track owns the cluster surface and we must not fight it. Broadcast heartbeat keeps content
-            // fresh; this write sets/holds the OEM nav-screen MODE (Đơn giản/full) the broadcast alone cannot.
-            if (navOnlyMode(appCtx)) {
+            // TÁCH nội dung / bề mặt (2026-08-24, docs/diagnostics/nav-io-asis-2026-08-24.html §B; owner chốt OQ1/OQ4):
+            //  • NỘI DUNG dẫn (icon/cự ly/đường/ETA/oversea/SDK + SEND_NAVI_STATUS latch) = thứ HUD KÍNH đọc →
+            //    ghi VÔ ĐIỀU KIỆN theo nguồn đã chọn (SourceArbiter), ĐỘC LẬP Cast (HUD là bề mặt riêng; owner đo
+            //    GMaps đang cast vẫn lên HUD). ⇒ owner.push LUÔN chạy, KHÔNG còn gate navOnlyMode.
+            //  • BỀ MẶT CỤM "Giữa+ETA" (SET_NAVI_SCREEN_STATUS) tranh display cụm với Cast ⇒ chỉ dựng khi
+            //    navOnlyMode (Cast OFF) — truyền writeSurface = navOnlyMode(appCtx) xuống writeNavFrame.
+            //  Cast OFF ⇒ writeSurface=true ⇒ ghi ĐỦ content+surface = HÀNH VI CŨ (0 hồi quy, khoá bằng test).
+            //  Cast ON  ⇒ writeSurface=false ⇒ chỉ content (HUD lên), cụm để Cast chiếm. Broadcast dải làn KHÔNG đổi.
+            run {
                 // I1 (1.14): đường HUD (INSTRUMENT_GUIDE_INFO_SIMPLE) đọc bảng CAN (toHudIcon: trái=1, phải=2), KHÔNG
                 // phải AMAP (broadcast/cụm ở emitLane). Fallback 11 = đi thẳng.
                 // Vòng xuyến CÓ số lối ra (text "lối ra thứ N") → ÉP HUD icon = CAN 24+N (25..34 = vòng-xuyến-lối-ra-N,
@@ -229,6 +234,7 @@ object NavRepository {
                     routeSeconds = frame.content.routeRemainingSeconds ?: -1,
                     routeMeters = frame.content.routeRemainingMeters ?: -1,
                     arrivalClock = frame.content.arrivalClock,
+                    writeSurface = navOnlyMode(appCtx),   // nội dung LUÔN ghi; chỉ bề mặt cụm gate theo Cast OFF
                 )
             }
         })

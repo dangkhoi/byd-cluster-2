@@ -46,6 +46,12 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
     private var appliedIcon = Int.MIN_VALUE
     private var appliedSeg = Int.MIN_VALUE
     private var appliedRoad = ""
+    // TÁCH nội dung/bề mặt (2026-08-24, nav-io-asis §B): writeSurface của lần real-push gần nhất (Cast OFF ⇒ true
+    // = dựng bề mặt cụm; Cast ON ⇒ false = chỉ nội dung HUD). Vào dedup để khi bật/tắt Cast thì frame được ghi
+    // lại (không bị nuốt vì icon/seg/road trùng). Keep-alive KHÔNG ghi bề mặt (writeNavFrame gate !keepAlive) nên
+    // giá trị này chỉ ảnh hưởng real push; smear một-frame lúc toggle là vô hại (bề mặt idempotent + re-assert).
+    private var appliedWriteSurface = true
+    @Volatile private var realPushWriteSurface = true
 
     // D4 (closeout 1.28): last-logged delivery key for log-on-change. The 250ms keep-alive re-asserts identical
     // content (and mode=OFF re-clears every frame); only Log.i when the key changes → kills per-frame spam, keeps
@@ -109,7 +115,7 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
                         routeSeconds = c.routeRemainingSeconds ?: -1,
                         routeMeters = c.routeRemainingMeters ?: -1,
                         arrivalClock = c.arrivalClock,
-                        keepAlive = !realPush,
+                        keepAlive = !realPush, writeSurface = realPushWriteSurface,
                     )
                     // D4 (closeout 1.28): log-on-change — the 250ms keep-alive re-asserts identical content; only
                     // Log.i when icon|seg|road|mode changes (rc reflects the actual write just done).
@@ -120,7 +126,7 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
                     }
                     // Commit applied state only on successful delivery (no exception thrown).
                     synchronized(dedupLock) {
-                        appliedIcon = icon; appliedSeg = seg; appliedRoad = road
+                        appliedIcon = icon; appliedSeg = seg; appliedRoad = road; appliedWriteSurface = realPushWriteSurface
                     }
                     keepAlive.onFrameWritten(SystemClock.elapsedRealtime(), realPush = realPush)
                     // Lỗ 3 (handoff 2026-08-15): stop() huỷ nhịp tim theo TỪNG tuyến ⇒ tuyến 2 mất heartbeat (bug
@@ -219,13 +225,18 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
      * @param routeSeconds total remaining drive time in seconds (-1 = unknown); written to HUD remaining-time features
      * @param routeMeters total remaining route distance in meters (-1 = unknown); written to HUD remaining-mileage
      * @param arrivalClock ETA clock "H:MM" (null = unknown); written to HUD expected-arrival features
+     * @param writeSurface true (Cast OFF) ⇒ ghi cả bề mặt cụm (SET_NAVI_SCREEN_STATUS); false (Cast ON) ⇒ chỉ nội
+     *   dung HUD (không dựng overlay cụm — Cast chiếm cụm). Nội dung guidance LUÔN ghi bất kể (OQ1/OQ4, nav-io-asis §B).
      */
-    fun push(icon: Int, segMeters: Int, hudRoad: String, routeSeconds: Int = -1, routeMeters: Int = -1, arrivalClock: String? = null): OutputSubmission {
+    fun push(icon: Int, segMeters: Int, hudRoad: String, routeSeconds: Int = -1, routeMeters: Int = -1, arrivalClock: String? = null, writeSurface: Boolean = true): OutputSubmission {
         synchronized(dedupLock) {
-            if (icon == appliedIcon && segMeters == appliedSeg && hudRoad == appliedRoad) {
+            if (icon == appliedIcon && segMeters == appliedSeg && hudRoad == appliedRoad && writeSurface == appliedWriteSurface) {
                 return OutputSubmission.ACCEPTED
             }
         }
+        // TÁCH nội dung/bề mặt: nội dung guidance LUÔN ghi (HUD kính); writeSurface=true (Cast OFF) mới dựng bề mặt
+        // cụm (SET_NAVI_SCREEN_STATUS). Đặt volatile TRƯỚC submit; delivery đọc nó cho lần ghi này.
+        realPushWriteSurface = writeSurface
         return worker.submit(guidanceFrame(icon, segMeters, hudRoad, routeSeconds = routeSeconds, routeMeters = routeMeters, arrivalClock = arrivalClock))
     }
 
@@ -253,7 +264,7 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
      * nav-screen mode. No-op nếu chưa hiện gì. ON-CAR: xác nhận có tránh được reboot (nếu OEM vẫn chỉ áp lúc
      * mở phiên thì đây là best-effort — xem handoff).
      */
-    fun reapply() {
+    fun reapply(writeSurface: Boolean = true) {
         val icon: Int
         val seg: Int
         val road: String
@@ -265,7 +276,8 @@ class NavigationHudOwner(private val appContext: Context) : AutoCloseable {
             appliedIcon = Int.MIN_VALUE                // bust dedup để push() bên dưới KHÔNG bị nuốt
         }
         worker.submit(clearFrame())                    // status=4 (end)
-        push(icon, if (seg < 0) -1 else seg, road)     // status=2 + mode mới
+        // Cast ON ⇒ writeSurface=false ⇒ chỉ re-assert NỘI DUNG, KHÔNG dựng lại bề mặt cụm (invariant tách 08-24, [P2] review).
+        push(icon, if (seg < 0) -1 else seg, road, writeSurface = writeSurface)     // status=2 + mode mới (chỉ khi writeSurface)
     }
 
     private fun clearFrame(): NavigationFrame = NavigationFrame(

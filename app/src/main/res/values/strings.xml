@@ -13,7 +13,7 @@
     <string name="perm_open">Mở cài đặt Notification Access</string>
 
     <string name="status_off">Đã tắt — gạt công tắc để bật</string>
-    <string name="status_need_perm">Cần cấp quyền notification trước</string>
+    <string name="status_need_perm">Cần quyền truy cập thông báo để đọc dẫn đường</string>
     <string name="status_waiting">Đang chờ — mở Google Maps để dẫn đường</string>
 
     <string name="sec_source">Nguồn</string>

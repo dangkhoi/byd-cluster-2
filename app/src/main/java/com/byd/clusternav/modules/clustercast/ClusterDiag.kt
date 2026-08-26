@@ -1,6 +1,7 @@
 package com.byd.clusternav.modules.clustercast
 
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellRetry
 import android.content.Context
 import com.byd.clusternav.AdbKeys
 
@@ -53,7 +54,7 @@ object ClusterDiag {
         val summary = StringBuilder()
         sb.append("=== ClusterNav diag $stamp ===\npkg=$pkg\n")
         runCatching {
-            LocalDeviceShell.session(AdbKeys.ensure(app)) { shell ->
+            LocalDeviceShell.session(AdbKeys.ensure(app), LocalShellRetry.BACKGROUND_READ_CAP) { shell ->
                 fun sh(c: String): String {
                     val r = shell(c)
                     return (r.output + (if (r.errorOutput.isNotBlank()) "\n[stderr] ${r.errorOutput}" else "")).trim()

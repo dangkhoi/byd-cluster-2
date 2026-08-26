@@ -267,6 +267,62 @@ class LocalShellApprovalRetryTest {
         assertTrue(recorder.events.none { it == "handshake" }, "KHÔNG bắt tay sớm ở đường cũ")
     }
 
+    /**
+     * F6 — đường NỀN (boot autostart / nav-connect / diag) chạy KHÔNG có owner đứng nhìn. Trước 2026-08-25
+     * chúng dùng [LocalShellRetry.NONE] = đọc vô hạn ⇒ adbd im lặng chờ "Cho phép gỡ lỗi USB" thì phiên
+     * TREO VĨNH VIỄN (nặng nhất: `VietMapAutostart.runNow` chạy ĐỒNG BỘ trong FGS boot ⇒ tiến trình treo
+     * sau mỗi lần nổ máy). [LocalShellRetry.BACKGROUND_READ_CAP] cắt treo bằng hạn đọc 30 s mà KHÔNG thử lại.
+     */
+    @Test
+    fun `F6 duong nen — han doc 30s cat treo, khong thu lai, khong phat lai lenh`(@TempDir dir: File) {
+        val recorder = Recorder()
+        // adbd im lặng mãi (hộp thoại cấp quyền treo) ở MỌI lần mở.
+        val result = runVoiceKeyPath(dir, recorder, List(5) { awaitingApproval() }, LocalShellRetry.BACKGROUND_READ_CAP)
+
+        val failed = result as LocalShellResult.Failed
+        assertEquals(LocalShellFailure.AWAITING_APPROVAL, failed.reason, "phân loại được là đang chờ cấp quyền")
+        assertEquals(1, failed.attempts, "đường nền KHÔNG thử lại — chỉ cắt treo rồi trả hỏng")
+        assertEquals(
+            listOf(30_000),
+            recorder.socketTimeouts,
+            "PHẢI đặt hạn đọc 30 s: đây là thứ DUY NHẤT biến treo-vĩnh-viễn thành lỗi phân loại được",
+        )
+        assertTrue(recorder.slept.isEmpty(), "không ngủ chờ (không owner nào đứng nhìn)")
+        assertTrue(recorder.progress.isEmpty(), "không toast 'đang chờ' cho đường nền")
+        assertFalse(failed.commandDispatched, "treo ở mở/bắt tay ⇒ chưa lệnh nào tới xe")
+    }
+
+    /**
+     * BACKGROUND_READ_CAP phải GIỐNG [LocalShellRetry.NONE] ở mọi mặt TRỪ hạn đọc — nếu ai lỡ thêm retry /
+     * eager-handshake vào nó thì đường nền sẽ tự phát lại lệnh (điều F2 cấm) hoặc đổi thứ tự bắt tay.
+     */
+    @Test
+    fun `F6 BACKGROUND_READ_CAP chi khac NONE o han doc`() {
+        val cap = LocalShellRetry.BACKGROUND_READ_CAP
+        assertEquals(30_000, cap.socketTimeoutMs, "hạn đọc 30 s (đầu cao 20-30 s ở backlog F6)")
+        assertEquals(1, cap.attempts, "1 lần thử như NONE — cắt treo, KHÔNG thử lại")
+        assertTrue(cap.retryOn.isEmpty(), "không loại hỏng nào đáng thử lại ở đường nền")
+        assertFalse(cap.eagerHandshake, "nối LƯỜI như đường cũ — không đổi thứ tự bắt tay")
+        assertEquals(0L, cap.firstBackoffMs, "không giãn cách vì không thử lại")
+    }
+
+    /** Phiên nền chạy trơn vẫn phải xong bình thường, chỉ khác là mở với hạn đọc 30 s thay vì vô hạn. */
+    @Test
+    fun `F6 duong nen chay tron — xong binh thuong voi han doc 30s`(@TempDir dir: File) {
+        val recorder = Recorder()
+        val result = runVoiceKeyPath(
+            dir,
+            recorder,
+            failures = listOf(null),
+            retry = LocalShellRetry.BACKGROUND_READ_CAP,
+        )
+
+        assertEquals(LocalShellResult.Ok(true, attempts = 1), result, "mở được thì chạy lệnh xong ngay")
+        assertEquals(listOf(30_000), recorder.socketTimeouts, "vẫn mở với hạn đọc 30 s")
+        assertTrue(recorder.events.none { it == "handshake" }, "nối lười — KHÔNG bắt tay sớm (như NONE)")
+        assertEquals(1, recorder.events.count { it == "shell:$voiceAssistCommand" }, "lệnh gửi đúng 1 lần")
+    }
+
     @Test
     fun `chinh sach cho-cap-quyen dat han doc khac 0 — neu khong vong cho khong bao gio chay toi`() {
         val policy = LocalShellRetry.AWAIT_ADB_APPROVAL

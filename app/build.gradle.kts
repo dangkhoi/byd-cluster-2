@@ -41,8 +41,8 @@ android {
         applicationId = "com.byd.clusternav2"
         minSdk = 29
         targetSdk = 37
-        versionCode = 16
-        versionName = "1.15"
+        versionCode = 28
+        versionName = "1.27"
     }
 
     buildFeatures {

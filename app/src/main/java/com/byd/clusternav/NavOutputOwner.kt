@@ -7,6 +7,7 @@ import com.byd.clusternav.modules.hal.BydHal
 import com.byd.clusternav.navigation.NavViewIdSource
 import com.byd.clusternav.navigation.HudKeepAlivePolicy
 import com.byd.clusternav.navigation.LaneInfo
+import com.byd.clusternav.navigation.Maneuver
 import com.byd.clusternav.navigation.NavContentBuilder
 import com.byd.clusternav.navigation.NavOutputDecision
 import com.byd.clusternav.navigation.NavOutputPlan
@@ -201,6 +202,14 @@ class NavOutputOwner internal constructor(
     private var lastIngestPkg: String? = null
     private var lastIngestContent: NavigationFrameContent? = null
 
+    // KEEP-ALIVE a11y (F4b — fix "VietMap/Waze dark for many stretches"): HƯỚNG-LẦN-CUỐI + cự-ly hiện lần
+    // cuối của khung ĐANG giữ. Khi mũi tên glyph tạm hết tươi (>STALE_MS) mà a11y (cự-ly/đường) CÒN tươi
+    // cùng gói → [tryKeepAlive] giữ khung sống bằng hai giá trị này thay vì tắt đen. Cập nhật trong nhánh
+    // pushArrow (nguồn sự thật là glyph vừa phân loại), reset ở [issueClear]. Chặn cự-ly-giảm-đơn-điệu ở
+    // [tryKeepAlive] ⇒ KHÔNG bao giờ hiện hướng cũ cho một khúc rẽ MỚI (im lặng > sai hướng).
+    private var lastManeuver: Maneuver? = null
+    private var lastShownSeg: Int = -1
+
     /** Bật keep-alive: nhịp [intervalMs] gọi [tick]. Idempotent. Vòng đời do T6 gọi. */
     fun start() {
         synchronized(lifecycleLock) {
@@ -262,6 +271,7 @@ class NavOutputOwner internal constructor(
             camera = cameraS.stateAt(now, stale),
         )
         noteIdentity(plan, arrowS?.pkg, laneS?.pkg, cameraS?.pkg)
+        releaseStaleOwnerIfChanged(plan)
         if (plan.anyPush) {
             // BỀ MẶT TRƯỚC NỘI DUNG (08-23 vòng 3 — [P1], xem KDoc [assertNavSurface]): op 39 dựng lớp nav OEM
             // giữa cụm; không có nó thì mọi push* dưới đây ghi vào một bề mặt chưa được bật.
@@ -284,6 +294,15 @@ class NavOutputOwner internal constructor(
                 val seg = plausibleSegOrUnknown(reading)
                 val content = NavContentBuilder.fromImage(pkg, arrowS, reading, seg)
                 if (content != null) {
+                    // F4b keep-alive: ghi nhận HƯỚNG + cự-ly hiện lần cuối (kể cả khi dedup) để [tryKeepAlive]
+                    // giữ khung sống khi mũi tên glyph tạm hết tươi mà a11y còn tươi. `content.maneuver` non-null
+                    // khi fromImage trả khung (nó return null nếu không suy được hướng).
+                    synchronized(stateLock) {
+                        content.maneuver?.let { lastManeuver = it }
+                        // lastShownSeg = cự-ly THÔ của khúc rẽ (danh tính "cùng khúc rẽ" cho cổng đơn-điệu
+                        // keep-alive), KHÔNG phải seg đã-guard — cả hai nhánh track cùng đại lượng.
+                        reading?.turnMeters?.takeIf { it >= 0 }?.let { lastShownSeg = it }
+                    }
                     if (NavLog.verbose) {
                         log("ingest khung ảnh $pkg maneuver=${content.maneuver} seg=${if (seg >= 0) "${seg}m" else "—"}")
                     }
@@ -319,12 +338,113 @@ class NavOutputOwner internal constructor(
                 if (!active) { active = true; log("nav output ACTIVE khung=${plan.framePkg} decided(arrow=${plan.pushArrow} lane=${plan.pushLane} camera=${plan.pushCamera}) sink=$pushed") }
             }
         } else if (plan.clear) {
-            issueClear()
+            // F4b: mũi tên glyph hết tươi KHÔNG còn tự động tắt đen. Nếu a11y (cự-ly/đường) CÒN tươi cùng
+            // gói đang giữ khung ⇒ [tryKeepAlive] giữ phiên sống bằng HƯỚNG-LẦN-CUỐI (đã chặn cự-ly-giảm-
+            // đơn-điệu). Không đủ điều kiện (a11y cũng stale / khúc rẽ mới / chưa từng có hướng) ⇒ nhả phiên.
+            if (!tryKeepAlive(now)) issueClear()
         }
     }
 
     /** Convenience: tick theo đồng hồ hiện tại (T6 có thể gọi mỗi lần nguồn publish tín hiệu mới). */
     fun publish() = tick(clock())
+
+    /**
+     * KEEP-ALIVE a11y (F4b) — mũi tên glyph HẾT TƯƠI nhưng a11y (cự-ly/đường) CÒN TƯƠI cùng gói đang giữ
+     * khung ⇒ giữ phiên bằng HƯỚNG-LẦN-CUỐI + cự-ly/đường a11y tươi, THAY VÌ nhả phiên (tắt đen).
+     *
+     * true  = đã đưa khung keep-alive vào phễu (caller KHÔNG clear).
+     * false = KHÔNG đủ điều kiện ⇒ caller [issueClear] như cũ.
+     *
+     * BA CỔNG (đủ cả ba mới giữ):
+     *  1. Có [activeFramePkg] + [lastManeuver] — tức đã từng hiện một khung có hướng cho gói này.
+     *  2. `NavViewIdSource.freshReadingFor(pkg, now)` != null — a11y CÒN đọc được cự-ly/đường (app đang dẫn).
+     *  3. **BASELINE + CỰ-LY-GIẢM-ĐƠN-ĐIỆU**: đã từng HIỆN một cự-ly hợp lệ ([lastShownSeg] >= 0) VÀ
+     *     `reading.turnMeters <= lastShownSeg`. Chưa có baseline (lastShownSeg < 0) ⇒ KHÔNG có mốc để chứng
+     *     minh "cùng khúc rẽ" ⇒ im lặng. Cự-ly TĂNG = đã qua khúc rẽ → khúc rẽ MỚI, hướng CHƯA xác nhận ⇒
+     *     im lặng. ĐÂY là cổng an toàn 'im lặng > sai hướng': ta chỉ giữ hướng của MỘT khúc rẽ đã được glyph
+     *     phân loại VÀ đã có cự-ly xác nhận, TRONG lúc tiến tới nó; TUYỆT ĐỐI không mang hướng cũ sang khúc
+     *     rẽ mới, và không đoán hướng khi chưa từng chốt được cự-ly cho khúc rẽ đó.
+     *
+     * Degrade-safe: ingest bọc runCatching; hỏng ⇒ false ⇒ clear.
+     */
+    private fun tryKeepAlive(now: Long): Boolean {
+        val snap = synchronized(stateLock) { Triple(activeFramePkg, lastManeuver, lastShownSeg) }
+        val pkg = snap.first ?: return false
+        val man = snap.second ?: return false
+        val lastSeg = snap.third
+        val reading = NavViewIdSource.freshReadingFor(pkg, now) ?: return false
+        // AN TOÀN 'im lặng > sai hướng' (senior review 2026-08-24, [P1]): CHỈ giữ khung khi
+        //  (1) CÓ baseline cự-ly hợp lệ đã từng HIỆN (lastSeg >= 0), VÀ
+        //  (2) cự-ly a11y KHÔNG TĂNG so với baseline đó (turnMeters <= lastSeg) = đang tiến tới CÙNG khúc rẽ
+        //      đã được glyph phân loại.
+        // Thiếu baseline (lastSeg < 0: chưa mẫu cự-ly nào qua guard — warmup dở / a11y vắng lúc mũi tên tươi)
+        // ⇒ KHÔNG có mốc để chứng minh "cùng khúc rẽ" ⇒ im lặng, KHÔNG đoán hướng cho một cự-ly có thể thuộc
+        // khúc rẽ MỚI. Cự-ly TĂNG = đã qua khúc rẽ → khúc MỚI (hướng chưa xác nhận) ⇒ im lặng.
+        if (lastSeg < 0 || reading.turnMeters > lastSeg) return false
+        // F4b-fix (số nhảy on-car 2026-08-25): cự-ly hiển thị đi qua CÙNG guard TurnDistancePlausibility với
+        // đường thường (`plausibleSegOrUnknown`), KHÔNG hiện cự-ly a11y THÔ nữa. Trước đó keep-alive bỏ qua
+        // guard ⇒ khi glyph chập chờn, số xen kẽ giữa đường-có-guard và keep-alive-thô ⇒ nhảy (100-50-80-100).
+        // Guard cũng được gọi ở nhánh này ⇒ state (anchor/streak) KHÔNG lệch trong lúc keep-alive. Guard từ
+        // chối/warmup ⇒ seg=-1 ⇒ blank ô cự-ly (vẫn giữ mũi tên) — im lặng > số nhảy.
+        val seg = plausibleSegOrUnknown(reading)
+        val content = NavContentBuilder.fromKeepAlive(pkg, man, reading, seg)
+        if (!alreadyIngested(pkg, content)) {
+            val ok = runCatching { ingest(pkg, content) }
+                .onFailure { log("keep-alive ingest failed: ${it.message}") }
+                .isSuccess
+            if (!ok) return false
+            noteIngested(pkg, content)
+        }
+        synchronized(stateLock) {
+            hasFrame = true
+            activeFramePkg = pkg
+            lastShownSeg = reading.turnMeters   // cổng đơn-điệu track cự-ly THÔ (danh tính khúc rẽ), không phải seg đã-guard
+        }
+        if (NavLog.verbose) log("nav keep-alive a11y $pkg maneuver=$man seg=${if (seg >= 0) "${seg}m" else "—(guard)"} raw=${reading.turnMeters}m")
+        return true
+    }
+
+    /**
+     * B3.56 — NHẢ PHIÊN CHỦ CŨ khi khung ĐỔI CHỦ (fix "mũi tên kẹt sai hướng").
+     *
+     * BỆNH [ĐO từ source]: mũi tên app A (Waze) HẾT TƯƠI nhưng LÀN app B (VietMap) CÒN TƯƠI ⇒ `plan.framePkg`
+     * = B (rơi bậc ARROW>LANE>CAMERA), nhánh `anyPush` chạy (push làn B), KHÔNG vào nhánh `clear` ⇒
+     * [issueClear]/[stopSession] không chạy ⇒ phiên A còn sống ở [NavigationHudOwner], mà owner đó có
+     * keep-alive riêng (250 ms, trần 180 s) RE-ASSERT khung cuối của A ⇒ **mũi tên A nằm cạnh làn B tới 3
+     * phút = chỉ SAI HƯỚNG** (backlog B3.56 / PROBE-C).
+     *
+     * VÁ: phiên HUD đang giữ ([lastIngestPkg] = gói vừa ĐƯA MŨI TÊN vào phễu) khác gói làm chủ khung bây giờ
+     * ([framePkg]) ⇒ nhả phiên gói cũ qua [stopSession] (`stopIfSource` chỉ dừng nếu đúng nó đang là nguồn) ⇒
+     * [NavigationHudOwner] thôi re-assert mũi tên A. Làn B ghi register RIÊNG (`pushLane`) ⇒ KHÔNG bị đụng.
+     *
+     * TỰ CHỐNG NHÁY (không cần debounce): `framePkg` rơi bậc ARROW trước, nên `held != framePkg` CHỈ đúng khi
+     * mũi tên của `held` đã KHÔNG còn tươi (còn tươi thì `framePkg` = held ⇒ không nhả). ⇒ không đụng ca
+     * một-nguồn; mũi tên A dao động thì tick-tươi giữ (framePkg=A), tick-stale mới nhả — đúng "A tắt mũi tên
+     * thì gỡ mũi tên A". Bắn ĐÚNG MỘT LẦN: [lastIngestPkg] xoá ngay sau nhả (tick sau `held`=null ⇒ không lặp).
+     * Chỉ dùng [lastIngestPkg] (nguồn ĐÃ ingest mũi tên = thứ tạo khung HUD), KHÔNG dùng activeFramePkg (gồm cả
+     * làn-only, mà làn-only không tạo mũi tên HUD nên không có bệnh này).
+     */
+    private fun releaseStaleOwnerIfChanged(plan: NavOutputPlan) {
+        val framePkg = plan.framePkg ?: return
+        // CHỈ nhả khi khung MỚI KHÔNG mang mũi tên tươi (pushArrow=false) ⇒ sẽ KHÔNG ingest ⇒ mũi tên của
+        // chủ cũ nằm lại. Nếu khung mới CÓ mũi tên (pushArrow=true, ca arrow-handoff Waze→VietMap), [tick]
+        // ingest gói mới NGAY nhịp này ⇒ phễu tự chuyển phiên, nhả thêm là THỪA (khoá bởi test
+        // `doi danh tinh giua chung -- van co khung moi, khong nha thua`).
+        if (plan.pushArrow) return
+        val held = synchronized(stateLock) {
+            val h = lastIngestPkg
+            if (h != null && h != framePkg) {
+                lastIngestPkg = null
+                lastIngestContent = null
+                if (activeFramePkg == h) activeFramePkg = null
+            }
+            h
+        }
+        if (held != null && held != framePkg) {
+            log("nav output STALE-OWNER: HUD giu '$held' ma khung nay cua '$framePkg' (khong mui ten) -> nha phien '$held' (B3.56)")
+            runCatching { stopSession(held) }.onFailure { log("stale-owner stop failed: ${it.message}") }
+        }
+    }
 
     /**
      * Nhả khung ĐÚNG một lần — no-op nếu chưa hiện gì (chống nhả lặp mỗi tick stale).
@@ -348,6 +468,8 @@ class NavOutputOwner internal constructor(
             lastDropSig = null
             lastIngestPkg = null
             lastIngestContent = null
+            lastManeuver = null
+            lastShownSeg = -1
             if (active) { active = false; log("nav output CLEAR (all channels stale)") }
             w to p
         }

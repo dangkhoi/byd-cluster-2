@@ -428,4 +428,34 @@ class SourceArbiterAllowsTest {
         assertTrue(SourceArbiter.shouldFeed(VIETMAP, NavSourceMode.AUTO, late))
         assertEquals(VIETMAP, SourceArbiter.activeSource)
     }
+
+    /**
+     * KHOÁ B3.50 — LỆCH ĐỒNG HỒ ở AUTO. Holder chiếm khoá tại mốc lớn; NTP/GPS kéo đồng hồ nhảy LÙI ⇒
+     * `now < activeSeen` ⇒ hiệu ÂM. Biểu thức cũ `now - activeSeen > STALE_MS` = false ⇒ khoá-giữ KHÔNG bao
+     * giờ hết hạn = **khoá cứng vào một nguồn đã chết** cho tới khi đồng hồ đuổi kịp (có thể hàng phút/giờ).
+     * Nay mốc ở tương lai ⇒ coi STALE ⇒ ứng viên khác lên được; và [SourceArbiter.isFresh] cũng phải báo
+     * đúng là KHÔNG tươi.
+     *
+     * ⚠ KHÔNG nới forward-clock: test `AUTO KHONG doi hanh vi …` ngay trên vẫn khoá y nguyên hành vi khi
+     * đồng hồ tiến (holder giữ khoá tới khi im quá STALE). Guard chỉ đổi đúng ca hiệu âm.
+     */
+    @Test
+    fun `B3_50 - AUTO dong ho nhay lui KHONG khoa cung vao nguon da chet`() {
+        val holderAt = 200_000_000L
+        assertTrue(SourceArbiter.shouldFeed(GMAPS, NavSourceMode.AUTO, holderAt))   // GMaps giữ, activeSeen=holderAt
+        assertEquals(GMAPS, SourceArbiter.activeSource)
+
+        val now = holderAt - 10_000L   // đồng hồ nhảy lùi 10 s ⇒ now < activeSeen ⇒ hiệu âm
+        assertTrue(
+            SourceArbiter.allows(VIETMAP, NavSourceMode.AUTO, now),
+            "mốc holder ở TƯƠNG LAI (đồng hồ lùi) ⇒ coi STALE ⇒ ứng viên khác được lên, không khoá cứng",
+        )
+        assertFalse(
+            SourceArbiter.isFresh(now),
+            "nguồn giữ với mốc tương lai KHÔNG còn là 'tươi' (UI không báo nhầm)",
+        )
+        // Và ứng viên nuôi được khung thật ⇒ tiếp quản khoá bình thường.
+        assertTrue(SourceArbiter.shouldFeed(VIETMAP, NavSourceMode.AUTO, now))
+        assertEquals(VIETMAP, SourceArbiter.activeSource)
+    }
 }

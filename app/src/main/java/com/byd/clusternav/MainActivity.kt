@@ -21,6 +21,7 @@ import com.byd.clusternav.navigation.NavigationFreshness
 import com.byd.clusternav.navigation.NavigationOutputStatus
 import com.byd.clusternav.navigation.NavigationOutputTarget
 import com.byd.clusternav.navigation.NavigationPermission
+import com.byd.clusternav.navigation.NavReadChannel
 import com.byd.clusternav.navigation.NavSourceLabels
 import com.byd.clusternav.navigation.SpeedSignOutput
 
@@ -370,7 +371,16 @@ class MainActivity : Activity() {
         val navigation = NavRepository.snapshot(applicationContext)
         val source = navigation.source
         val sourceText = when (val freshness = source.freshness) {
-            is NavigationFreshness.Fresh -> source.identity?.displayName ?: source.identity?.packageName ?: Lang.t("Đang dẫn đường", "Navigating")
+            // B3.57 — SOURCE-AWARE: đặt tên thương hiệu + KÊNH ĐỌC (GMaps = thông báo; VietMap/Waze = đọc màn
+            // hình) thay cho package thô. Nhãn + kênh là logic THUẦN ở :core ([NavSourceLabels], test off-car);
+            // ở đây chỉ dịch enum kênh sang câu cho người dùng.
+            is NavigationFreshness.Fresh -> {
+                val pkg = source.identity?.packageName
+                val brand = source.identity?.displayName
+                    ?: NavSourceLabels.sourceLabel(pkg).ifEmpty { Lang.t("Đang dẫn đường", "Navigating") }
+                val channel = NavSourceLabels.readChannel(pkg).readable()
+                if (channel.isEmpty()) brand else "$brand · $channel"
+            }
             is NavigationFreshness.Stale -> Lang.t("Nguồn đã cũ", "Source stale") + " · ${freshness.reason.readable()}"
             is NavigationFreshness.Unknown -> when (permission) {
                 NavigationPermission.MISSING -> getString(R.string.status_need_perm)
@@ -392,8 +402,12 @@ class MainActivity : Activity() {
             Lang.t("Đang dẫn: —", "Active: —")
         } else {
             val label = NavSourceLabels.sourceLabel(activePkg)
+            // B3.57 — kèm KÊNH ĐỌC (đọc màn hình / thông báo) để dòng "đang dẫn" phản ánh đúng nguồn ảnh/a11y.
+            val channel = NavSourceLabels.readChannel(activePkg).readable()
             val stale = !com.byd.clusternav.navigation.SourceArbiter.isFresh(nowWall)
-            Lang.t("Đang dẫn: ", "Active: ") + label + if (stale) Lang.t(" (cũ)", " (stale)") else ""
+            Lang.t("Đang dẫn: ", "Active: ") + label +
+                (if (channel.isNotEmpty()) " ($channel)" else "") +
+                if (stale) Lang.t(" (cũ)", " (stale)") else ""
         }
         navClusterStatus.refresh()
         updateVoiceKeyLabel()
@@ -427,14 +441,28 @@ class MainActivity : Activity() {
      * người dùng. `when` vét cạn nên thêm giá trị mới là trình dịch bắt ngay, không lặng lẽ rơi về tên thô.
      */
     private fun NavigationSourceReason.readable(): String = when (this) {
-        NavigationSourceReason.PERMISSION_UNKNOWN -> Lang.t("Chưa rõ quyền notification", "Notification permission unknown")
-        NavigationSourceReason.PERMISSION_MISSING -> Lang.t("Cần cấp quyền notification", "Notification permission required")
+        // B3.57 — "quyền truy cập thông báo" là GRANT app cần để kết nối phễu đọc dẫn đường; NÓ gate cả đường
+        // notification (GMaps) LẪN đường ảnh/a11y (VietMap/Waze qua `ingestContent`). Viết là "để đọc dẫn
+        // đường" thay vì ngầm định notification là NGUỒN dữ liệu duy nhất (VietMap/Waze đọc màn hình).
+        NavigationSourceReason.PERMISSION_UNKNOWN -> Lang.t("Chưa rõ quyền truy cập thông báo", "Notification access unknown")
+        NavigationSourceReason.PERMISSION_MISSING -> Lang.t("Cần quyền truy cập thông báo để đọc dẫn đường", "Grant notification access to read navigation")
         NavigationSourceReason.NO_ACTIVE_SESSION -> Lang.t("Chưa có phiên dẫn đường", "No active navigation session")
         NavigationSourceReason.WAITING_FOR_FRAME -> Lang.t("Đang chờ dữ liệu đầu tiên", "Waiting for first data frame")
         NavigationSourceReason.PROCESS_REHYDRATED_UNVERIFIED -> Lang.t("App vừa khởi động lại, chưa xác nhận nguồn", "App just restarted, source unverified")
         NavigationSourceReason.FRAME_EXPIRED -> Lang.t("Dữ liệu quá hạn", "Data expired")
         NavigationSourceReason.SOURCE_DISCONNECTED -> Lang.t("Mất kết nối với app dẫn đường", "Navigation app disconnected")
         NavigationSourceReason.SOURCE_CHANGED -> Lang.t("Nguồn dẫn đường vừa đổi", "Navigation source changed")
+    }
+
+    /**
+     * B3.57 — KÊNH ĐỌC của nguồn, viết cho người dùng. Nói rõ nguồn đang dẫn được đọc bằng THÔNG BÁO (GMaps)
+     * hay ĐỌC MÀN HÌNH (VietMap/Waze qua a11y + chụp), để dòng trạng thái không còn ngầm định notification là
+     * đường duy nhất. Phân loại thuần ở :core ([NavSourceLabels.readChannel]); [NavReadChannel.UNKNOWN] → "".
+     */
+    private fun NavReadChannel.readable(): String = when (this) {
+        NavReadChannel.NOTIFICATION -> Lang.t("thông báo", "notification")
+        NavReadChannel.SCREEN_READ -> Lang.t("đọc màn hình", "screen-read")
+        NavReadChannel.UNKNOWN -> ""
     }
 
     /** Lý do đầu ra lỗi, viết cho người đọc — cùng lý do như trên. */
@@ -803,8 +831,31 @@ class MainActivity : Activity() {
 
         rebuildVoiceKeyBindingList()
 
+        // F4e (bug owner 08-25): hold-mic → Gemini KHÔNG work lúc mở app, phải xoá+add lại mới chạy. Vì đích
+        // Gemini đi `keyevent 231` (route tới TRỢ LÝ HỆ THỐNG) nên cần `setSystemAssistant` chạy TRƯỚC — mà
+        // từ F3, recipe đó CHỈ chạy ở nút "Thêm". Mở app / sau reboot (ROM đặt lại trợ lý về 小迪) thì trợ lý
+        // chưa phải Gemini ⇒ 231 route sai. (Kiki mở app THẲNG nên không dính — owner đo: Kiki OK ngay.)
+        maybeReapplyGeminiAssistant()
+
         // Cầu học-phím: service bắt keycode → hiện dialog đặt tên (Activity foreground).
         com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus.setListener { code -> runOnUiThread { showLearnNameDialog(code) } }
+    }
+
+    /**
+     * F4e — đặt lại **trợ lý hệ thống = Google/Gemini** lúc mở app NẾU có ít nhất một binding trỏ Gemini
+     * (sentinel 231 / bard / GSA). Để hold-mic → Gemini work NGAY, không phải xoá+add lại (recipe của nút
+     * "Thêm" chỉ chạy khi cấu hình ĐỔI). Giống accessibility-booster self-grant (v1.18): idempotent, chạy
+     * NỀN (dadb ~1-2s, degrade-safe), CHỈ khi thật sự có binding Gemini (owner chỉ dùng Kiki thì không đụng).
+     */
+    private fun maybeReapplyGeminiAssistant() {
+        if (!com.byd.clusternav.modules.voicekey.AssistantLauncher.hasGeminiBinding(this)) return
+        Thread {
+            // App-open: owner đang nhìn màn hình ⇒ setSystemAssistant dùng retry mặc định AWAIT_ADB_APPROVAL.
+            val err = runCatching {
+                com.byd.clusternav.modules.voicekey.AssistantLauncher.setSystemAssistant(this@MainActivity)
+            }.getOrElse { "" }
+            if (err.isNotEmpty()) android.util.Log.w("MainActivity", "re-apply Gemini assistant lúc mở app: $err")
+        }.start()
     }
 
     private fun tryStartActivity(intent: Intent): Boolean =

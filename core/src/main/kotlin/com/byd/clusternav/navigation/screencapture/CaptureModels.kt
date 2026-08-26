@@ -26,6 +26,27 @@ enum class CaptureCase {
     NOT_ACTIVE,
 }
 
+/**
+ * Màn hình VẬT LÝ mà một [CaptureCase] phải CHỤP (B3.58). THUẦN (off-car testable) — lớp `:app` map giá trị
+ * này sang display id chụp thật của transport (MAIN → `fission_screencap -d1`; CLUSTER → `-d0`; OFFSCREEN →
+ * MediaProjection scaffold), giữ chi tiết fission (đảo so với Android, proven on-car) ở đúng lớp transport.
+ */
+enum class CaptureDisplayTarget { MAIN, CLUSTER, OFFSCREEN }
+
+/**
+ * QUYẾT ĐỊNH THUẦN: một [CaptureCase] chụp màn nào (B3.58 — "VietMap cast lên CỤM thì HUD không có gì").
+ *
+ * Điểm cốt lõi cần khoá off-car: **[CaptureCase.CLUSTER_CAST] phải chụp [CaptureDisplayTarget.CLUSTER]**,
+ * KHÔNG phải màn chính — nếu không, khi app dẫn được chiếu sang cụm thì transport chụp nhầm display 0 (app
+ * khác đang hiện) ⇒ mũi tên/pixel dẫn đường không bao giờ tới. Việc chụp thật pixel của display phụ là
+ * PHỤ THUỘC XE (emulator không host/chụp được display phụ — B3.26); ở đây chỉ khoá logic CHỌN display.
+ */
+fun captureDisplayForCase(case: CaptureCase): CaptureDisplayTarget = when (case) {
+    CaptureCase.FULL_MAIN, CaptureCase.HALF_MAIN_SPLIT -> CaptureDisplayTarget.MAIN
+    CaptureCase.CLUSTER_CAST -> CaptureDisplayTarget.CLUSTER
+    CaptureCase.NOT_ACTIVE -> CaptureDisplayTarget.OFFSCREEN
+}
+
 /** Vùng cần crop trong nhận diện (arrow của Waze / icon camera của VietMap). Chọn theo package (§4.4). */
 enum class CaptureTarget {
     /** Mũi tên hướng rẽ (Waze/GMaps) → nuôi [com.byd.clusternav.navigation.ManeuverSignature]. */

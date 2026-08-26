@@ -49,6 +49,11 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         private const val UPCOMING_DIAG_FRAC = 0.70f     // B2: 45° offset per axis (× main size) — left + down
         private const val UPCOMING_CONTAINER_W_FRAC = 1.8f // window width (× main size) so the distance text never clips
         private const val UPCOMING_LABEL_FRAC = 0.42f    // distance label text size (× upcoming badge size)
+        // ── Road-alert / speed-camera chip (B3.20) ──
+        // A THIRD window: a horizontal pill (camera glyph + limit + distance) placed to the RIGHT of the main
+        // badge at its vertical centre — the upcoming badge is 45° lower-LEFT, so the two never overlap.
+        private const val ALERT_HEIGHT_FRAC = 0.52f      // chip height (× main badge size)
+        private const val ALERT_GAP_FRAC = 0.20f         // gap from the main badge's right edge (× main size)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -71,6 +76,15 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     private var lastUpcomingLimit: Int? = null
     private var lastUpcomingDist: Int? = null
     private var lastUpcomingText: String? = null
+    // ── Road-alert / speed-camera chip (B3.20): a THIRD window (AlertChipView) placed to the RIGHT of the main
+    // badge. ADDITIVE — never touches the main or upcoming windows — gated by master badge AND Prefs.showAlertChip
+    // (default OFF). Last values remembered for a fast re-attach (display 1 added / re-enabled).
+    private var alertChipView: AlertChipView? = null
+    private var alertAttached = false
+    private var lastAlertShow = false
+    private var lastAlertLimit = 0
+    private var lastAlertText: String? = null
+    private var lastAlertIcon = false
     // Real display-1 size in px for on-screen clamping (BadgeLayout.clampCenter). Falls back to the Seal
     // cluster 1920×720 when the real size can't be read, so placement math never divides by a bogus extent.
     private var clusterW = 1920
@@ -84,6 +98,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
                 // If a value is pending, re-show it now that display 1 is back (respects the enabled gate).
                 lastSpeedKph?.let { doShow(it, lastSignType) }
                 lastUpcomingLimit?.let { doSetUpcoming(it, lastUpcomingDist, lastUpcomingText) }
+                if (lastAlertShow) doSetAlert(lastAlertLimit, lastAlertText, lastAlertIcon)
             }
         }
 
@@ -160,6 +175,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
             } else {
                 lastSpeedKph?.let { doShow(it, lastSignType) }
                 lastUpcomingLimit?.let { doSetUpcoming(it, lastUpcomingDist, lastUpcomingText) }
+                if (lastAlertShow) doSetAlert(lastAlertLimit, lastAlertText, lastAlertIcon)
             }
         }
     }
@@ -183,6 +199,32 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
                 teardownUpcoming()
             } else {
                 lastUpcomingLimit?.let { doSetUpcoming(it, lastUpcomingDist, lastUpcomingText) }
+            }
+        }
+    }
+
+    /**
+     * Public API — set (or clear) the road-alert / speed-camera chip (B3.20) shown to the RIGHT of the main
+     * badge. [limitKph] ≤ 0 draws no limit circle; [distanceText] is the countdown ("300 m"); [hasIcon] draws
+     * the camera glyph. Passing show=false hides it. Posted to the main handler; degrade-safe.
+     */
+    fun setAlert(show: Boolean, limitKph: Int, distanceText: String?, hasIcon: Boolean) {
+        handler.post {
+            if (!show) { doClearAlert(); return@post }
+            doSetAlert(limitKph, distanceText, hasIcon)
+        }
+    }
+
+    /**
+     * Re-evaluate the alert-chip gate (master [Prefs.badgeEnabled] AND [Prefs.showAlertChip]) after the toggle
+     * changes: detach when off, or re-show the last value when on. Degrade-safe.
+     */
+    fun applyAlertChipEnabled() {
+        handler.post {
+            if (!Prefs.badgeEnabled(appContext) || !Prefs.showAlertChip(appContext)) {
+                teardownAlert()
+            } else if (lastAlertShow) {
+                doSetAlert(lastAlertLimit, lastAlertText, lastAlertIcon)
             }
         }
     }
@@ -264,6 +306,10 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
             runCatching { clusterWm?.updateViewLayout(upcomingContainer, buildUpcomingLayoutParams()) }
                 .onFailure { Log.w(TAG, "updateViewLayout(upcoming) failed: ${it.message}") }
         }
+        if (alertAttached) {
+            runCatching { clusterWm?.updateViewLayout(alertChipView, buildAlertLayoutParams()) }
+                .onFailure { Log.w(TAG, "updateViewLayout(alert) failed: ${it.message}") }
+        }
         if (!attached) return
         val view = badgeView ?: return
         runCatching { clusterWm?.updateViewLayout(view, buildLayoutParams()) }
@@ -282,6 +328,7 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
      */
     private fun teardown() {
         teardownUpcoming()
+        teardownAlert()
         val view = badgeView
         if (attached && view != null) {
             runCatching { clusterWm?.removeView(view) }
@@ -446,5 +493,87 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         upcomingContainer = null
         upcomingBadgeView = null
         upcomingDistLabel = null
+    }
+
+    // ─── Road-alert / speed-camera chip (B3.20) ────────────────────────────────────────────────────────
+    // A THIRD window on display 1 holding an [AlertChipView] (camera glyph + limit + distance), placed to the
+    // RIGHT of the main badge at its vertical centre (the upcoming badge is 45° lower-LEFT ⇒ no overlap).
+    // ADDITIVE, degrade-safe, gated by BOTH the master badge gate AND the "Hiện cảnh báo/camera" toggle
+    // (Prefs.showAlertChip, default OFF so it never disturbs the existing badge layout unless opted in).
+
+    private fun doSetAlert(limitKph: Int, distanceText: String?, hasIcon: Boolean) {
+        lastAlertShow = true
+        lastAlertLimit = limitKph
+        lastAlertText = distanceText
+        lastAlertIcon = hasIcon
+        if (!Prefs.badgeEnabled(appContext) || !Prefs.showAlertChip(appContext)) { teardownAlert(); return }
+        if (clusterWm == null) initOverlay()
+        val wm = clusterWm ?: return                 // still no display 1 (off-car) → cheap no-op
+        val ctx = badgeView?.context ?: return
+        val chip = ensureAlertChipView(ctx) ?: return
+        chip.limitKph = limitKph
+        chip.distanceText = distanceText?.trim().orEmpty()
+        chip.hasIcon = hasIcon
+        val lp = buildAlertLayoutParams()
+        if (!alertAttached) {
+            runCatching { wm.addView(chip, lp) }
+                .onFailure { Log.w(TAG, "addView(alert) failed (will retry next set): ${it.message}"); return }
+            alertAttached = true
+        } else {
+            runCatching { wm.updateViewLayout(chip, lp) }
+                .onFailure { Log.w(TAG, "updateViewLayout(alert) failed: ${it.message}") }
+        }
+        chip.visibility = View.VISIBLE
+    }
+
+    /** Nothing to show right now → cheap hide (keep the window for a fast re-show). */
+    private fun doClearAlert() {
+        lastAlertShow = false
+        if (alertAttached) alertChipView?.visibility = View.INVISIBLE
+    }
+
+    private fun ensureAlertChipView(ctx: Context): AlertChipView? {
+        alertChipView?.let { return it }
+        return runCatching { AlertChipView(ctx).also { alertChipView = it } }
+            .getOrElse { Log.w(TAG, "ensureAlertChipView failed: ${it.message}"); null }
+    }
+
+    /**
+     * Position the chip window to the RIGHT of the main badge's (clamped) centre, vertically centred on it.
+     * Height = [ALERT_HEIGHT_FRAC] × main size; width = the chip's measured content width (so text never
+     * clips). Left edge = main badge right edge + [ALERT_GAP_FRAC] gap.
+     */
+    private fun buildAlertLayoutParams(): WindowManager.LayoutParams {
+        val density = appContext.resources.displayMetrics.density
+        val mainSizePx = (Prefs.badgeSizeDp(appContext) * density).toInt().coerceAtLeast(1)
+        val chipH = (mainSizePx * ALERT_HEIGHT_FRAC).toInt().coerceAtLeast(1)
+        val chipW = (alertChipView?.contentWidthPx(chipH) ?: chipH).coerceAtLeast(chipH)
+        val (mcx, mcy) = BadgeLayout.clampCenter(
+            Prefs.badgeCenterX(appContext), Prefs.badgeCenterY(appContext), mainSizePx, clusterW, clusterH,
+        )
+        val gap = (mainSizePx * ALERT_GAP_FRAC).toInt()
+        return WindowManager.LayoutParams(
+            chipW, chipH,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = mcx + mainSizePx / 2 + gap
+            y = mcy - chipH / 2
+        }
+    }
+
+    /** Detach + drop the alert window/view so a fresh [ensureAlertChipView] rebuilds cleanly. */
+    private fun teardownAlert() {
+        val chip = alertChipView
+        if (alertAttached && chip != null) {
+            runCatching { clusterWm?.removeView(chip) }
+                .onFailure { Log.w(TAG, "removeView(alert) failed: ${it.message}") }
+        }
+        alertAttached = false
+        alertChipView = null
     }
 }

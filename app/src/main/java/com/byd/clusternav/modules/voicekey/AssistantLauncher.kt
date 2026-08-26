@@ -58,6 +58,15 @@ object AssistantLauncher {
      *  Gồm: sentinel 231, VÀ khi user lỡ chọn thẳng app Gemini/Google (mở home vô dụng cho voice-key). */
     fun isGeminiVoiceSpec(spec: String): Boolean = spec == TARGET_GEMINI_KEY || spec == PKG_BARD || spec == PKG_GSA
 
+    /**
+     * Có ít nhất MỘT binding phím trỏ Gemini không? Dùng để gate việc re-apply trợ lý hệ thống lúc mở app
+     * (`MainActivity`) và lúc boot (`BootSetupService`) — owner CHỈ dùng Kiki / app thường thì trả false ⇒
+     * KHÔNG đụng dadb. Đọc lỗi ⇒ false (degrade-safe, không đoán).
+     */
+    fun hasGeminiBinding(ctx: Context): Boolean = runCatching {
+        Prefs.voiceKeyBindings(ctx).any { isGeminiVoiceSpec(it.targetSpec) }
+    }.getOrDefault(false)
+
     /** @param spec package name của app, hoặc [TARGET_ASSIST]/[TARGET_RECOGNIZER]/[TARGET_GEMINI_KEY]. */
     fun launch(ctx: Context, spec: String): Boolean {
         // Gemini/Google chỉ có nghĩa dạng ASSISTANT (voice). Mở app home = vô dụng (bug 1.19). → route keyevent 231.
@@ -222,7 +231,7 @@ object AssistantLauncher {
      * 8hare BẮT BUỘC cả Google app (googlequicksearchbox) LẪN Gemini (bard) phải cài — thiếu 1 trong 2 thì recipe vô hiệu
      * (assist route tới GsaVoiceInteractionService không tồn tại). Có `Thread.sleep(300)` giữa clear+set voice_interaction_service.
      */
-    fun setSystemAssistant(ctx: Context): String {
+    fun setSystemAssistant(ctx: Context, retry: LocalShellRetry = LocalShellRetry.AWAIT_ADB_APPROVAL): String {
         val app = ctx.applicationContext
         val pm = app.packageManager
         val missing = listOf(PKG_GSA to "Google (googlequicksearchbox)", PKG_BARD to "Gemini (com.google.android.apps.bard)")
@@ -236,8 +245,9 @@ object AssistantLauncher {
             val keys = AdbKeys.ensure(app)
             val result = LocalDeviceShell.sessionResult(
                 keys,
-                // Owner vừa chọn trợ lý trong app ⇒ đang nhìn màn hình ⇒ chờ được hộp thoại cấp quyền (F2).
-                retry = LocalShellRetry.AWAIT_ADB_APPROVAL,
+                // App-open / chọn-trong-app: owner đang nhìn màn hình ⇒ AWAIT_ADB_APPROVAL (mặc định). Boot
+                // headless: owner KHÔNG ở màn hình ⇒ caller truyền NONE (một lần, không chờ ~31s — F6).
+                retry = retry,
                 onProgress = { attempt, reason, waitMs -> reportProgress(app, attempt, reason, waitMs) },
             ) { sh ->
                 sh("settings put secure assistant $GSA_ASSIST")

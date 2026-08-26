@@ -61,6 +61,17 @@ internal class BadgePlacementController(private val activity: Activity) {
             }
         }
 
+        // "Hiện cảnh báo/camera VietMap" toggle (B3.20, default OFF — opt-in, không phá bố trí badge). Same
+        // detach-before-restore pattern; null-tolerant so a layout variant missing the id can't crash onCreate.
+        activity.findViewById<Switch>(R.id.switch_alert_chip)?.apply {
+            setOnCheckedChangeListener(null)
+            isChecked = Prefs.showAlertChip(activity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setShowAlertChip(activity, checked)
+                NavigationSpeedSignOwner.get(activity.applicationContext).onAlertChipEnabledChanged()
+            }
+        }
+
         val placement = BadgePlacementView(activity, clusterW, clusterH) { cx, cy ->
             // Persist the dragged centre (re-clamped on the ACTUAL cluster) + apply the shared badge LIVE.
             val (ccx, ccy) = BadgeLayout.clampCenter(cx, cy, badgeSizePx(), clusterW, clusterH)

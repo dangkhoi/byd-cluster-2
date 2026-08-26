@@ -18,10 +18,12 @@ import org.junit.jupiter.api.Test
  * Vì sao đọc source thay vì gọi hàm: `AssistantLauncher` cần `Context` thật (`AdbKeys.ensure` → `filesDir`)
  * và `:app` không có Robolectric; cùng khuôn với [AccessibilityForceBindTest].
  *
- * ⚠ Bài học 08-24 (F1): gỡ `WazeHudSource` đã vô tình gỡ 3 dòng nó đang **gánh hộ**. Bốn `assertFalse` cuối
- * chính là chốt chặn cho lần sau — nếu ai đó tiện tay bật thử-lại cho toàn bộ `LocalDeviceShell` thì
- * `VietMapAutostart` (chạy trong `BootSetupService`, đồng bộ, giữ FGS sống) và `UpdateChecker` sẽ chậm đi
- * tới ~30 giây mà không ai nhận ra.
+ * ⚠ Bài học 08-24 (F1): gỡ `WazeHudSource` đã vô tình gỡ 3 dòng nó đang **gánh hộ**. Test `duong nen dung
+ * CHUP MU...` cuối chính là chốt chặn — các đường boot/FGS được phép nhận **chụp-mũ chống-treo**
+ * ([LocalShellRetry.BACKGROUND_READ_CAP], 1 lần thử + hạn đọc 30 s, thêm ở F6 2026-08-25) NHƯNG tuyệt đối
+ * KHÔNG được nhận chính sách **CHỜ+THỬ-LẠI** ([LocalShellRetry.AWAIT_ADB_APPROVAL], 4 lần ~31 s): không ai
+ * đứng nhìn lúc boot nên thử lại chỉ làm `VietMapAutostart` (`BootSetupService`, đồng bộ, giữ FGS sống)
+ * chậm ~31 s mà chẳng ai bấm "Cho phép". Cap ≠ retry — cap CẮT treo, retry KÉO DÀI boot.
  */
 class VoiceKeyAdbApprovalWiringTest {
 
@@ -138,25 +140,26 @@ class VoiceKeyAdbApprovalWiringTest {
     }
 
     @Test
-    fun `cac duong dung chung khac GIU NGUYEN hanh vi mot-lan-roi-thoi`() {
-        for (file in listOf("VietMapAutostart.kt", "UpdateChecker.kt", "NavConnect.kt")) {
+    fun `duong nen dung CHUP MU chong-treo (F6), KHONG duoc dung chinh sach CHO+THU-LAI`() {
+        // 4 đường NỀN của F6 (note: VietMapAutostart nặng nhất — chạy ĐỒNG BỘ trong FGS boot — rồi
+        // UpdateChecker/NavConnect/ClusterDiag). Nay CHỤP MŨ chống-treo: 1 lần thử + hạn đọc 30 s ⇒ adbd im
+        // lặng không treo VĨNH VIỄN. CAP ≠ RETRY.
+        for (file in listOf("VietMapAutostart.kt", "UpdateChecker.kt", "NavConnect.kt", "modules/clustercast/ClusterDiag.kt")) {
             val source = read(file)
-            assertFalse(
-                source.contains("LocalShellRetry"),
-                "$file KHÔNG được nhận chính sách chờ: nó chạy lúc khởi động máy / trong FGS boot",
+            assertTrue(
+                source.contains("LocalShellRetry.BACKGROUND_READ_CAP"),
+                "$file phải nhận chụp-mũ chống-treo (F6) — nó chạy lúc khởi động máy / trong FGS boot, treo vĩnh viễn là chết tiến trình",
             )
             assertFalse(
-                source.contains("sessionResult("),
-                "$file phải ở nguyên đường session() cũ (CẤM của F2)",
+                source.contains("AWAIT_ADB_APPROVAL"),
+                "$file KHÔNG được CHỜ+THỬ-LẠI (~31 s, 4 lần): không owner nào đứng nhìn lúc boot ⇒ thử lại chỉ làm chậm boot mà chẳng ai bấm 'Cho phép'",
             )
         }
+        // VietMapWidgetDiagActivity là đường DIAG owner-CHỦ-ĐỘNG (không boot/FGS) ⇒ để nguyên session() cũ:
+        // owner đứng đó tự thoát được, không cần chụp mũ. Nhưng cũng KHÔNG được nhận chính sách chờ+thử-lại.
         assertFalse(
-            read("vietmapwidget/VietMapWidgetDiagActivity.kt").contains("LocalShellRetry"),
-            "VietMapWidgetDiagActivity là đường CẤM thứ 5 của F2 — cũng phải ở nguyên session() cũ",
-        )
-        assertFalse(
-            read("modules/clustercast/ClusterDiag.kt").contains("LocalShellRetry"),
-            "ClusterDiag chạy hàng chục lệnh dài — hạn đọc 6 s sẽ cắt ngang dump",
+            read("vietmapwidget/VietMapWidgetDiagActivity.kt").contains("AWAIT_ADB_APPROVAL"),
+            "VietMapWidgetDiagActivity (diag owner-chủ-động) không được chờ+thử-lại",
         )
     }
 }

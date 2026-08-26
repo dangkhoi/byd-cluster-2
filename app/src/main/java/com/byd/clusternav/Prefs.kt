@@ -280,6 +280,11 @@ object Prefs {
     private const val K_SHOW_UPCOMING_BADGE = "show_upcoming_badge"
     fun showUpcomingBadge(ctx: Context): Boolean = sp(ctx).getBoolean(K_SHOW_UPCOMING_BADGE, true)
     fun setShowUpcomingBadge(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_SHOW_UPCOMING_BADGE, v).apply()
+    // B3.20 — road-alert / speed-camera chip toggle. Default OFF: it adds a THIRD element on the cluster, so it
+    // stays opt-in and never disturbs the owner's existing badge layout until turned on.
+    private const val K_SHOW_ALERT_CHIP = "show_alert_chip"
+    fun showAlertChip(ctx: Context): Boolean = sp(ctx).getBoolean(K_SHOW_ALERT_CHIP, false)
+    fun setShowAlertChip(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_SHOW_ALERT_CHIP, v).apply()
     // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
     private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"

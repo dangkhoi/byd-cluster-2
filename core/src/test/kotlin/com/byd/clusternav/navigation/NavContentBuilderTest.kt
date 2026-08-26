@@ -119,6 +119,44 @@ class NavContentBuilderTest {
         assertNull(c.routeRemainingMeters)
     }
 
+    // ── 1b. fromKeepAlive — hành vi (F4b keep-alive a11y) ────────────────────────────────────────────
+
+    @Test fun `fromKeepAlive - huong dua vao + a11y cung goi thi khung day du`() {
+        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.TURN_LEFT, reading(vietmap), 40)
+        assertEquals(Maneuver.TURN_LEFT, c.maneuver, "giữ HƯỚNG-LẦN-CUỐI được đưa vào")
+        assertEquals(2, c.maneuverCode, "maneuverCode = maneuver.toAmapIcon() (TURN_LEFT=2)")
+        assertEquals(40, c.distanceMeters)
+        assertEquals("Quang Trung", c.roadName)
+        assertEquals("18:21", c.arrivalClock)
+        assertEquals(900, c.routeRemainingSeconds)
+        assertEquals(5_200, c.routeRemainingMeters)
+        assertNull(c.maneuverText, "nguồn ảnh không có dòng lệnh rẽ")
+    }
+
+    /** Một-package-một-khung: đường/ETA của app KHÁC bị bỏ; cự-ly là tham số (caller đã đọc đúng gói) nên giữ. */
+    @Test fun `fromKeepAlive - mau a11y LECH goi thi bo duong+ETA, van giu huong`() {
+        val c = NavContentBuilder.fromKeepAlive(waze, Maneuver.TURN_RIGHT, reading(vietmap), 40)
+        assertEquals(Maneuver.TURN_RIGHT, c.maneuver)
+        assertEquals(3, c.maneuverCode)
+        assertEquals(40, c.distanceMeters, "cự-ly là tham số của caller (đã đọc đúng gói) — giữ")
+        assertNull(c.roadName, "đường của app KHÁC ⇒ bỏ")
+        assertNull(c.arrivalClock)
+        assertNull(c.routeRemainingMeters)
+    }
+
+    @Test fun `fromKeepAlive - khong co mau a11y thi chi con huong + cu-ly tham so`() {
+        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.STRAIGHT, null, 100)
+        assertEquals(Maneuver.STRAIGHT, c.maneuver)
+        assertEquals(100, c.distanceMeters)
+        assertNull(c.roadName)
+    }
+
+    @Test fun `fromKeepAlive - cu-ly am thi distanceMeters null, van giu duong`() {
+        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.TURN_LEFT, reading(vietmap), -1)
+        assertNull(c.distanceMeters)
+        assertEquals("Quang Trung", c.roadName, "cự-ly âm chỉ xoá ô cự-ly, KHÔNG xoá tên đường")
+    }
+
     // ── 2. fromNotification — hành vi tối thiểu (bảng vàng lo phần còn lại) ───────────────────────────
 
     @Test fun `fromNotification - khung GMaps dien hinh`() {

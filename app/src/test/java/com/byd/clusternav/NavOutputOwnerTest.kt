@@ -143,6 +143,45 @@ class NavOutputOwnerTest {
         assertEquals(Maneuver.TURN_RIGHT, funnel.last?.maneuver)
     }
 
+    /**
+     * B3.56 — mũi tên app A HẾT TƯƠI, LÀN app B CÒN TƯƠI ⇒ khung đổi chủ sang B ⇒ phải NHẢ PHIÊN A. Nếu
+     * không, [com.byd.clusternav.NavigationHudOwner] re-assert mũi tên A tới trần 180 s ⇒ mũi tên A kẹt cạnh
+     * làn B = chỉ SAI HƯỚNG. Nhả ĐÚNG MỘT LẦN; làn B (register riêng) không bị đụng.
+     */
+    @Test fun `B3_56 — khung doi chu thi nha phien chu cu, dung 1 lan`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        val info = LaneInfo(listOf(Lane(listOf(Maneuver.STRAIGHT), true)))
+        owner(sink, funnel).use { o ->
+            // A (Waze) đưa mũi tên vào phễu (tạo khung HUD).
+            ScreenCaptureSignal.publishArrow("com.waze", Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            o.tick(1_000L)
+            assertEquals("com.waze", funnel.lastPkg)
+            assertTrue(funnel.stopped.isEmpty(), "chưa đổi chủ thì chưa nhả")
+            // B (VietMap) publish LÀN tươi; mũi tên A giờ STALE (7s > STALE_MS 6s) ⇒ khung đổi chủ sang B.
+            ScreenCaptureSignal.publishLane("vn.vietmap.live", info, now = 8_000L)
+            o.tick(8_000L)
+            assertEquals(listOf("com.waze"), funnel.stopped, "khung đổi chủ ⇒ nhả phiên Waze để HUD thôi giữ mũi tên cũ")
+            assertTrue(sink.laneCount >= 1, "làn VietMap vẫn bắn (register riêng, không bị nhả-phiên đụng)")
+            // Tick nữa (làn B vẫn tươi): KHÔNG nhả lại (held đã xoá) — không spam stopSession mỗi tick.
+            o.tick(8_250L)
+            assertEquals(listOf("com.waze"), funnel.stopped, "nhả ĐÚNG một lần, không lặp")
+        }
+    }
+
+    /** B3.56 — một-nguồn (chỉ Waze, mũi tên chập chờn tươi↔stale) KHÔNG được nhả nhầm phiên chính nó. */
+    @Test fun `B3_56 — mot nguon mui ten chap chon KHONG nha nham`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        val info = LaneInfo(listOf(Lane(listOf(Maneuver.STRAIGHT), true)))
+        owner(sink, funnel).use { o ->
+            ScreenCaptureSignal.publishArrow("com.waze", Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            o.tick(1_000L)
+            // Mũi tên Waze stale nhưng LÀN Waze (CÙNG gói) còn tươi ⇒ framePkg vẫn Waze ⇒ KHÔNG nhả.
+            ScreenCaptureSignal.publishLane("com.waze", info, now = 8_000L)
+            o.tick(8_000L)
+            assertTrue(funnel.stopped.isEmpty(), "cùng một gói giữ khung (làn Waze) ⇒ không nhả phiên Waze")
+        }
+    }
+
     @Test fun `arrow tuoi nhung khong co huong hop le -- BO khung (chong re gia)`() {
         val sink = FakeSink(); val funnel = FakeFunnel()
         owner(sink, funnel).use { o ->
@@ -524,6 +563,93 @@ class NavOutputOwnerTest {
             ScreenCaptureSignal.publishArrow(waze, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
             assertDoesNotThrow { o.tick(1_000L) }
             assertEquals(1, funnel.count, "khung vẫn phải vào phễu dù bề mặt không dựng được")
+        }
+    }
+
+    // ── F4b: KEEP-ALIVE a11y — fix "VietMap/Waze dark for many stretches" ─────────────────────────────────
+    // Mũi tên glyph của nguồn ẢNH hay hết tươi giữa hai lần phân loại (phủ sóng template/capture hụt nhịp),
+    // trong khi a11y (cự-ly/đường) vẫn đọc đều. Trước F4b: mũi tên stale ⇒ nhả CẢ phiên ⇒ cụm tắt đen dù app
+    // vẫn đang dẫn. F4b giữ khung sống bằng HƯỚNG-LẦN-CUỐI + cự-ly/đường a11y tươi, CHẶN bằng cự-ly-giảm-đơn-
+    // điệu (khúc rẽ mới ⇒ im lặng, KHÔNG hiện hướng cũ).
+
+    @Test fun `keep-alive a11y — mui ten stale + a11y tuoi cung goi GIU khung, KHONG nha phien`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel, guard = TurnDistancePlausibility(warmupSamples = 1)).use { o ->
+            // Khung mũi tên đầu: glyph phân loại TURN_LEFT ⇒ lưu hướng-lần-cuối + cự-ly 50m.
+            ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            NavViewIdSource.publish(vietmap, 50, "Phố Huế", "", -1, -1, now = 1_000L)
+            o.tick(1_000L)
+            assertEquals(1, funnel.count)
+
+            // Mũi tên glyph HẾT TƯƠI (7s > STALE_MS 6s), nhưng a11y VẪN đọc được cự-ly/đường (VietMap còn dẫn),
+            // cự-ly GIẢM 50→40 (cùng khúc rẽ đang tiến tới).
+            NavViewIdSource.publish(vietmap, 40, "Phố Huế", "", -1, -1, now = 8_000L)
+            o.tick(8_000L)
+            assertTrue(funnel.stopped.isEmpty(), "a11y còn tươi ⇒ KHÔNG nhả phiên (không tắt đen)")
+            assertEquals(2, funnel.count, "keep-alive đưa khung mới vào phễu")
+            assertEquals(Maneuver.TURN_LEFT, funnel.last?.maneuver, "giữ HƯỚNG-LẦN-CUỐI")
+            assertEquals(40, funnel.last?.distanceMeters, "cự-ly a11y TƯƠI")
+            assertEquals("Phố Huế", funnel.last?.roadName)
+        }
+    }
+
+    /**
+     * MUTATION-PROOF cho cổng an toàn 'im lặng > sai hướng': gỡ điều kiện cự-ly-giảm-đơn-điệu trong
+     * `tryKeepAlive` ⇒ test này ĐỎ (keep-alive sẽ hiện TURN_LEFT cho khúc rẽ MỚI thay vì nhả phiên).
+     */
+    @Test fun `keep-alive a11y — cu-ly TANG (khuc re MOI) thi NHA phien, khong hien huong cu`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel, guard = TurnDistancePlausibility(warmupSamples = 1)).use { o ->
+            ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            NavViewIdSource.publish(vietmap, 50, "Phố Huế", "", -1, -1, now = 1_000L)
+            o.tick(1_000L)                                   // lastManeuver=TURN_LEFT, lastShownSeg=50
+            assertEquals(1, funnel.count)
+
+            // Mũi tên stale + a11y tươi NHƯNG cự-ly TĂNG 50→900 = đã qua khúc rẽ ⇒ khúc MỚI, hướng CHƯA biết.
+            NavViewIdSource.publish(vietmap, 900, "Lê Duẩn", "", -1, -1, now = 8_000L)
+            o.tick(8_000L)
+            assertEquals(listOf(vietmap), funnel.stopped, "khúc rẽ MỚI hướng chưa xác nhận ⇒ im lặng (nhả phiên)")
+            assertEquals(1, funnel.count, "KHÔNG hiện TURN_LEFT (hướng cũ) cho khúc rẽ mới")
+        }
+    }
+
+    @Test fun `keep-alive a11y — a11y CUNG stale thi nha phien nhu cu`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel, guard = TurnDistancePlausibility(warmupSamples = 1)).use { o ->
+            ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            NavViewIdSource.publish(vietmap, 50, "Phố Huế", "", -1, -1, now = 1_000L)
+            o.tick(1_000L)
+            // Cả mũi tên (7s) LẪN a11y (7s > FRESH_MS 4s) đều hết tươi ⇒ nhả phiên như cũ (không giữ khung ma).
+            o.tick(8_000L)
+            assertEquals(listOf(vietmap), funnel.stopped)
+            assertEquals(1, funnel.count)
+        }
+    }
+
+    /**
+     * MUTATION-PROOF cổng an toàn (senior review 2026-08-24, [P1]): khi CHƯA từng chốt được cự-ly hợp lệ cho
+     * khung đang giữ ([lastShownSeg] < 0 — mũi tên phân loại được HƯỚNG nhưng a11y vắng lúc đó nên chưa có
+     * baseline), keep-alive KHÔNG được kích hoạt: không có mốc nào để chứng minh cự-ly a11y mới thuộc CÙNG
+     * khúc rẽ ⇒ im lặng (nhả phiên), TUYỆT ĐỐI không đoán hướng cũ cho một cự-ly có thể là khúc rẽ mới.
+     *
+     * Gỡ vế `lastSeg < 0` trong `tryKeepAlive` ⇒ test này ĐỎ (keep-alive sẽ hiện TURN_LEFT với cự-ly 900m
+     * chưa được xác nhận cùng khúc rẽ).
+     */
+    @Test fun `keep-alive a11y — chua co baseline cu-ly (lastShownSeg -1) thi NHA phien, khong doan huong`() {
+        val sink = FakeSink(); val funnel = FakeFunnel()
+        owner(sink, funnel, guard = TurnDistancePlausibility(warmupSamples = 1)).use { o ->
+            // Mũi tên phân loại TURN_LEFT nhưng KHÔNG có mẫu a11y ở nhịp này ⇒ seg = -1 ⇒ lastManeuver=LEFT
+            // được lưu, còn lastShownSeg VẪN -1 (chưa từng hiện một cự-ly hợp lệ nào).
+            ScreenCaptureSignal.publishArrow(vietmap, Maneuver.TURN_LEFT, amap = 2, now = 1_000L)
+            o.tick(1_000L)
+            assertEquals(1, funnel.count)
+            assertNull(funnel.last?.distanceMeters, "chưa có mẫu a11y ⇒ khung không mang cự-ly")
+
+            // Mũi tên HẾT TƯƠI; a11y giờ mới đọc được 900m (có thể là khúc rẽ khác — không có baseline để biết).
+            NavViewIdSource.publish(vietmap, 900, "Lê Duẩn", "", -1, -1, now = 8_000L)
+            o.tick(8_000L)
+            assertEquals(listOf(vietmap), funnel.stopped, "không có baseline ⇒ im lặng (nhả phiên), không keep-alive")
+            assertEquals(1, funnel.count, "KHÔNG đoán hướng TURN_LEFT cho cự-ly chưa xác nhận cùng khúc rẽ")
         }
     }
 }

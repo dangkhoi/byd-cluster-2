@@ -20,11 +20,14 @@ import com.byd.clusternav.navigation.NavFrameIdentity
 import com.byd.clusternav.navigation.screencapture.AppLocation
 import com.byd.clusternav.navigation.screencapture.BoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureCase
+import com.byd.clusternav.navigation.screencapture.CaptureDisplayTarget
+import com.byd.clusternav.navigation.screencapture.captureDisplayForCase
 import com.byd.clusternav.navigation.screencapture.CaptureForegroundSource
 import com.byd.clusternav.navigation.screencapture.CaptureLocationResolver
 import com.byd.clusternav.navigation.screencapture.LaneBoundsSource
 import com.byd.clusternav.navigation.screencapture.CaptureRouter
 import com.byd.clusternav.navigation.screencapture.NavGlyphLocator
+import com.byd.clusternav.navigation.screencapture.PixelFrameOps
 import com.byd.clusternav.navigation.screencapture.CaptureTarget
 import com.byd.clusternav.navigation.screencapture.CapturePlan
 import com.byd.clusternav.navigation.screencapture.CropRect
@@ -217,14 +220,20 @@ class ScreenCaptureNavSource private constructor(context: Context) {
         }.onFailure { Log.w(TAG, "lane classify threw (dropped)", it) }
     }
 
-    /** Transport theo case: 1/2 = màn chính (fission -d1), 3 = cụm (fission -d0), 4 = offscreen MediaProjection. */
-    private fun capture(case: CaptureCase): Bitmap? = when (case) {
-        CaptureCase.FULL_MAIN, CaptureCase.HALF_MAIN_SPLIT ->
-            transport.captureFission(ScreenCaptureTransport.FISSION_MAIN)
-        CaptureCase.CLUSTER_CAST ->
-            transport.captureFission(ScreenCaptureTransport.FISSION_CLUSTER)
-        CaptureCase.NOT_ACTIVE ->
-            offscreen.capture()                                  // scaffold, VERIFY-ON-CAR (null nếu chưa có token)
+    /**
+     * Transport theo MÀN của case (B3.58): quyết định "case → chụp màn nào" là THUẦN
+     * ([captureDisplayForCase], :core — test off-car), ở đây chỉ map sang đường chụp thật:
+     *   MAIN → `fission_screencap -d1` (màn chính); CLUSTER → `-d0` (cụm — app dẫn đã cast sang cụm);
+     *   OFFSCREEN → MediaProjection scaffold (case 4).
+     *
+     * ⚠ CHỤP PIXEL DISPLAY PHỤ (CỤM) LÀ PHỤ THUỘC XE: emulator không host/chụp được display phụ (B3.26) nên
+     * fission cụm trả null off-car ([ScreenCaptureTransport.captureFission] không fallback cho display khác
+     * màn chính). Logic CHỌN display (CLUSTER_CAST → CLUSTER) đã khoá off-car; chỉ nửa chụp-pixel cần xe.
+     */
+    private fun capture(case: CaptureCase): Bitmap? = when (captureDisplayForCase(case)) {
+        CaptureDisplayTarget.MAIN -> transport.captureFission(ScreenCaptureTransport.FISSION_MAIN)
+        CaptureDisplayTarget.CLUSTER -> transport.captureFission(ScreenCaptureTransport.FISSION_CLUSTER)
+        CaptureDisplayTarget.OFFSCREEN -> offscreen.capture()   // scaffold, VERIFY-ON-CAR (null nếu chưa có token)
     }
 
     /** Crop `Bitmap` về bounds (đã clamp về khung ảnh) → `PixelFrame`. null nếu vùng rỗng/không hợp lệ. */
@@ -293,12 +302,16 @@ class ScreenCaptureNavSource private constructor(context: Context) {
         // ([ĐO] 08-23 vòng 3b, xem KDoc `NavGlyphLocator.locate`). Không biết ⇒ rơi xuống đường cũ.
         val win = loc.windowRect?.clampTo(CropRect(0, 0, bmp.width, bmp.height))?.takeIf { !it.isEmpty() }
             ?: return false
-        val ink = NavGlyphLocator.locate(full, win, geom.effectiveDensityDpi) ?: return false
+        val located = NavGlyphLocator.locateAny(full, win, geom.effectiveDensityDpi) ?: return false
+        val ink = located.rect
         // Từ đây trở xuống đường glyph ĐÃ SỞ HỮU kênh ARROW nhịp này ⇒ mọi lối thoát đều `return true`.
-        val frame = cropToFrame(bmp, ink) ?: return true
+        // light/day theme (located.inverted = true): mũi tên TỐI trên nền SÁNG ⇒ ĐẢO MÀU crop để về quy ước
+        // sáng-trên-tối mà [WazeArrowRegistry] + [ManeuverSignature.signature] dùng, rồi mới khớp registry.
+        val rawCrop = cropToFrame(bmp, ink) ?: return true
+        val frame = if (located.inverted) (PixelFrameOps.invert(rawCrop) ?: rawCrop) else rawCrop
         if (NavLog.verbose) {
             val sig = runCatching { ManeuverSignature.signatureBits(frame) }.getOrNull()
-            Log.i(TAG, "glyph-ink pkg=$pkg rect=$ink dpi=${geom.effectiveDensityDpi} sig=$sig")
+            Log.i(TAG, "glyph-ink pkg=$pkg rect=$ink light=${located.inverted} dpi=${geom.effectiveDensityDpi} sig=$sig")
         }
         val m = runCatching { ManeuverSignature.classifyWazeInk(frame) }.getOrNull() ?: return true
         val amap = m.amap ?: run {

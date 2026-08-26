@@ -345,6 +345,23 @@ class NavNotificationListener : NotificationListenerService() {
                 speedSignOwner.setUpcomingBadge(null, null, null)
             }
         }.onFailure { Log.w(TAG, "upcoming badge push failed", it) }
+        // ── Road-alert / speed-camera chip (B3.20, ADDITIVE) ────────────────────────────────────────────
+        // Mirror VietMap's sticky ALERTS-slot road alert (speed camera / hazard ahead + enforced limit +
+        // distance) onto a chip to the RIGHT of the main badge. Pure decision in :core (RoadAlertChipDecision).
+        // Gated by Prefs.showAlertChip (default OFF — opt-in, không phá bố trí badge hiện có). Degrade-safe.
+        runCatching {
+            if (Prefs.showAlertChip(applicationContext)) {
+                val d = com.byd.clusternav.navigation.RoadAlertChipDecision.decide(
+                    alerts = snapshot.alerts,
+                    fresh = snapshot.alertsFreshness == VietMapWidgetFreshness.FRESH,
+                )
+                val text = d.distanceText?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: d.distanceMeters.takeIf { it > 0 }?.let { NavParse.formatMeters(it) }
+                speedSignOwner.setRoadAlertChip(d.show, d.limitKph, text, d.hasIcon)
+            } else {
+                speedSignOwner.setRoadAlertChip(false, 0, null, false)
+            }
+        }.onFailure { Log.w(TAG, "alert chip push failed", it) }
     }
 
 

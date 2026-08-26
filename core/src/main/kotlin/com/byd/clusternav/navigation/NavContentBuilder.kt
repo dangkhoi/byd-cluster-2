@@ -100,4 +100,41 @@ object NavContentBuilder {
             maneuver = maneuver,
         )
     }
+
+    /**
+     * Khung KEEP-ALIVE cho nguồn ẢNH (F4b — fix "VietMap/Waze dark for many stretches").
+     *
+     * VÌ SAO CÓ: mũi tên glyph của nguồn ảnh (VietMap/Waze) hay hết tươi giữa hai lần phân loại thành công
+     * (phủ sóng template chưa đủ / capture hụt nhịp), trong khi a11y (cự-ly + tên đường) vẫn đọc đều mỗi
+     * ~1,25 Hz suốt lúc đang dẫn. Trước đây mũi tên hết tươi ⇒ `NavOutputOwner` nhả CẢ phiên ⇒ cụm tắt đen,
+     * DÙ app vẫn đang dẫn (a11y còn tươi). Hàm này dựng khung giữ HƯỚNG-LẦN-CUỐI [maneuver] + cự-ly/đường
+     * a11y TƯƠI để cụm sống tiếp thay vì tắt.
+     *
+     * KHÁC [fromImage]: nhận [maneuver] TRỰC TIẾP (không [ArrowSample], vì mũi tên đã hết tươi). Giữ NGUYÊN
+     * guard MỘT-PACKAGE-MỘT-KHUNG cho tên đường/ETA; `maneuverCode = maneuver.toAmapIcon()` (đồng bộ đường ảnh).
+     *
+     * ⚠ AN TOÀN 'im lặng > sai hướng' KHÔNG nằm ở đây mà ở CALLER (`NavOutputOwner.tryKeepAlive`): caller CHỈ
+     * gọi hàm này khi cự-ly a11y KHÔNG TĂNG so với lần cuối (đang tiến tới CÙNG khúc rẽ). Cự-ly tăng = đã qua
+     * khúc rẽ ⇒ khúc MỚI (hướng chưa xác nhận) ⇒ caller KHÔNG gọi hàm này, nhường im lặng. Hàm thuần này chỉ
+     * dựng khung với hướng được đưa vào — nó KHÔNG tự phán đoán khúc rẽ mới.
+     */
+    fun fromKeepAlive(
+        framePkg: String,
+        maneuver: Maneuver,
+        reading: NavViewIdSource.Reading?,
+        distanceMeters: Int = DISTANCE_UNKNOWN,
+    ): NavigationFrameContent {
+        val own = reading?.takeIf { NavFrameIdentity.sameFrame(framePkg, it.pkg) }
+        return NavigationFrameContent(
+            maneuverCode = maneuver.toAmapIcon(),
+            maneuverText = null,
+            distanceMeters = distanceMeters.takeIf { it >= 0 },
+            roadName = own?.road?.takeIf(String::isNotBlank),
+            etaEpochMs = null,
+            routeRemainingMeters = own?.routeMeters?.takeIf { it >= 0 },
+            routeRemainingSeconds = own?.routeSeconds?.takeIf { it >= 0 },
+            arrivalClock = own?.arrivalClock?.let(NavParse::extractArrivalClock),
+            maneuver = maneuver,
+        )
+    }
 }

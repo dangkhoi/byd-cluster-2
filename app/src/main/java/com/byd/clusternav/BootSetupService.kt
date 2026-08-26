@@ -71,6 +71,19 @@ class BootSetupService : Service() {
                 // sau khi start thì VỀ HOME (không đè launcher — app mình vốn không foreground trên boot). Đồng bộ
                 // để FGS giữ tiến trình sống tới khi xong. Gate badgeEnabled nằm trong runNow.
                 VietMapAutostart.runNow(applicationContext, returnToSelfPkg = null)
+                // F4e boot (owner 08-25): boot headless KHÔNG mở MainActivity ⇒ onCreate không chạy ⇒ trợ lý
+                // hệ thống chưa được đặt = Gemini ⇒ hold-mic → keyevent 231 route sai. Đặt luôn ở đây NẾU có
+                // binding Gemini, để hold-mic → Gemini ready NGAY sau nổ máy mà KHÔNG cần mở app (owner
+                // 08-25: "kể cả khởi động nền hay full app đều enable service gemini lên là OK").
+                // retry NONE: boot owner KHÔNG ở màn hình để bấm "Cho phép gỡ lỗi USB" ⇒ MỘT lần, không chờ
+                // ~31s (tránh treo boot — F6). Hỏng (chưa cấp quyền) ⇒ bỏ; owner mở app lần đầu thì
+                // MainActivity.onCreate re-apply với AWAIT_ADB_APPROVAL (có mặt owner để cấp quyền).
+                if (com.byd.clusternav.modules.voicekey.AssistantLauncher.hasGeminiBinding(applicationContext)) {
+                    val err = com.byd.clusternav.modules.voicekey.AssistantLauncher.setSystemAssistant(
+                        applicationContext, com.byd.clusternav.carexec.LocalShellRetry.NONE,
+                    )
+                    if (err.isNotEmpty()) Log.i(TAG, "boot re-apply Gemini assistant: $err (owner mở app sẽ thử lại có chờ cấp quyền)")
+                }
             }.onFailure { Log.e(TAG, "headless boot setup failed", it) }
             finish(startId)
         }, "boot-setup").start()

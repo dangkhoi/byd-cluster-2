@@ -31,8 +31,8 @@ class NavHalContentKeepAliveTest {
             "SEND_NAVI_STATUS must be skipped on keep-alive (latched session flag)",
         )
         assertTrue(
-            hal.contains("if (!keepAlive) featureId(\"SET_NAVI_SCREEN_STATUS_SET\")"),
-            "SET_NAVI_SCREEN_STATUS must be skipped on keep-alive (latched screen mode)",
+            hal.contains("if (!keepAlive && writeSurface) featureId(\"SET_NAVI_SCREEN_STATUS_SET\")"),
+            "SET_NAVI_SCREEN_STATUS skipped on keep-alive AND gated by writeSurface (2026-08-24 tách nội dung/bề mặt — chỉ dựng bề mặt cụm khi Cast OFF)",
         )
     }
 

@@ -85,6 +85,23 @@ class ScreenCaptureNavSourceContractTest {
         assertTrue(transport.contains("FISSION_MAIN = 1"), "fission -d1 = MAIN")
         assertTrue(transport.contains("FISSION_CLUSTER = 0"), "fission -d0 = CLUSTER")
         assertTrue(transport.contains("fission_screencap -d"), "reuses proven fission_screencap path")
+        // B3.58 FIX 2b — the pure "case → which display" decision lives in :core (captureDisplayForCase,
+        // locked by CaptureRouterTest). Here we lock the :app HALF of the boundary: each display target maps to
+        // the proven fission id / scaffold. The critical bit: CLUSTER target → fission CLUSTER (-d0), so an app
+        // dẫn cast lên cụm is captured from the CLUSTER, not the main display.
+        assertTrue(source.contains("captureDisplayForCase(case)"), "capture() routes via the pure :core decision")
+        assertTrue(
+            source.contains("CaptureDisplayTarget.CLUSTER -> transport.captureFission(ScreenCaptureTransport.FISSION_CLUSTER)"),
+            "CLUSTER target → fission cluster (-d0): cast lên cụm phải chụp CỤM, không phải màn chính (B3.58)",
+        )
+        assertTrue(
+            source.contains("CaptureDisplayTarget.MAIN -> transport.captureFission(ScreenCaptureTransport.FISSION_MAIN)"),
+            "MAIN target → fission main (-d1)",
+        )
+        assertTrue(
+            source.contains("CaptureDisplayTarget.OFFSCREEN -> offscreen.capture()"),
+            "OFFSCREEN target → MediaProjection scaffold (case 4)",
+        )
     }
 
     @Test
@@ -203,7 +220,7 @@ class ScreenCaptureNavSourceContractTest {
     fun `duong glyph bo nhip khi KHONG biet o cua so (R-BI)`() {
         val body = functionBody(source, "private fun handleArrowByGlyph(")
         val winIdx = body.indexOf("loc.windowRect")
-        val locIdx = body.indexOf("NavGlyphLocator.locate(")
+        val locIdx = body.indexOf("NavGlyphLocator.locateAny(")
         assertTrue(winIdx in 0 until locIdx, "phải đọc windowRect TRƯỚC khi gọi locator")
         assertTrue(
             Regex("""loc\.windowRect[\s\S]{0,160}\?:\s*return false""").containsMatchIn(body),
@@ -223,7 +240,7 @@ class ScreenCaptureNavSourceContractTest {
     @Test
     fun `do duoc bbox thi tang glyph SO HUU kenh ARROW (khong roi ve rect co dinh)`() {
         val body = functionBody(source, "private fun handleArrowByGlyph(")
-        val locIdx = body.indexOf("NavGlyphLocator.locate(")
+        val locIdx = body.indexOf("NavGlyphLocator.locateAny(")
         assertTrue(locIdx >= 0, "còn gọi locator")
         val after = body.substring(locIdx)
         // Sau lời gọi locate, chỉ còn ĐÚNG MỘT `return false` — chính cái `?: return false` của locate.

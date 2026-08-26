@@ -122,6 +122,22 @@ class NavigationSpeedSignOwner private constructor(private val appContext: Conte
             .onFailure { Log.w(TAG, "onUpcomingBadgeEnabledChanged failed", it) }
     }
 
+    /**
+     * B3.20 — set (or clear) the road-alert / speed-camera chip on the cluster (VietMap sticky ALERTS slot).
+     * [show]=false hides it; [limitKph] ≤ 0 draws no limit circle; [distText] = countdown; [hasIcon] = draw the
+     * camera glyph. Gated inside the overlay by master badge AND [Prefs.showAlertChip]. Degrade-safe.
+     */
+    fun setRoadAlertChip(show: Boolean, limitKph: Int, distText: String?, hasIcon: Boolean) {
+        runCatching { badgeOverlay.setAlert(show, limitKph, distText, hasIcon) }
+            .onFailure { Log.w(TAG, "setRoadAlertChip failed", it) }
+    }
+
+    /** The "Hiện cảnh báo/camera" toggle changed ([Prefs.showAlertChip]) — re-evaluate the shared overlay. */
+    fun onAlertChipEnabledChanged() {
+        runCatching { badgeOverlay.applyAlertChipEnabled() }
+            .onFailure { Log.w(TAG, "onAlertChipEnabledChanged failed", it) }
+    }
+
     override fun close() {
         coordinator.close()
     }

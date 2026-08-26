@@ -459,10 +459,11 @@ class VietMapGlyphGateTest {
         const val DPI = 240
 
         /**
-         * [ĐO] 08-23 vòng 3 — số maneuver VietMap đi trọn đường `locate → classifyWazeInk → mã AMAP`.
-         * Nhỏ hơn 86 vì registry [WazeArrowRegistry.VIETMAP_INK] chỉ có 34 template cho ~16 lớp quyết định,
-         * còn fixture có 87 tên asset (nhiều tên khác nhau vẽ CÙNG một glyph).
+         * [ĐO] 08-25 (B3.52) — số maneuver VietMap đi trọn đường `locate → classifyWazeInk → mã AMAP`.
+         * Tăng 39 → 63 nhờ 6 template SINH TỪ FIXTURE RUNTIME (glyph banner lệch template SVG 19–31 bit dù
+         * cùng họ hướng ⇒ trước đó MISS). Vẫn < 87 vì: 10 glyph nhiều-thành-phần (canary), 2 glyph slight bị
+         * loại vì biên <37 bit với lớp khác, họ vòng-xuyến-phải + rotary/roundabout nét-xám chưa tách được.
          */
-        const val MATCHED_TO_AMAP = 39
+        const val MATCHED_TO_AMAP = 63
     }
 }

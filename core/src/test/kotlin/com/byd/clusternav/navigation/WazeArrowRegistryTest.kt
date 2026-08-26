@@ -294,14 +294,14 @@ class WazeArrowRegistryTest {
      * Số mục + kích thước bộ. 93 file SVG trong `directions_white` cho 46 chữ ký phân biệt; bỏ 12
      * (3 icon không-phải-chỉ-dẫn + 2 icon minh hoạ đường + `invalid`/`invalid_left` trùng anh em sinh đôi +
      * `fork` trơn không mang hướng + `depart` trùng khoá với `straight` + 3 mục vi phạm biên liên-khoá 37 bit:
-     * `depart_left`, `depart_right`, `rotary_right`) ⇒ **34**. Lý do từng cái ở KDoc
-     * [WazeArrowRegistry.VIETMAP_INK].
+     * `depart_left`, `depart_right`, `rotary_right`) ⇒ **34** SVG-derived; **+6 fixture-derived (B3.52 08-25)**
+     * ⇒ **40**. Lý do từng cái ở KDoc [WazeArrowRegistry.VIETMAP_INK].
      */
     @Test
-    fun `VIETMAP_INK co 34 muc va BUILTIN = WAZE + VIETMAP`() {
-        assertEquals(34, WazeArrowRegistry.VIETMAP_INK.size)
-        assertEquals(4, WazeArrowRegistry.WAZE_INK.size)
-        assertEquals(38, WazeArrowRegistry.BUILTIN.size)
+    fun `VIETMAP_INK co 40 muc va BUILTIN = WAZE + VIETMAP`() {
+        assertEquals(40, WazeArrowRegistry.VIETMAP_INK.size)
+        assertEquals(7, WazeArrowRegistry.WAZE_INK.size)
+        assertEquals(47, WazeArrowRegistry.BUILTIN.size)
         assertEquals(WazeArrowRegistry.WAZE_INK + WazeArrowRegistry.VIETMAP_INK, WazeArrowRegistry.BUILTIN)
     }
 
@@ -724,9 +724,12 @@ class WazeArrowRegistryTest {
             .text("src/main/kotlin/com/byd/clusternav/navigation/WazeArrowRegistry.kt")
         val waze = WazeArrowRegistry.WAZE_INK.size
         val vietmap = WazeArrowRegistry.VIETMAP_INK.size
+        val svgKept = 34          // B3.52: bộ VietMap = 34 sinh từ SVG asset (46→34) + 6 sinh từ fixture runtime
+        val fixtureAdded = 6
+        assertEquals(svgKept + fixtureAdded, vietmap, "VIETMAP_INK = SVG-derived + fixture-derived phải khớp")
         // Phủ sóng end-to-end, ĐO bằng locator thật — giữ khớp `VietMapGlyphGateTest.MATCHED_TO_AMAP`
-        // (39) và số khung maneuver trong fixture VietMap (87). Đổi một trong hai ⇒ test kia đỏ trước.
-        val matched = 39
+        // (63) và số khung maneuver trong fixture VietMap (87). Đổi một trong hai ⇒ test kia đỏ trước.
+        val matched = 63
         val maneuverFrames = 87
 
         // (mô tả, regex, danh sách giá trị đúng theo thứ tự nhóm bắt)
@@ -735,12 +738,15 @@ class WazeArrowRegistryTest {
             Triple("\"[WAZE_INK] (N mục\"", Regex("""\[WAZE_INK] \((\d+) mục"""), listOf(waze)),
             Triple("\"[VIETMAP_INK] (M mục\"", Regex("""\[VIETMAP_INK] \((\d+) mục"""), listOf(vietmap)),
             Triple("tiêu đề \"VIETMAP LIVE 3.3.4 — M template\"", Regex("""VIETMAP LIVE [\d.]+ — (\d+) template"""), listOf(vietmap)),
-            Triple("\"ĐÃ BỎ … (46 → M)\"", Regex("""ĐÃ BỎ \d+ chữ ký \(\d+ → (\d+)\)"""), listOf(vietmap)),
-            // 08-23 vòng 3b: KDoc nói "khung" chứ không phải "template" (39 trên 87 KHUNG maneuver đi trọn
-            // đường; số template là 34). Mẫu phải bám cụm "… khung [maneuver] đi trọn" để không vồ nhầm
+            // "46 → 34" mô tả lò SVG (không đổi khi thêm fixture); bắt riêng svgKept, KHÔNG phải tổng.
+            Triple("\"ĐÃ BỎ … (46 → 34)\"", Regex("""ĐÃ BỎ \d+ chữ ký \(\d+ → (\d+)\)"""), listOf(svgKept)),
+            // B3.52: số template fixture-derived cộng thêm ("+ 6 FIXTURE …").
+            Triple("\"+ N FIXTURE\"", Regex("""\+ (\d+) FIXTURE""", RegexOption.IGNORE_CASE), listOf(fixtureAdded)),
+            // 08-23 vòng 3b: KDoc nói "khung" chứ không phải "template" (63 trên 87 KHUNG maneuver đi trọn
+            // đường; số template là 40). Mẫu phải bám cụm "… khung [maneuver] đi trọn" để không vồ nhầm
             // con số lịch sử "4/9 khung" ở KDoc `classifyWazeInk`.
             Triple(
-                "phủ sóng \"39/87 khung … đi trọn\"",
+                "phủ sóng \"63/87 khung … đi trọn\"",
                 Regex("""(\d+)/(\d+)\**\s+khung(?:\s+maneuver)?\s+đi trọn""", RegexOption.IGNORE_CASE),
                 listOf(matched, maneuverFrames),
             ),

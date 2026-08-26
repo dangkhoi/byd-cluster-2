@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellRetry
 import android.content.Context
 import org.json.JSONArray
 import java.io.File
@@ -106,7 +107,7 @@ object UpdateChecker {
     fun install(ctx: Context, apk: File): String {
         val app = ctx.applicationContext
         UpdateRelaunch.schedule(app) // arm BEFORE install: a successful -r kills us mid-call.
-        val ok = LocalDeviceShell.installApk(AdbKeys.ensure(app), apk, "-r")
+        val ok = LocalDeviceShell.installApk(AdbKeys.ensure(app), apk, "-r", socketTimeoutMs = LocalShellRetry.BACKGROUND_READ_CAP.socketTimeoutMs)
         return if (ok) {
             Lang.t("đã cài — đang mở lại…", "installed — reopening…")
         } else {

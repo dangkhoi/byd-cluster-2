@@ -45,6 +45,23 @@ class SourceArbiterChannelTest {
         assertFalse(SourceArbiter.isDataFresh(WAZE, 1_000L + SourceArbiter.STALE_MS + 1))  // qua biên: hết
     }
 
+    /**
+     * B3.50 — LỆCH ĐỒNG HỒ: mốc DATA ở TƯƠNG LAI (now < mốc, do NTP/GPS kéo đồng hồ nhảy LÙI) KHÔNG được
+     * coi là tươi. Phép so cũ `now - t <= STALE_MS` với hiệu ÂM ⇒ true ⇒ chặn kênh ẢNH của chính gói đó
+     * (kênh sống DUY NHẤT của VietMap sau B3.44) tới khi đồng hồ đuổi kịp. Cận dưới 0 khép cửa đó.
+     */
+    @Test
+    fun `B3_50 — moc DATA o tuong lai (dong ho nhay lui) coi la STALE, khong chan anh oan`() {
+        // Ghi mốc DATA ở t=10_000; hỏi ở now=5_000 (đồng hồ vừa lùi 5 s) ⇒ hiệu = -5_000.
+        SourceArbiter.shouldFeed(WAZE, NavSourceMode.AUTO, 10_000L, NavChannel.DATA)
+        assertFalse(SourceArbiter.isDataFresh(WAZE, 5_000L), "mốc tương lai ⇒ STALE, không phải 'tươi'")
+        // ⇒ kênh ẢNH của chính gói đó KHÔNG bị chặn oan (data 'tươi' giả sẽ chặn nó).
+        assertTrue(
+            SourceArbiter.shouldFeed(WAZE, NavSourceMode.AUTO, 5_000L, NavChannel.IMAGE),
+            "isDataFresh giả 'tươi' sẽ chặn ảnh; guard clock-skew phải cho ảnh lên",
+        )
+    }
+
     @Test
     fun `clear reset trang thai data (anh lai duoc len)`() {
         SourceArbiter.shouldFeed(WAZE, NavSourceMode.AUTO, 1_000L, NavChannel.DATA)

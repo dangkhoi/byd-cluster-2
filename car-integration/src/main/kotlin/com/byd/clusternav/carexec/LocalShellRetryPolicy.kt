@@ -158,6 +158,28 @@ data class LocalShellRetry(
         val NONE = LocalShellRetry()
 
         /**
+         * **Chụp mũ chống-treo cho đường NỀN** (F6, 2026-08-25) — không owner nào đứng nhìn.
+         *
+         * Giống [NONE] ở MỌI mặt (1 lần thử, không thử lại, nối lười) TRỪ một điều: đặt hạn đọc 30 s để
+         * `Dadb.create(...)` với `socketTimeout = 0` không còn **treo VĨNH VIỄN** khi adbd im lặng chờ
+         * người dùng bấm "Cho phép gỡ lỗi USB" (F6 [ĐO]: `VietMapAutostart.runNow` chạy ĐỒNG BỘ trong
+         * `BootSetupService` ⇒ FGS không bao giờ `finish()` ⇒ tiến trình treo sau mỗi lần nổ máy nếu khoá
+         * adb chưa cấp). 30 s là **im lặng hoàn toàn** — `Socket.setSoTimeout` áp cho từng lần `read()`, nên
+         * lệnh shell chậm-mà-vẫn-chảy-dữ-liệu (dump dài) KHÔNG bị cắt; chỉ một socket **câm suốt 30 s** mới
+         * nổ, mà đó đúng là định nghĩa treo. Chọn 30 s (đầu cao khoảng 20–30 s ở backlog F6) để dư sức cho
+         * lệnh nền chậm nhất.
+         *
+         * KHÁC [AWAIT_ADB_APPROVAL]: cái kia CHỜ + thử lại vì owner vừa ra lệnh và đang nhìn; cái này chỉ
+         * **cắt treo** rồi trả hỏng — đường nền không nên tự phát lại lệnh (xem cờ `dispatched`), và không
+         * có ai để mà chờ. `retryOn` rỗng ⇒ hỏng là dừng ngay ở lần 1.
+         */
+        val BACKGROUND_READ_CAP = LocalShellRetry(
+            attempts = 1,
+            socketTimeoutMs = 30_000,
+            retryOn = emptySet(),
+        )
+
+        /**
          * Chờ owner bấm "Cho phép gỡ lỗi USB" — dùng cho các đường mà **owner đang đứng trước xe và vừa
          * ra lệnh** (giữ phím mic, chọn trợ lý trong app), tức lúc hộp thoại bung ra là lúc owner đang
          * nhìn màn hình.

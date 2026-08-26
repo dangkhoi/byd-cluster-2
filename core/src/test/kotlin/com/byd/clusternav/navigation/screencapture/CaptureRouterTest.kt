@@ -283,6 +283,35 @@ class CaptureRouterTest {
         assertEquals(0, CaptureRouter.halfOffsetX(CaptureCase.FULL_MAIN, loc(slot = CaptureSlotSide.RIGHT, leftPercent = 40), geom))
     }
 
+    // ── B3.58: chọn màn chụp theo case (FIX 2b — CLUSTER_CAST phải chụp CỤM, không phải màn chính) ──────
+
+    @Test
+    fun `captureDisplayForCase — CLUSTER_CAST chup CUM (B3_58 FIX 2b)`() {
+        assertEquals(CaptureDisplayTarget.CLUSTER, captureDisplayForCase(CaptureCase.CLUSTER_CAST))
+    }
+
+    @Test
+    fun `captureDisplayForCase — man chinh cho FULL_MAIN va HALF_MAIN_SPLIT`() {
+        assertEquals(CaptureDisplayTarget.MAIN, captureDisplayForCase(CaptureCase.FULL_MAIN))
+        assertEquals(CaptureDisplayTarget.MAIN, captureDisplayForCase(CaptureCase.HALF_MAIN_SPLIT))
+    }
+
+    @Test
+    fun `captureDisplayForCase — NOT_ACTIVE di offscreen (khong fission)`() {
+        assertEquals(CaptureDisplayTarget.OFFSCREEN, captureDisplayForCase(CaptureCase.NOT_ACTIVE))
+    }
+
+    /**
+     * BOUNDARY (FIX 2b): app dẫn cast lên cụm (displayId = clusterDisplayId) → case CLUSTER_CAST → chụp CỤM.
+     * Trace nguyên chuỗi thuần: loc.displayId=1 → selectCase → CLUSTER_CAST → captureDisplayForCase → CLUSTER.
+     */
+    @Test
+    fun `trace — app tren display cum di het chuoi ra CLUSTER`() {
+        val case = CaptureRouter.selectCase(loc(pkg = "vn.vietmap.live", displayId = 1), geom)
+        assertEquals(CaptureCase.CLUSTER_CAST, case)
+        assertEquals(CaptureDisplayTarget.CLUSTER, captureDisplayForCase(case))
+    }
+
     // ── crop → PixelFrame → classify (tái dùng ManeuverSignature, KHÔNG viết lại) ──────
 
     /**

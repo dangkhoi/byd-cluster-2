@@ -37,4 +37,24 @@ object PixelFrameOps {
         }
         return ArrayPixelFrame(w, h, out)
     }
+
+    /**
+     * Đảo màu ([255] − mỗi kênh RGB, giữ alpha) — dùng để **chuẩn hoá light↔dark** cho glyph locator.
+     *
+     * VÌ SAO (owner 2026-08-24 + [ĐO]): [NavGlyphLocator.locate] chỉ dò **mực SÁNG trên nền TỐI**. App dẫn ở
+     * **light/day theme** vẽ mũi tên TỐI trên nền SÁNG ⇒ locate trả null ⇒ "Waze never appears / VietMap dark
+     * ban ngày". Đảo màu một khung day-theme biến nó thành night-theme tương đương ⇒ locator + registry
+     * (đều quy ước sáng-trên-tối) chạy y nguyên. Tất định; đảo hai lần = chính nó.
+     */
+    fun invert(src: PixelFrame): PixelFrame? {
+        val px = src.argb() ?: return null
+        val out = IntArray(px.size) { i ->
+            val c = px[i]
+            (c and -0x1000000) or
+                ((255 - ((c ushr 16) and 0xFF)) shl 16) or
+                ((255 - ((c ushr 8) and 0xFF)) shl 8) or
+                (255 - (c and 0xFF))
+        }
+        return ArrayPixelFrame(src.width, src.height, out)
+    }
 }

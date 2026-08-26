@@ -10,8 +10,8 @@ package com.byd.clusternav.navigation
  * template Waze/VietMap THẬT — sinh sau này từ ảnh PNG crop trên emulator qua [ManeuverSignature.signatureBits]
  * (đúng chuỗi 225-bit như RAW) — để `classify*` cũng nhận được mũi tên Waze/VietMap.
  *
- * [BUILTIN] = [WAZE_INK] (4 mục, thu từ ảnh chụp thật trên emulator 08-22/23) + [VIETMAP_INK] (34 mục, sinh
- * từ asset SVG trong APK VietMap Live 3.3.4 — xem KDoc của nó). ⚠ KHÔNG bịa số giả: mọi chuỗi ở đây đều
+ * [BUILTIN] = [WAZE_INK] (7 mục, thu từ ảnh chụp thật trên emulator 08-22/23/25) + [VIETMAP_INK] (40 mục = 34
+ * sinh từ asset SVG APK VietMap Live 3.3.4 + 6 sinh từ fixture runtime B3.52 — xem KDoc của nó). ⚠ KHÔNG bịa số giả: mọi chuỗi ở đây đều
  * tái lập được từ một nguồn ghi rõ. Tên maneuver DÙNG CÙNG từ vựng với [ManeuverRegistry] (vd
  * `"maneuver_turn_normal_left"`) để [ManeuverSignature] ánh xạ TÊN→AMAP/HAL/Maneuver y hệt — không cần bảng
  * map riêng.
@@ -28,7 +28,7 @@ package com.byd.clusternav.navigation
  *       (CLAUDE.md §6) được cách ly bằng CẤU TRÚC chứ không chỉ bằng khoảng cách).
  *
  * ⚠ SỐ MỤC ≠ PHỦ SÓNG: đo bằng chính locator trên 87 khung VietMap **ghép** (glyph asset APK dán lên khung
- * chụp thật) thì **39/87** khung đi trọn
+ * chụp thật) thì **63/87** khung đi trọn
  * đường tới mã AMAP — xem mục "PHỦ SÓNG THẬT" ở KDoc [VIETMAP_INK] trước khi hứa với ai là app đọc được
  * rẽ gấp / quay đầu / tới đích.
  *
@@ -58,7 +58,7 @@ object WazeArrowRegistry {
      * ~16 lớp và biên liên-lớp của cả bộ là **41 bit** (đo 08-23 vòng 2) — vẫn trên biên bắt buộc 37, nhưng
      * đừng trích 62–72 như thể nó là biên của registry. Xem bất biến (b) ở KDoc object.
      *
-     * ⚠ WAZE MỚI CÓ 2 MANEUVER (trái/phải). Thu thêm bằng cách bật [com.byd.clusternav.NavLog].verbose rồi
+     * ⚠ WAZE CÓ 5 MANEUVER thu từ app thật (trái/phải/quay-đầu/thẳng/tới-đích). Thu thêm bằng cách bật [com.byd.clusternav.NavLog].verbose rồi
      * đọc dòng `arrow-sig` — chữ ký in ra ĐÃ theo đúng quy ước này, dán thẳng vào đây kèm nhãn. Hướng nào
      * chưa thu ⇒ chưa có template ⇒ `classifyWazeInk` trả "(không khớp)" ⇒ im lặng (degrade-safe).
      *
@@ -76,10 +76,18 @@ object WazeArrowRegistry {
         "000000000001000000000000001100000000000111110000001111111111000111110011110001110000001100001100000001000011000000000000011000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000" to "maneuver_turn_normal_right",
         // rẽ PHẢI — cùng maneuver trên cụm 1920×720, ink 64×75 (biến thể nét)
         "000000000001000000000000001100000000111111111000011111111111000111000001100001100000001000011000000000000111000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000" to "maneuver_turn_normal_right",
+        // QUAY ĐẦU — thu LIVE trên emulator 08-25 (Waze zin đang dẫn, Ô Chợ Dừa; glyph 180° vòng trái). Cách
+        // mọi template khác ≥44 bit ⇒ biên an toàn thừa. Đây là template Waze thu-từ-app đầu tiên ngoài trái/phải
+        // (chiến dịch B3.34: z40 OpenBYD lệch 25–28 bit với Waze 5.21 nên phải thu WAZE_INK bản hiện tại).
+        "000000011110000000001111111100000011000001110000110000000111000110000000011000110000000011000110000000011000110000000011000110000000011000110000000011000110000000011111111100000011011111100000011001111000000011000100000000000" to "maneuver_u_turn_left",
+        // ĐI THẲNG — thu LIVE 08-25 (Waze HCMC, road "Continue straight"). Cách mọi template khác ≥58 bit.
+        "000000111000000000011111110000001111111111110011111111111110000000111100000000000111100000000000111100000000000111100000000000111100000000000111100000000000111100000000000111100000000000111100000000000111100000000000111000000" to "maneuver_straight",
+        // TỚI ĐÍCH — thu LIVE 08-25 (Waze cuối tuyến, glyph cờ đích). Cách mọi template KHÁC lớp ≥50 bit.
+        "000001101100000000100000001000001000000000100010000000000010100000000000001100000000000001100000000000001100000000000001000000000000000010000000000010001000000000100000110000011000000001111100000000000111000000000000010000000" to "maneuver_destination",
     )
 
     /**
-     * ── VIETMAP LIVE 3.3.4 — 34 template SINH TỪ ASSET APK (2026-08-23) ────────────────────────────────
+     * ── VIETMAP LIVE 3.3.4 — 40 template = 34 ASSET APK (08-23) + 6 FIXTURE RUNTIME (B3.52 08-25) ──────────
      *
      * NGUỒN (tái lập được, không phải số bịa): `vn.vietmap.live` **3.3.4** (xapk APKPure) →
      * thư mục `assets/flutter_assets/lib/assets/maps/directions_white/` — 93 file SVG mũi tên TRẮNG mà chính
@@ -191,7 +199,7 @@ object WazeArrowRegistry {
      * `vm_recipe.txt`). Chuỗi thu tay vẫn còn trong test làm khung thử: nó phải phân loại ra RẼ PHẢI qua
      * template APK — đó chính là phép kiểm "template offline khớp glyph runtime".
      *
-     * ── PHỦ SÓNG THẬT: 39/87 KHUNG MANEUVER ĐI TRỌN ĐƯỜNG TỚI MÃ AMAP ─────────────────────────────────
+     * ── PHỦ SÓNG THẬT: 63/87 KHUNG MANEUVER ĐI TRỌN ĐƯỜNG TỚI MÃ AMAP ─────────────────────────────────
      * Nạp được vào registry KHÔNG có nghĩa là dùng được. `classifyWazeInk` có ĐÚNG MỘT call site
      * (`ScreenCaptureNavSource.handleArrowByGlyph`) và crop LUÔN đến từ
      * [com.byd.clusternav.navigation.screencapture.NavGlyphLocator], nên template nào mà glyph nguồn của nó
@@ -206,8 +214,9 @@ object WazeArrowRegistry {
      * lên một khung chụp THẬT đã xoá mũi tên — không phải 87 ảnh chụp), khoá bằng
      * `VietMapGlyphGateTest` (`:core`) — xem `docs/diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md`:
      *   · locator dò ĐÚNG mũi tên: **86/87** (trước vòng 3: **27/87**, và 60/87 trả về icon POI bản đồ);
-     *   · **39/87** khung đi trọn đường tới mã AMAP. Phần hụt KHÔNG còn do cổng locator mà do chính registry
-     *     này chỉ có 34 template cho ~16 lớp quyết định, cộng giới hạn "ngưỡng mực" ngay dưới đây (nhiều tên
+     *   · **63/87** khung đi trọn đường tới mã AMAP (39/87 trước B3.52; +24 nhờ 6 template fixture-derived).
+     *     Phần hụt KHÔNG còn do cổng locator mà do chính registry
+     *     này chỉ có 40 template cho ~16 lớp quyết định, cộng giới hạn "ngưỡng mực" ngay dưới đây (nhiều tên
      *     asset khác nhau vẽ CÙNG một đường mực trắng ⇒ cố tình không thêm template để giữ biên 37 bit).
      *   · **10 tên nhiều thành phần** lệch quy ước: locator lấy bbox của MỘT đảo, template sinh từ bbox
      *     TOÀN BỘ mực ⇒ `arrive` `arrive_left` `arrive_right` `arrive_straight` `depart` `depart_left`
@@ -296,9 +305,29 @@ object WazeArrowRegistry {
         "000000110000000000011111100000000111111110000011111111111000111111111011100000001111000000000001111111000000000001111110000000000001111000000000001111000000000111110000001111111100000001111000000000001111000000000001111000000" to "maneuver_roundabout_enter_and_exit_ccw_straight",
         // rotary_uturn/roundabout_uturn
         "000011111110000001111111111100011110000011110111100000001111111100000000111111100000001111011111101111110000111111111000000000111100000000000111000000001111111111100000111111111000000011111110000000000111100000000000010000000" to "maneuver_roundabout_enter_and_exit_ccw_u_turn",
+        // ── B3.52 (08-25): 6 template SINH TỪ FIXTURE RUNTIME (không phải SVG qlmanage) ───────────────────
+        // Các glyph banner runtime lệch template SVG 19–31 bit (>18) dù CÙNG họ hướng ⇒ MISS. Sinh chữ ký
+        // TỪ CHÍNH fixture khung ghép (`VietMapGlyphFrames.compose` → NavGlyphLocator → signatureBits) — cùng
+        // lò với glyph chạy thật ⇒ Hamming thấp. Chọn qua set-cover mỗi lớp + lọc AN TOÀN: mỗi mục ≥48 bit
+        // vs mọi template GMaps và ≥37 bit vs mọi template ink KHÁC lớp (đo bằng probe, [ĐO]). Nhãn = họ hướng
+        // (cùng khoá quyết định với template SVG cùng lớp ⇒ near.size + biên liên-khoá 41 KHÔNG đổi). Phủ sóng
+        // tới mã AMAP 39→63/87. ⚠ 2 glyph fork_slight_right/off_ramp_slight_right BỊ LOẠI (chỉ cách lớp khác
+        // 27 bit <37) ⇒ giữ IM LẶNG (degrade-safe). Gắn version app như cả bộ (VietMap đổi icon phải thu lại).
+        // continue_left/invalid_left/new_name_left/notification_left/on_ramp_left/turn_left (runtime)
+        "000000000000000000010000000000001110000000000011111000000000011111111111100001111000001110000110000000010000010000000011000000000000011000000000000011000000000000011000000000000011000000000000011000000000000011000000000000011" to "maneuver_turn_normal_left",
+        // fork_left (runtime) — RẼ TRÁI 90°
+        "000000000000000000001100000000000111100000000001111110000000011111111111000001111110011100000011100000110000001100000110000000000000011000000000000011000000000000011000000000000011000000000000011000000000000011000000000000011" to "maneuver_turn_normal_left",
+        // continue_slight_right/invalid_slight_right/new_name_slight_right/notification_slight_right/on_ramp_slight_right/turn_slight_right (runtime)
+        "000000000000110000000011111111000000000111110000000001111110000000111101110000011110000010000111000000000001100000000000011000000000000011000000000000011000000000000011000000000000011000000000000011000000000000011000000000000" to "maneuver_turn_slight_right",
+        // fork_slight_left/off_ramp_slight_left (runtime)
+        "011100000000000011111111100000011111110000000011111111000000001110011110000001000000111100000000000001110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110000000000000110" to "maneuver_turn_slight_left",
+        // new_name_sharp_left/notification_sharp_left/on_ramp_sharp_left/turn_sharp_left (runtime)
+        "000000000000110000000000001111000000000111111000000001110011001000111100011011111110000011011111100000011011111000000011011111100000011011111110000011000000000000011000000000000011000000000000011000000000000011000000000000011" to "maneuver_turn_sharp_left",
+        // new_name_sharp_right/notificaiton_sharp_right/notification_sharp_right/on_ramp_sharp_right/turn_sharp_right (runtime)
+        "011000000000000111110000000000111111000000000110011110000000110000111000110110000011111110110000000111110110000000111110110000000111110110000001111111110000000000000110000000000000110000000000000110000000000000110000000000000" to "maneuver_turn_sharp_right",
     )
 
-    /** Toàn bộ template quy ước bbox-mực: 4 Waze + 34 VietMap. Thứ tự không ảnh hưởng kết quả khớp. */
+    /** Toàn bộ template quy ước bbox-mực: 7 Waze + 40 VietMap. Thứ tự không ảnh hưởng kết quả khớp. */
     val BUILTIN: List<Pair<String, String>> = WAZE_INK + VIETMAP_INK
 
     @Volatile private var entries: List<Pair<String, String>> = BUILTIN
@@ -337,7 +366,7 @@ object WazeArrowRegistry {
     }
 
     /**
-     * Xoá về [BUILTIN] — KHÔNG phải về rỗng: từ 08-22/23 [BUILTIN] đã có template THẬT (4 Waze + 34 VietMap).
+     * Xoá về [BUILTIN] — KHÔNG phải về rỗng: từ 08-22/23 [BUILTIN] đã có template THẬT (7 Waze + 40 VietMap).
      * Chủ yếu cho test để không rò template tổng hợp sang test khác.
      */
     @Synchronized

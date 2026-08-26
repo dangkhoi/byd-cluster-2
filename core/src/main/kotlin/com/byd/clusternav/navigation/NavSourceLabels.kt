@@ -1,6 +1,18 @@
 package com.byd.clusternav.navigation
 
 /**
+ * KÊNH ĐỌC dữ liệu dẫn đường của một nguồn (B3.57). Phân loại THUẦN theo roster [NavApps], KHÔNG hardcode tên
+ * gói để rẽ nhánh hành vi (§7) — chỉ để NÓI ĐÚNG với người dùng nguồn đang dẫn được đọc bằng cách nào.
+ *
+ *  • [NOTIFICATION] — đọc qua kênh thông báo (`NavNotificationListener`): Google Maps (+ ReVanced). Đây là
+ *    đường đã proven ngoài hiện trường, cần quyền "notification access".
+ *  • [SCREEN_READ]  — đọc qua MÀN HÌNH: trợ năng (a11y content-desc/view-id) + chụp màn (glyph mũi tên).
+ *    VietMap Live (Flutter, không có notification mang mũi tên) và họ Waze đi đường này.
+ *  • [UNKNOWN]      — chưa có nguồn / gói lạ không trong roster.
+ */
+enum class NavReadChannel { NOTIFICATION, SCREEN_READ, UNKNOWN }
+
+/**
  * PURE labels for the nav-source MENU (T3, spec `b3-full-nav-capture` R2). Lives in :core (JVM only, no Android)
  * next to [NavSourceMode] and [SourceArbiter], so it is unit-testable off-device (`LayeringRulesTest` keeps pure
  * logic out of :app). Two mappings kept in ONE place so the menu (mode → label) and the "active source" status
@@ -38,5 +50,20 @@ object NavSourceLabels {
         in WAZE_PKGS -> "Waze"
         in VIETMAP_PKGS -> "VietMap"
         else -> activePkg
+    }
+
+    /**
+     * KÊNH ĐỌC của gói dẫn đang giữ phiên ([NavReadChannel]). Phân loại theo roster [NavApps] (§7 — theo phép
+     * đo/roster, KHÔNG theo tên gói hardcode để rẽ hành vi). Dùng cho DÒNG TRẠNG THÁI: nói rõ nguồn được đọc
+     * bằng THÔNG BÁO (GMaps) hay ĐỌC MÀN HÌNH (VietMap/Waze), để status không còn ngầm định "chỉ có notification".
+     *
+     * GMaps ưu tiên [NavReadChannel.NOTIFICATION] (đường proven, `NavApps.NOTIFICATION`); họ Waze + VietMap →
+     * [NavReadChannel.SCREEN_READ]; null/gói lạ → [NavReadChannel.UNKNOWN].
+     */
+    fun readChannel(pkg: String?): NavReadChannel = when {
+        pkg == null -> NavReadChannel.UNKNOWN
+        pkg in NavApps.NOTIFICATION -> NavReadChannel.NOTIFICATION
+        pkg in WAZE_PKGS || pkg in VIETMAP_PKGS -> NavReadChannel.SCREEN_READ
+        else -> NavReadChannel.UNKNOWN
     }
 }

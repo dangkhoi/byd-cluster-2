@@ -65,7 +65,11 @@ object SourceArbiter {
         // NavSourceMode). Giá trị lạ phải rơi vào khoá-giữ AUTO y như trước, không được thành "cho qua tất".
         else -> {
             val h = activeSource
-            h == null || h == pkg || now - activeSeen > STALE_MS
+            // B3.50: `!withinFreshWindow(...)` thay cho `now - activeSeen > STALE_MS` — chốt chặn LỆCH ĐỒNG
+            // HỒ. Forward-clock cho kết quả GIỐNG HỆT (elapsed ≥ 0 ⇒ `!in 0..STALE_MS` ⟺ `> STALE_MS`); chỉ
+            // khác khi activeSeen ở TƯƠNG LAI (đồng hồ nhảy lùi) ⇒ nay coi là STALE ⇒ nhả khoá, không giữ
+            // cứng vào nguồn đã chết tới khi đồng hồ đuổi kịp.
+            h == null || h == pkg || !withinFreshWindow(now - activeSeen)
         }
     }
 
@@ -112,8 +116,20 @@ object SourceArbiter {
     /** Kênh DATA của [pkg] còn tươi không (≤ [STALE_MS]) — UI/nguồn ảnh hỏi để biết data có đang thắng. */
     fun isDataFresh(pkg: String, now: Long): Boolean {
         val t = lastDataByPkg[pkg] ?: return false
-        return t > 0 && now - t <= STALE_MS
+        return t > 0 && withinFreshWindow(now - t)
     }
+
+    /**
+     * Quãng trôi [elapsed] (= now − mốc) có nằm trong cửa sổ tươi `[0, STALE_MS]` không.
+     *
+     * ⚠ Chốt chặn LỆCH ĐỒNG HỒ (B3.50): mọi mốc ở đây là WALL clock (`System.currentTimeMillis` từ caller),
+     * mà NTP/GPS có thể kéo đồng hồ NHẢY LÙI ⇒ mốc đã lưu rơi vào TƯƠNG LAI so với [now] ⇒ [elapsed] ÂM.
+     * Phép so cũ `elapsed <= STALE_MS` coi số âm là "tươi" ⇒ (a) kênh IMAGE của gói đó bị chặn tới khi đồng
+     * hồ đuổi kịp (đúng kênh mà B3.44 biến thành đường sống DUY NHẤT của VietMap), (b) khoá-giữ AUTO không
+     * bao giờ hết hạn = khoá cứng vào một nguồn đã chết. Cận DƯỚI 0 khép cửa đó: mốc tương lai ⇒ STALE ⇒
+     * an toàn (nhả khoá / cho ảnh lên), không giữ nhầm. Cận trên `STALE_MS` (bao gồm) giữ nguyên ngữ nghĩa cũ.
+     */
+    private fun withinFreshWindow(elapsed: Long): Boolean = elapsed in 0..STALE_MS
 
     /** Gọi khi noti dẫn đường của [pkg] bị gỡ. true nếu [pkg] đang giữ khoá (caller nên dừng cụm). */
     fun release(pkg: String): Boolean {
@@ -127,6 +143,6 @@ object SourceArbiter {
     /** Nguồn đang giữ còn tươi không (UI hiện trạng thái). */
     fun isFresh(now: Long): Boolean {
         activeSource ?: return false
-        return now - activeSeen <= STALE_MS
+        return withinFreshWindow(now - activeSeen)
     }
 }
