@@ -26,5 +26,5 @@
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="500"
-    android:packageNames="com.google.android.apps.maps,app.revanced.android.apps.maps,vn.vietmap.live,com.waze,com.chisadin.wazemod"
+    android:packageNames="com.google.android.apps.maps,app.revanced.android.apps.maps"
     android:description="@string/acc_desc" />

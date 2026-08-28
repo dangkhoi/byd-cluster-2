@@ -121,6 +121,18 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
     }
 
     /**
+     * Cluster display resolver. Tries the known [CLUSTER_DISPLAY_ID] (1 — the car cluster) FIRST so the on-car
+     * path stays byte-for-byte unchanged; only if that display is absent (e.g. off-car emulator where the
+     * secondary is display 2) does it fall back to the first `CATEGORY_PRESENTATION` display with id != 0.
+     * Additive: cannot change on-car behaviour (the car always has display 1).
+     */
+    private fun resolveClusterDisplay(dm: DisplayManager): android.view.Display? =
+        dm.getDisplay(CLUSTER_DISPLAY_ID)
+            ?: runCatching {
+                dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION).firstOrNull { it.displayId != 0 }
+            }.getOrNull()
+
+    /**
      * IDEMPOTENT + retryable init. No-op if already initialized (`clusterWm != null`). If display 1 is absent
      * (off-car, or Cast not yet projecting) it stays UN-initialized and returns — the next [doShow] /
      * onDisplayAdded retries. Never sets a permanent degrade. Degrade-safe (runCatching).
@@ -129,9 +141,9 @@ class SpeedBadgeOverlay(private val appContext: Context) : AutoCloseable {
         if (clusterWm != null) return
         runCatching {
             val dm = appContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-            val display = dm?.getDisplay(CLUSTER_DISPLAY_ID)
+            val display = dm?.let { resolveClusterDisplay(it) }
             if (display == null) {
-                Log.d(TAG, "display $CLUSTER_DISPLAY_ID not ready — staying uninitialized, will retry")
+                Log.d(TAG, "cluster display not ready (tried id $CLUSTER_DISPLAY_ID + PRESENTATION) — will retry")
                 return
             }
             val size = android.graphics.Point()

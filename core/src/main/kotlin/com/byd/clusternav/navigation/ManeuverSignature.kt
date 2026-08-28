@@ -61,24 +61,6 @@ object ManeuverSignature {
         ManeuverRegistry.RAW.map { (bits, name) -> packBits(bits) to name }
     }
 
-    // ── B3.6: template mũi tên Waze/VietMap ([WazeArrowRegistry]) — đóng gói LAZY, đóng-gói-lại KHI registry đổi
-    //    (theo WazeArrowRegistry.version).
-    //
-    // ⚠ CHỈ [classifyWazeInk] đọc list này. [match]/[matchNCC] (đường large-icon notification) KHÔNG đọc —
-    //   xem KDoc [match] để biết vì sao (gỡ 08-23 vòng 1, [P0]). Vì vậy KHÔNG có bản grayscale: nhánh NCC
-    //   không tồn tại cho registry mực.
-    @Volatile private var wazeVersion = -1
-    @Volatile private var wazePacked: List<Pair<LongArray, String>> = emptyList()
-
-    private fun wazePackedRegistry(): List<Pair<LongArray, String>> {
-        val v = WazeArrowRegistry.version
-        if (v != wazeVersion) {
-            wazePacked = WazeArrowRegistry.raw().map { (bits, name) -> packBits(bits) to name }
-            wazeVersion = v
-        }
-        return wazePacked
-    }
-
     /**
      * Kết quả MỘT lần khớp, trả TƯỜNG MINH cùng nhau.
      *
@@ -100,41 +82,6 @@ object ManeuverSignature {
 
     /** Không có ảnh để chấm (null / nhỏ hơn 8×8) — KHÁC "(không khớp)" (có ảnh, chấm rồi, trượt registry). */
     const val NO_INPUT = "(không ảnh)"
-
-    /**
-     * Chấm khung **bbox mực** do `NavGlyphLocator` dò ra, khớp **CHỈ** với [WazeArrowRegistry] — đường
-     * screen-capture (B3). Trả [Match] như [classifyDetailed].
-     *
-     * VÌ SAO TÁCH RIÊNG, KHÔNG DÙNG [classifyDetailed] (đo 2026-08-22): hai registry nằm ở HAI QUY ƯỚC CROP
-     * khác nhau — 38 mục [ManeuverRegistry] là "khung vẽ có lề" (sinh từ bounds view a11y `navBarDirection`
-     * của OpenBYD), còn [WazeArrowRegistry] là "bbox mực sát glyph". Khớp chéo quy ước KHÔNG chỉ trượt mà
-     * còn ra **SAI hướng**: 4/9 khung thật cho `off_ramp_normal_left` (→ AMAP 4 = chếch trái) thay vì
-     * `turn_normal_left` (→ AMAP 2 = rẽ trái) — một mũi tên sai hướng trên cụm/HUD tệ hơn hẳn không có gì.
-     *
-     * Registry rỗng ⇒ luôn trả "(không khớp)" — an toàn, không bao giờ mượn tạm template GMaps.
-     *
-     * ⚠ CHỈ HAMMING, **KHÔNG có nhánh NCC** (gỡ 08-22 vòng 1 — [P1]). VÌ SAO: [matchNccIn] là khớp MỀM
-     * (ngưỡng [NCC_MIN] = 0.45) và registry này KHÔNG có lớp "không biết". Mà
-     * [com.byd.clusternav.navigation.screencapture.NavGlyphLocator] + `handleArrowByGlyph` chạy cho MỌI app
-     * (không lọc package), nên một glyph mũi tên bất kỳ lọt qua locator sẽ tương quan ≥ 0.45 với MỘT template
-     * nào đó ⇒ kết quả là **bốc thăm giữa các hướng**. Trên xe đang lăn bánh, mũi tên SAI HƯỚNG nguy hiểm hơn
-     * hẳn không hiện gì (CLAUDE.md — degrade-safe: thiếu dữ liệu thì IM LẶNG, tuyệt đối không đoán bừa).
-     *
-     * Hamming một mình đủ vì bộ template được TỈA để mọi cặp KHÁC khoá quyết định cách nhau ≥ 2×[MAX_HAMMING]+1
-     * = 37 bit (bất biến khoá bằng `WazeArrowRegistryTest.moi cap template KHAC khoa quyet dinh phai cach >= 37 bit`
-     * — đo 08-23 vòng 2: nhỏ nhất **41 bit**). Bất đẳng thức tam giác ⇒ khung nằm trong 18 bit của template
-     * ĐÚNG thì cách MỌI template khác-khoá ≥ 19 bit ⇒ không thể thắng. Glyph chưa có template ⇒ "(không khớp)"
-     * ⇒ `handleArrowByGlyph` trả false ⇒ rơi xuống đường rect cố định (đường cũ, đã có test).
-     */
-    fun classifyWazeInk(bmp: PixelFrame?): Match {
-        if (bmp == null || bmp.width < 8 || bmp.height < 8) return Match(NO_INPUT, null)
-        val s = signature(bmp) ?: return Match("(mờ)", null)
-        val name = matchIn(s.bits, wazePackedRegistry())?.first
-            ?: return Match("(không khớp)", null)
-        val amap = nameToAmap(name)
-        note("waze-ink '$name' -> amap=$amap")
-        return Match(name, amap, nameToHal(name), nameToManeuver(name))
-    }
 
     /** -> mã AMAP NEW_ICON từ ảnh mũi tên, hoặc null nếu mờ/không khớp. */
     fun classify(bmp: PixelFrame?): Int? = classifyDetailed(bmp).amap

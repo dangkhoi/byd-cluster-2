@@ -31,11 +31,12 @@ object VietMapAutostart {
 
     /**
      * ĐỒNG BỘ (block thread gọi) — dùng cho [BootSetupService] để foreground-service giữ tiến trình sống tới khi
-     * xong (nếu spawn thread rời, process có thể bị kill sau finish()). No-op nếu badge tắt / VietMap chưa cài / đã chạy.
+     * xong (nếu spawn thread rời, process có thể bị kill sau finish()). No-op nếu CẢ badge tốc độ LẪN toggle bong
+     * bóng VietMap đều tắt / VietMap chưa cài / đã chạy.
      */
     fun runNow(ctx: Context, returnToSelfPkg: String?) {
         val app = ctx.applicationContext
-        if (!Prefs.badgeEnabled(app)) return
+        if (!Prefs.badgeEnabled(app) && !Prefs.vmBubbleEnabled(app)) return
         if (runCatching { app.packageManager.getLaunchIntentForPackage(PKG) }.getOrNull() == null) return  // chưa cài
         runCatching {
             val keys = AdbKeys.ensure(app)

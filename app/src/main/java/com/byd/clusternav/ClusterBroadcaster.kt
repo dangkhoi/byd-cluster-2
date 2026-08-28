@@ -4,7 +4,6 @@ import com.byd.clusternav.navigation.NavFormat
 import com.byd.clusternav.navigation.NavParse
 import com.byd.clusternav.navigation.SourceArbiter
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
-import com.byd.clusternav.modules.navaccess.NavAccessibilitySource
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -105,7 +104,6 @@ object ClusterBroadcaster {
         } else {
             runCatching { TurnDistanceInterpolator.clearAnchor() }
         }
-        NavDistanceLog.ensure(ctx)
         emissionArbiter.sourceFrame(
             sourceId = identity.sourceId,
             sessionId = identity.sessionId,
@@ -151,34 +149,7 @@ object ClusterBroadcaster {
         // NavRepository.state.arrow here — it may be from a different sequence.
         val withArrow = s
         val frame = AmapFrameBuilder.buildGuidanceFrame(withArrow, byd, road, segOverride, hasDist) ?: return
-        // LOG cự ly (bắt vụ nhảy số): thô GMaps vs nội suy vs hiển thị
-        runCatching {
-            // B4: mẫu đọc-màn thô + tuổi. Khi GMaps chạy NỀN, a11y scan không refresh → mẫu cũ ĐÓNG BĂNG
-            // (tuổi vọt lên hàng phút, road rỗng). Ghi -1 (INVALID) khi STALE (tuổi > SCREEN_READ_STALE_MS)
-            // HOẶC đường-đọc-màn rỗng → phân tích off-car không bị đánh lừa bởi ground-truth đóng băng
-            // (phân định thuần ở :core; fresh+valid → giữ nguyên số + tuổi thật).
-            val srRaw = TurnDistanceInterpolator.lastRefined()
-            val srAgeRaw = if (srRaw >= 0 && TurnDistanceInterpolator.lastRefinedAt() > 0L)
-                SystemClock.elapsedRealtime() - TurnDistanceInterpolator.lastRefinedAt() else -1L
-            val srM = TurnDistanceInterpolator.freshScreenRead(srRaw, srAgeRaw, NavAccessibilitySource.road)
-            val srAge = if (srM >= 0) srAgeRaw else -1L
-            NavDistanceLog.record(rawMeters, rawSeg, segOverride,
-                TurnDistanceInterpolator.closingRate(), SpeedProvider.mps(), srM, srAge, s.road, lastCleanRoad + "|" + s.maneuverText)
-        }
         send(ctx, frame)
-        // VẾT icon rẽ (lỗi đo 2026-07-30: "rẽ trái mà cụm hiện thẳng mãi", không lần ra lớp nào sai):
-        // ghi lại verdict TỪNG lớp fallback, không chỉ icon cuối cùng đã thắng. CHỈ ĐỌC — frame đã gửi xong,
-        // ĐẶT SAU send() để việc chấm lại ảnh + ghi file không bao giờ làm trễ frame lên cụm.
-        // liveArrow: từ 0.72 đường lên cụm dựng lại NavState qua NavigationFrameContent (không có trường
-        // bitmap) nên s.arrow LUÔN null ở đây; mượn ảnh mới nhất ở NavRepository để lớp 2/4 còn nói được gì,
-        // và NavArrowLog ghi arrow_src=live để KHÔNG ai đọc nhầm là chuỗi thật đã thấy ảnh đó.
-        runCatching {
-            NavArrowLog.record(
-                ctx, s.maneuverText, lastCleanRoad, s.road, s.distance,
-                s.maneuverIcon, frame.getIntExtra("NEW_ICON", -1),
-                frameArrow = s.arrow, liveArrow = NavRepository.state.arrow,
-            )
-        }.onFailure { Log.w(TAG, "vết icon rẽ lỗi", it) }
         // D4 (closeout 1.28): log-on-change — the ~4/sec heartbeat re-emits identical frames; only Log.i when the
         // emitted icon|seg|road changes. Kills per-frame spam, keeps a low-rate signal (W/E logs stay
         // unconditional). sendFrame runs single-threaded on the main looper (Handler) → no lock needed.

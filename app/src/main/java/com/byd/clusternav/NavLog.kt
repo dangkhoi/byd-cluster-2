@@ -6,14 +6,16 @@ import android.content.Context
  * Cheap IN-MEMORY gate for verbose diagnostic logging.
  *
  * OTA ships a RELEASE apk (no `BuildConfig.DEBUG`) and the owner debugs on-car via logcat, so verbosity is a
- * RUNTIME flag defaulting OFF — flipped by the visible "Thu thập dữ liệu chẩn đoán" settings switch OR the
- * hidden long-press on the version label (MainActivity) and mirrored here so per-frame hot paths (BydHal
- * keep-alive, ClusterBroadcaster / NavArrowLog / NavDistanceLog, ManeuverSignature.note) read a `@Volatile`
- * field instead of hitting SharedPreferences ~4×/second.
+ * flag defaulting OFF. Since 2026-08-28 it is controlled SOLELY by the `-PdiagLog=true` build flag
+ * (`BuildConfig.DIAG_LOG`, via [Prefs.navVerboseLog]'s default) — the runtime settings switch and the hidden
+ * version-label long-press were REMOVED because the VietMap/Waze screen-capture they collected is gone. The
+ * value is mirrored here so per-frame hot paths (BydHal keep-alive, ClusterBroadcaster, ManeuverSignature.note)
+ * read a `@Volatile` field instead of hitting SharedPreferences ~4×/second.
  *
- * The persisted source of truth is [Prefs.navVerboseLog]; [init] refreshes this mirror at the app entry points
- * that always run (MainActivity.onCreate, NavNotificationListener.onListenerConnected) and the D5 toggle keeps
- * both in sync.
+ * The remaining verbose consumers are all valid GMaps diagnostics ([NavNotifLog], [NavNotifRawLog],
+ * ManeuverSignature notes) plus the [DiagStorageCap] periodic sweep. The source of truth is
+ * [Prefs.navVerboseLog]; [init] refreshes this mirror at the app entry points that always run
+ * (MainActivity.onCreate, NavNotificationListener.onListenerConnected).
  */
 object NavLog {
     @Volatile
@@ -21,12 +23,11 @@ object NavLog {
 
     /** Refresh the in-memory gate from the persisted flag. Call at entry points that always run. */
     fun init(ctx: Context) {
-        // Verbose is controlled ONLY by the persisted pref, DEFAULT FALSE — so normal use collects NO logs /
-        // PNGs / screenshots. The old `|| BuildConfig.DEBUG` auto-on was REMOVED (owner 2026-08-18): the debug
-        // data-collection build force-enabled verbose, which filled the car's storage (7 GB+ nav_arrow_pngs +
-        // diag screenshots + CSVs) on every normal drive. Data-collection is now opt-in via the visible settings
-        // switch ("Thu thập dữ liệu chẩn đoán") or the hidden long-press on the version label; the storage cap
-        // ([DiagStorageCap]) is the always-on backstop for the occasional data-collection drive.
+        // Verbose defaults FALSE — normal use collects NO logs / PNGs. The old `|| BuildConfig.DEBUG` auto-on was
+        // REMOVED (owner 2026-08-18) because the debug build force-enabled verbose and filled the car's storage.
+        // The runtime data-collection switch + hidden long-press were then REMOVED (2026-08-28) once the
+        // VietMap/Waze capture they collected was gone; verbose is now enabled only by a `-PdiagLog=true` build
+        // ([Prefs.navVerboseLog]'s default). The storage cap ([DiagStorageCap]) stays the always-on backstop.
         verbose = Prefs.navVerboseLog(ctx)
     }
 }

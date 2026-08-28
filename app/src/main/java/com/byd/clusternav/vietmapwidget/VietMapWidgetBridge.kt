@@ -22,6 +22,12 @@ private const val VIETMAP_PACKAGE = NavApps.VIETMAP_LIVE
 /**
  * VietMap widget bridge — binding lifecycle, per-provider independence, generation-bound callbacks.
  *
+ * ⛔ GIỮ — ĐỪNG XÓA (closing 2026-08-28). Đây là nguồn VietMap **DUY NHẤT còn lại** sau khi owner gỡ toàn bộ
+ * đường dẫn-đường VietMap/Waze (a11y turn + screen-capture mũi tên) khỏi cụm/HUD. File này KHÁC HẲN đường đã
+ * gỡ: nó đọc **AppWidgetHost RemoteViews** (KHÔNG qua accessibility, KHÔNG screen-capture) để lấy **tốc
+ * độ + giới hạn tốc độ (hiện tại + sắp tới)** → nuôi `speedbadge/SpeedBadgeOverlay` trên cụm. Gỡ nhầm file này
+ * = mất speed badge. Xem `docs/runbook-mod-vietmap-cluster.md` + `.kiro/steering/project-context.md`.
+ *
  * Extraction logic is delegated to [VietMapWidgetExtraction].
  * Clear logic is handled by [VietMapWidgetClearStateMachine].
  *
@@ -249,7 +255,6 @@ class VietMapWidgetBridge private constructor(context: Context) {
                                             )
                                         )
                                         schedulePublish()
-                                        VietMapWidgetVerboseLog.logAlertIcons(appContext, extraction, view, current, h1, h2)
                                     }
                                 }
                             }
@@ -278,7 +283,6 @@ class VietMapWidgetBridge private constructor(context: Context) {
             }
         }
         schedulePublish()
-        VietMapWidgetVerboseLog.logHostViewTree(appContext, extraction, view)
     }
     private fun schedulePublish() {
         main.removeCallbacks(publishDebounced)
@@ -314,7 +318,6 @@ class VietMapWidgetBridge private constructor(context: Context) {
         if (next == published) return
         published = next
         dispatchToListeners(next)
-        VietMapWidgetVerboseLog.logPublishedSnapshot(appContext, next.freshness, next, composed.combinedRaw)
     }
 
     private fun providerState(snap: VietMapProviderSnapshot<VietMapWidgetRawValues>): VietMapProviderState =

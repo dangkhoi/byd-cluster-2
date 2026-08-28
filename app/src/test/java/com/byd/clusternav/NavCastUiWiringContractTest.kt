@@ -58,7 +58,6 @@ class NavCastUiWiringContractTest {
     private val autostart by lazy { read(app("src/main/java/com/byd/clusternav/modules/clustercast/CastAutostart.kt")) }
     private val splitButtons by lazy { read(app("src/main/java/com/byd/clusternav/modules/clustercast/CastSplitRatioButtons.kt")) }
     private val listener by lazy { read(app("src/main/java/com/byd/clusternav/NavNotificationListener.kt")) }
-    private val navOutputOwner by lazy { read(app("src/main/java/com/byd/clusternav/NavOutputOwner.kt")) }
     private val laneWidget by lazy { read(app("src/main/java/com/byd/clusternav/modules/clustercast/ClusterNavLaneWidget.kt")) }
     private val prefs by lazy { read(app("src/main/java/com/byd/clusternav/Prefs.kt")) }
     private val coordinator by lazy { read(core("src/main/kotlin/com/byd/clusternav/modules/clustercast/simplified/SimpleCastCoordinator.kt")) }
@@ -119,37 +118,8 @@ class NavCastUiWiringContractTest {
     }
 
     /**
-     * 08-23 vòng 3 ([P1]) — ĐƯỜNG ẢNH cũng phải dựng bề mặt op-39, không chỉ đường notification.
-     *
-     * Hồi quy được khoá ở đây: `onNavActive` từng có ĐÚNG MỘT call site (`NavNotificationListener`), mà VIỆC B
-     * thu roster notification về `NavApps.NOTIFICATION` = chỉ GMaps ⇒ VietMap (vừa chuyển hẳn sang kênh ảnh
-     * theo chốt B3.42) không còn ai bật lớp nav OEM giữa cụm cho nó. Test source-text vì cả hai đầu đều cần
-     * Android (shell dadb + SharedPreferences); hành vi thuần đã khoá ở `NavOutputOwnerTest` nhóm "be mat".
+     * 08-23 vòng 3 ([P1]) — đường notification GMaps dựng bề mặt op-39 (đường ảnh đã GỠ 2026-08-28).
      */
-    @Test
-    fun `image nav path also raises the op39 surface, and never idles it`() {
-        assertTrue(
-            navOutputOwner.contains("ClusterNavLaneWidget") &&
-                navOutputOwner.contains(".onNavActive(appContext.applicationContext)"),
-            "ctor prod của NavOutputOwner phải nối bề mặt op-39 cho nguồn ảnh",
-        )
-        assertTrue(
-            navOutputOwner.contains("runCatching { assertNavSurface() }"),
-            "assert bề mặt phải degrade-safe (dadb chết không được nuốt tick nội dung)",
-        )
-        // CỐ Ý không idle từ đường ảnh: idle reset lastOkAtMs ⇒ kênh ảnh nhấp nháy sẽ xoá debounce 30 s của
-        // đường notification GMaps đang chạy song song và ép re-issue op-39 ở nhịp giây.
-        // Bỏ dòng chú thích trước khi soi: chính KDoc của seam GIẢI THÍCH vì sao không idle, nên tìm thô trên
-        // cả file sẽ tự bắt lời giải thích của mình (đã đỏ một lần đúng như thế).
-        val ownerCode = navOutputOwner.lineSequence()
-            .filterNot { val t = it.trim(); t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") }
-            .joinToString("\n")
-        assertTrue(
-            !ownerCode.contains("onNavIdle"),
-            "đường ảnh KHÔNG được gọi onNavIdle — xem KDoc NavOutputOwner.assertNavSurface",
-        )
-    }
-
     @Test
     fun `speed self-compensation is enabled by default (point 1B)`() {
         // Sparse GMaps notifications froze the cluster countdown when sending RAW distance; re-enabling

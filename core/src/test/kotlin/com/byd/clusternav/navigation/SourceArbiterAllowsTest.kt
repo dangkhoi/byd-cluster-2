@@ -280,7 +280,7 @@ class SourceArbiterAllowsTest {
     @Test
     fun `PREFER_X cho DUNG thanh vien nhom X - duyet ca 3 nhom, moi goi ngoai nhom bi chan`() {
         val foreign = setOf("com.android.settings", "vn.vietmap.app", "com.example.notanav")
-        val universe = NavApps.ALL + foreign
+        val universe = (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP) + foreign
         val cases = listOf(
             NavSourceMode.PREFER_GMAPS to NavApps.GMAPS,
             NavSourceMode.PREFER_WAZE to NavApps.WAZE,
@@ -325,7 +325,7 @@ class SourceArbiterAllowsTest {
     @Test
     fun `PREFER_ - hai package KHAC NHOM khong bao gio cung qua cong`() {
         val groups = listOf(NavApps.GMAPS, NavApps.WAZE, NavApps.VIETMAP)
-        val universe = NavApps.ALL + setOf("com.android.settings", "vn.vietmap.app")
+        val universe = (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP) + setOf("com.android.settings", "vn.vietmap.app")
         var base = 130_000_000L
         for (mode in listOf(NavSourceMode.PREFER_GMAPS, NavSourceMode.PREFER_WAZE, NavSourceMode.PREFER_VIETMAP)) {
             for (holder in listOf(null, GMAPS, WAZE, MOD, VIETMAP)) {
@@ -366,7 +366,7 @@ class SourceArbiterAllowsTest {
                 SourceArbiter.clear(); base += 1_000_000L
                 if (holder != null) SourceArbiter.shouldFeed(holder, NavSourceMode.AUTO, base)
                 val now = base + dt
-                for (pkg in NavApps.ALL) {
+                for (pkg in (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP)) {
                     if (SourceArbiter.allows(pkg, NavSourceMode.AUTO, now)) continue
                     assertEquals(
                         false, pkg == SourceArbiter.activeSource,

@@ -22,7 +22,7 @@ class NavWindowPickerRankTest {
 
     @Test
     fun `xep hang theo dien tich, cua so to hon truoc`() {
-        val r = NavWindowPicker.rank(listOf(win(mod, 960, 720), win(zin, 1920, 1080)), NavApps.ALL)
+        val r = NavWindowPicker.rank(listOf(win(mod, 960, 720), win(zin, 1920, 1080)), (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP))
         assertEquals(listOf(zin, mod), r.map { it.pkg })
     }
 
@@ -32,8 +32,8 @@ class NavWindowPickerRankTest {
      */
     @Test
     fun `hoa dien tich thi thu tu VAN tat dinh`() {
-        val a = NavWindowPicker.rank(listOf(win(mod, 1920, 1080), win(zin, 1920, 1080)), NavApps.ALL)
-        val b = NavWindowPicker.rank(listOf(win(zin, 1920, 1080), win(mod, 1920, 1080)), NavApps.ALL)
+        val a = NavWindowPicker.rank(listOf(win(mod, 1920, 1080), win(zin, 1920, 1080)), (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP))
+        val b = NavWindowPicker.rank(listOf(win(zin, 1920, 1080), win(mod, 1920, 1080)), (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP))
         assertEquals(a.map { it.pkg }, b.map { it.pkg }, "đảo thứ tự đầu vào mà kết quả đổi = không tất định")
     }
 
@@ -42,7 +42,7 @@ class NavWindowPickerRankTest {
     fun `bang dien tich thi cua so dang focus thang`() {
         val r = NavWindowPicker.rank(
             listOf(win(zin, 1920, 1080, focused = false), win(mod, 1920, 1080, focused = true)),
-            NavApps.ALL,
+            (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP),
         )
         assertEquals(mod, r.first().pkg)
     }
@@ -52,7 +52,7 @@ class NavWindowPickerRankTest {
     fun `tra ve MOI ung vien nav`() {
         val r = NavWindowPicker.rank(
             listOf(win(zin, 1920, 1080), win(mod, 960, 720), win(NavApps.VIETMAP_LIVE, 800, 600)),
-            NavApps.ALL,
+            (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP),
         )
         assertEquals(3, r.size)
         assertTrue(r.map { it.pkg }.containsAll(listOf(zin, mod, NavApps.VIETMAP_LIVE)))
@@ -61,7 +61,7 @@ class NavWindowPickerRankTest {
     /** App ngoài roster bị loại. */
     @Test
     fun `app ngoai roster bi loai`() {
-        val r = NavWindowPicker.rank(listOf(win("com.some.other", 1920, 1080), win(mod, 100, 100)), NavApps.ALL)
+        val r = NavWindowPicker.rank(listOf(win("com.some.other", 1920, 1080), win(mod, 100, 100)), (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP))
         assertEquals(listOf(mod), r.map { it.pkg })
     }
 
@@ -77,7 +77,7 @@ class NavWindowPickerRankTest {
     fun `nav window tren CUM (display 1) khong focus VAN duoc chon (B3_58 FIX 2a)`() {
         val r = NavWindowPicker.rank(
             listOf(win(NavApps.VIETMAP_LIVE, 1920, 720, focused = false, display = 1)),
-            NavApps.ALL,
+            (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP),
         )
         assertEquals(1, r.size)
         assertEquals(NavApps.VIETMAP_LIVE, r.first().pkg)
@@ -96,7 +96,7 @@ class NavWindowPickerRankTest {
                 win(NavApps.VIETMAP_LIVE, 1920, 720, focused = false, display = 1),   // cụm
                 win(zin, 1200, 600, focused = true, display = 0),                       // màn chính, nhỏ hơn
             ),
-            NavApps.ALL,
+            (NavApps.GMAPS + NavApps.WAZE + NavApps.VIETMAP),
         )
         assertEquals(2, r.size, "cả hai cửa sổ nav (cụm + chính) đều phải có mặt")
         // VietMap trên cụm to hơn ⇒ đứng trước dù không focus và ở display khác 0.

@@ -47,7 +47,7 @@ class TurnDistancePlausibility(
     private val frozenAbsLimitM: Int = 150,
     private val frozenRelLimitPct: Int = 10,
     /** Hai mẫu cách nhau quá lâu = đứt mạch → coi như nguồn mới (phải warmup lại). */
-    private val continuityMs: Long = NavViewIdSource.FRESH_MS,          // 4000ms
+    private val continuityMs: Long = 4_000L,                            // 4000ms (cũ = NavViewIdSource.FRESH_MS)
     private val speedoFactor: Double = TurnDistanceInterpolator.FACTOR, // 0.95, dùng CHUNG
 ) {
 

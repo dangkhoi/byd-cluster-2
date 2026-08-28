@@ -80,8 +80,9 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
+| [`specs/vietmap-overlay-position-ui.html`](specs/vietmap-overlay-position-ui.html) | **Item 4 (CLOSING 08-28)**: UI chỉnh VỊ TRÍ bong bóng VietMap trên cụm qua broadcast → mod receiver `posrx` (fix mapping 1-1). Kéo-thả + preset + persistence. Xem runbook `runbook-mod-vietmap-cluster.md` §10 | Current | 2026-08-28 |
 | [`specs/upcoming-speed-limit-badge.html`](specs/upcoming-speed-limit-badge.html) | Vẽ "giới hạn sắp tới + cự ly" (VietMap) lên cụm (active — A9/B2) | Current | 2026-08-18 |
-| [`specs/waze-vietmap-screen-capture.html`](specs/waze-vietmap-screen-capture.html) | Screen-capture nav (Waze arrow + VietMap camera) học OpenBYD — B3, **Chờ duyệt**, 4 case | Current | 2026-08-19 |
+| [`specs/waze-vietmap-screen-capture.html`](specs/waze-vietmap-screen-capture.html) | Screen-capture nav (Waze arrow + VietMap camera) học OpenBYD — B3, **Chờ duyệt**, 4 case | ⚠ Lịch sử (CLOSING 08-28 gỡ screen-capture nav) | 2026-08-19 |
 | [`specs/b3-full-nav-capture.html`](specs/b3-full-nav-capture.html) | **B3 FULL**: đọc mũi tên+làn+camera+text (Waze/VietMap/GMaps) + menu chọn nguồn + bắn cụm/HUD + overlay cụm (như speed badge). **Draft/chờ duyệt** | Current | 2026-08-23 |
 | [`specs/b3-data-flow.html`](specs/b3-data-flow.html) | **B3 DATA FLOW**: input→process→output (đường nào, data nào, vẽ gì/thế nào) — 2 sơ đồ SVG. Reference | Current | 2026-08-20 |
 | [`specs/b3-glyph-locator-cast-invariant.html`](specs/b3-glyph-locator-cast-invariant.html) | **B3.27**: dò glyph BẤT BIẾN với cấu hình cast (user chỉnh dpi/size/vị-trí, cast 1 hoặc 2 app) — thay mọi rect crop cố định. §4.2 + Reviewer Log Pass 2/3 = bộ cổng hiện hành (B3.47 vòng 3 + 3b) | Current | 2026-08-23 |
@@ -139,6 +140,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 
 | Doc | Mục đích | Trạng thái | Cập nhật |
 |-----|----------|-----------|----------|
+| [`diagnostics/vietmap-cluster-surfacecontrol-mirror-2026-08-27.md`](diagnostics/vietmap-cluster-surfacecontrol-mirror-2026-08-27.md) | **Mirror bong bóng VietMap → cụm qua SurfaceControl daemon (no-mod)** — [ĐO] present pixel-thật (diff 0.0) + bám vị trí động trên Android 10 (API29) uid shell; phát hiện BLAST(API34) vs BufferQueue(API29); ẩn số = cụm xe `xdja` có nhận layer không. Code+jar+script: `tools/vietmap-cluster-mirror/` | Current | 2026-08-27 |
 | [`diagnostics/nav-io-asis-2026-08-24.html`](diagnostics/nav-io-asis-2026-08-24.html) | **Bản đồ nav I/O — Phần A HIỆN TRẠNG (as-is) + Phần B ĐỀ XUẤT to-be** (HTML trực quan). A: 6 nguồn đầu vào + 4 luồng + 7 bề mặt đầu ra + §8 chỗ "lộn xộn" (HUD kính đang trói chung `writeNavFrame`+gate `navOnlyMode` với cụm-centre; `emitHud` stub; VietMap/Waze phụ thuộc screen-capture). B (chờ owner review): nguyên tắc độc lập/dùng chung + **ma trận 3 nhóm theo Cast** (BẤT KỂ / CHỈ-không-cast / CHỈ-cast) + tách content-write (HUD, vô điều kiện) khỏi surface-write (cụm, gate) + OQ1–4. file:line | Current | 2026-08-24 |
 | [`diagnostics/b3-emulator-e2e-2026-08-20.md`](diagnostics/b3-emulator-e2e-2026-08-20.md) | **Test B3 end-to-end trên emulator (Waze/VietMap/GMaps dẫn thật)**: Waze rẽ-TRÁI classify ĐÚNG `amap=2` end-to-end; môi trường lặp lại (adb root/960×720/verbose); bug B3.10/B3.11/B3.12 + RESUME POINT | Current | 2026-08-20 |
 | [`diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md`](diagnostics/vietmap-glyph-gate-measurement-2026-08-23.md) | **Cổng dò glyph VietMap — chẩn đoán + bản vá đã đo lại** (§7 vòng 3, §7.7 vòng 3b): cổng cũ trả **icon POI bản đồ ở 60/87 khung** thay vì im lặng ⇒ thay trần dp bằng tỉ số + **neo trái** (dò đúng 27→86, đảo mồi 60→0); vòng 3b đóng thêm 3 đường false-positive — `windowRect=null` ⇒ mũi tên app KHÁC (Hamming 0) · dpi khai ≤124 ⇒ icon status bar ở 87/87 · rơi về rect Waze cố định ⇒ 2 ca SAI HƯỚNG | Current | 2026-08-23 |
@@ -180,6 +182,7 @@ khi index đang giữ bytes đúng — sau một `git reset` thì index == HEAD 
 | [`HUONG-DAN-LAY-LOG-DIAG.md`](HUONG-DAN-LAY-LOG-DIAG.md) | **Lấy log bản DIAG v1.28** (cho anh em): log bật-sẵn + tự xuất ra `Download/ClusterNavLog`; thu content-desc VietMap/Waze + ảnh mũi tên để tìm thông tin hướng rẽ còn thiếu | Current | 2026-08-26 |
 | [`HUONG-DAN-LAY-LOG-WINDOWS.html`](HUONG-DAN-LAY-LOG-WINDOWS.html) | Lấy log ClusterNav bằng máy Windows | Current | 2026-08-19 |
 | [`HUONG-DAN-THU-DATA-HUD.html`](HUONG-DAN-THU-DATA-HUD.html) | Thu thập data HUD (so sánh provisioning xe anh em) | Current | 2026-08-18 |
+| [`runbook-mod-vietmap-cluster.md`](runbook-mod-vietmap-cluster.md) | **RUNBOOK mod VietMap dời bong bóng ra cụm** (lặp mỗi bản mới): §3 TÌM target obfuscated + §4 smali redirect display + §10 **inject receiver chỉnh VỊ TRÍ + FIX MAPPING 1-1** (gravity TOP\|LEFT + NO_LIMITS, smali thật) + §5–7 build/ký/gộp/cài + pipeline THẬT (mod2.keystore→universal-mod3). Lên cụm XE khi Cluster Cast ON. | Current | 2026-08-28 |
 
 ## 8) ADR — `decisions/NNNN-*.md` (quyết định KIẾN TRÚC xuyên suốt)
 

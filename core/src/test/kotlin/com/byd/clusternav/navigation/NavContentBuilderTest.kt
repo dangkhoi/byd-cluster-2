@@ -1,163 +1,24 @@
 package com.byd.clusternav.navigation
 
-import com.byd.clusternav.navigation.screencapture.ArrowSample
 import com.byd.clusternav.testsupport.SourceRoots
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
  * F4 (spec `docs/specs/nav-input-output-architecture.html`) — khoá [NavContentBuilder] bằng GIÁ TRỊ, off-car.
  *
- * Hai nhóm:
- *  1. **HÀNH VI** — `fromImage` dựng khung đúng, và bất biến MỘT-PACKAGE-MỘT-KHUNG được thi hành TRONG builder
- *     (không chỉ ở owner): mẫu a11y của app khác ⇒ bỏ HẾT, không ghép nửa nọ nửa kia.
+ * ⚠ 2026-08-28: đường ẢNH (VietMap/Waze) đã bị GỠ — [NavContentBuilder] chỉ còn [NavContentBuilder.fromNotification]
+ * (Google Maps). Các test cũ của `fromImage`/`fromKeepAlive` đã xoá theo. Hai nhóm còn lại:
+ *  1. **HÀNH VI** — `fromNotification` dựng khung đúng.
  *  2. **DỜI CHỖ, KHÔNG VIẾT LẠI** — quét source `fromNotification` để chắc rằng biểu thức của đường Google Maps
  *     đi qua đúng những mảnh cũ, không có nhánh mới lén vào (CLAUDE.md §6). Bảng vàng ở
  *     `GmapsContentGoldenTest` khoá phần giá trị.
  */
 class NavContentBuilderTest {
 
-    private val waze = "com.waze"
-    private val vietmap = "vn.vietmap.live"
-
-    private fun arrow(pkg: String, maneuver: Maneuver?, amap: Int?) =
-        ArrowSample(pkg = pkg, maneuver = maneuver, amap = amap, atMs = 1_000L)
-
-    private fun reading(
-        pkg: String,
-        turnMeters: Int = 140,
-        road: String = "Quang Trung",
-        arrivalClock: String = "18:21",
-        routeSeconds: Int = 900,
-        routeMeters: Int = 5_200,
-    ) = NavViewIdSource.Reading(pkg, turnMeters, road, 1_000L, arrivalClock, routeSeconds, routeMeters)
-
-    // ── 1. fromImage — hành vi ────────────────────────────────────────────────────────────────────────
-
-    @Test fun `fromImage - mau a11y CUNG goi thi khung mang du cu ly + duong + ETA`() {
-        val c = NavContentBuilder.fromImage(waze, arrow(waze, Maneuver.TURN_LEFT, 2), reading(waze), 140)!!
-        assertEquals(Maneuver.TURN_LEFT, c.maneuver)
-        assertEquals(2, c.maneuverCode)
-        assertEquals(140, c.distanceMeters)
-        assertEquals("Quang Trung", c.roadName)
-        assertEquals("18:21", c.arrivalClock)
-        assertEquals(900, c.routeRemainingSeconds)
-        assertEquals(5_200, c.routeRemainingMeters)
-        assertNull(c.maneuverText, "nguồn ảnh không có dòng lệnh rẽ — xem KDoc fromImage")
-    }
-
-    /**
-     * BẤT BIẾN MỘT-PACKAGE-MỘT-KHUNG. Khung vẫn được dựng (mũi tên còn đáng tin) nhưng MỌI số liệu của app
-     * khác bị bỏ — không bao giờ để cự-ly/tên đường của VietMap đứng cạnh mũi tên của Waze.
-     */
-    @Test fun `fromImage - mau a11y LECH goi thi bo HET so lieu, van giu mui ten`() {
-        val c = NavContentBuilder.fromImage(waze, arrow(waze, Maneuver.TURN_RIGHT, 3), reading(vietmap), -1)!!
-        assertEquals(Maneuver.TURN_RIGHT, c.maneuver)
-        assertNull(c.distanceMeters)
-        assertNull(c.roadName)
-        assertNull(c.arrivalClock)
-        assertNull(c.routeRemainingSeconds)
-        assertNull(c.routeRemainingMeters)
-    }
-
-    @Test fun `fromImage - khong co mau a11y thi chi con mui ten`() {
-        val c = NavContentBuilder.fromImage(vietmap, arrow(vietmap, Maneuver.STRAIGHT, 9), null, -1)!!
-        assertEquals(Maneuver.STRAIGHT, c.maneuver)
-        assertNull(c.distanceMeters)
-        assertNull(c.roadName)
-    }
-
-    @Test fun `fromImage - maneuver null thi suy tu ma AMAP`() {
-        val c = NavContentBuilder.fromImage(waze, arrow(waze, null, 3), null, -1)!!
-        assertEquals(Maneuver.TURN_RIGHT, c.maneuver)
-        assertEquals(3, c.maneuverCode)
-    }
-
-    /** Degrade-safe: không suy được hướng ⇒ KHÔNG dựng khung (thà không hiện còn hơn hiện mũi tên bịa). */
-    @Test fun `fromImage - khong suy duoc huong thi tra null`() {
-        assertNull(NavContentBuilder.fromImage(waze, arrow(waze, null, null), reading(waze), 140))
-        assertNull(NavContentBuilder.fromImage(waze, arrow(waze, null, 999), reading(waze), 140))
-        assertNull(NavContentBuilder.fromImage(waze, null, reading(waze), 140))
-    }
-
-    /** Guard cự-ly từ chối ⇒ -1 ⇒ `distanceMeters = null` ⇒ hạ nguồn ghi -1 = XOÁ TRẮNG ô cự-ly. */
-    @Test fun `fromImage - cu ly am thi distanceMeters null`() {
-        val c = NavContentBuilder.fromImage(waze, arrow(waze, Maneuver.TURN_LEFT, 2), reading(waze), -1)!!
-        assertNull(c.distanceMeters)
-        assertEquals("Quang Trung", c.roadName, "guard chỉ gác ô cự-ly, KHÔNG gác tên đường")
-    }
-
-    @Test fun `fromImage - cu ly 0 met van la gia tri that`() {
-        val c = NavContentBuilder.fromImage(waze, arrow(waze, Maneuver.TURN_LEFT, 2), reading(waze), 0)!!
-        assertEquals(0, c.distanceMeters)
-    }
-
-    /**
-     * `NavigationFrameContent.init` NÉM nếu `arrivalClock` không khớp `\d{1,2}:\d{2}`. Nguồn a11y là chuỗi
-     * đọc từ màn hình ⇒ phải lọc, không được tin. Ném ở đây là 4 exception/giây trên luồng owner.
-     */
-    @Test fun `fromImage - gio toi rac thi bo im lang, khong nem`() {
-        val c = NavContentBuilder.fromImage(
-            waze, arrow(waze, Maneuver.TURN_LEFT, 2), reading(waze, arrivalClock = "khong ro"), 140,
-        )!!
-        assertNull(c.arrivalClock)
-    }
-
-    @Test fun `fromImage - truong rong hoac am deu ve null`() {
-        val c = NavContentBuilder.fromImage(
-            waze,
-            arrow(waze, Maneuver.TURN_LEFT, 2),
-            reading(waze, road = "   ", arrivalClock = "", routeSeconds = -1, routeMeters = -1),
-            140,
-        )!!
-        assertNull(c.roadName)
-        assertNull(c.arrivalClock)
-        assertNull(c.routeRemainingSeconds)
-        assertNull(c.routeRemainingMeters)
-    }
-
-    // ── 1b. fromKeepAlive — hành vi (F4b keep-alive a11y) ────────────────────────────────────────────
-
-    @Test fun `fromKeepAlive - huong dua vao + a11y cung goi thi khung day du`() {
-        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.TURN_LEFT, reading(vietmap), 40)
-        assertEquals(Maneuver.TURN_LEFT, c.maneuver, "giữ HƯỚNG-LẦN-CUỐI được đưa vào")
-        assertEquals(2, c.maneuverCode, "maneuverCode = maneuver.toAmapIcon() (TURN_LEFT=2)")
-        assertEquals(40, c.distanceMeters)
-        assertEquals("Quang Trung", c.roadName)
-        assertEquals("18:21", c.arrivalClock)
-        assertEquals(900, c.routeRemainingSeconds)
-        assertEquals(5_200, c.routeRemainingMeters)
-        assertNull(c.maneuverText, "nguồn ảnh không có dòng lệnh rẽ")
-    }
-
-    /** Một-package-một-khung: đường/ETA của app KHÁC bị bỏ; cự-ly là tham số (caller đã đọc đúng gói) nên giữ. */
-    @Test fun `fromKeepAlive - mau a11y LECH goi thi bo duong+ETA, van giu huong`() {
-        val c = NavContentBuilder.fromKeepAlive(waze, Maneuver.TURN_RIGHT, reading(vietmap), 40)
-        assertEquals(Maneuver.TURN_RIGHT, c.maneuver)
-        assertEquals(3, c.maneuverCode)
-        assertEquals(40, c.distanceMeters, "cự-ly là tham số của caller (đã đọc đúng gói) — giữ")
-        assertNull(c.roadName, "đường của app KHÁC ⇒ bỏ")
-        assertNull(c.arrivalClock)
-        assertNull(c.routeRemainingMeters)
-    }
-
-    @Test fun `fromKeepAlive - khong co mau a11y thi chi con huong + cu-ly tham so`() {
-        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.STRAIGHT, null, 100)
-        assertEquals(Maneuver.STRAIGHT, c.maneuver)
-        assertEquals(100, c.distanceMeters)
-        assertNull(c.roadName)
-    }
-
-    @Test fun `fromKeepAlive - cu-ly am thi distanceMeters null, van giu duong`() {
-        val c = NavContentBuilder.fromKeepAlive(vietmap, Maneuver.TURN_LEFT, reading(vietmap), -1)
-        assertNull(c.distanceMeters)
-        assertEquals("Quang Trung", c.roadName, "cự-ly âm chỉ xoá ô cự-ly, KHÔNG xoá tên đường")
-    }
-
-    // ── 2. fromNotification — hành vi tối thiểu (bảng vàng lo phần còn lại) ───────────────────────────
+    // ── 1. fromNotification — hành vi tối thiểu (bảng vàng lo phần còn lại) ───────────────────────────
 
     @Test fun `fromNotification - khung GMaps dien hinh`() {
         val c = NavContentBuilder.fromNotification(
@@ -182,7 +43,7 @@ class NavContentBuilderTest {
         assertEquals("lối ra thứ 2", c.maneuverText)
     }
 
-    // ── 3. DỜI CHỖ, KHÔNG VIẾT LẠI (quét source) ─────────────────────────────────────────────────────
+    // ── 2. DỜI CHỖ, KHÔNG VIẾT LẠI (quét source) ─────────────────────────────────────────────────────
 
     private val src by lazy {
         SourceRoots.text("src/main/kotlin/com/byd/clusternav/navigation/NavContentBuilder.kt")

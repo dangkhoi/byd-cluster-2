@@ -230,7 +230,7 @@ class TurnDistancePlausibilityTest {
     fun `continuity — gap qua continuityMs thi episode moi va warmup lai`() {
         val g = TurnDistancePlausibility()
         val t = g.warmUp()
-        val d = g.accept(waze, 240, road, t + NavViewIdSource.FRESH_MS + 1, 10.0)
+        val d = g.accept(waze, 240, road, t + 4_000L + 1, 10.0)
         assertEquals(Verdict.WARMUP, d.verdict)
         assertEquals(TurnDistancePlausibility.UNKNOWN, d.meters)
         assertTrue(d.blankDistance, "đang hiện số mà mất mạch ⇒ phải xoá ô cự-ly ĐÚNG một lần")
@@ -275,7 +275,7 @@ class TurnDistancePlausibilityTest {
         assertTrue(n1.blankDistance)
         assertFalse(n2.blankDistance)
         // Mẫu chỉ "biến mất" khi đã quá FRESH_MS ⇒ khi quay lại, mạch đã đứt theo đúng luật timestamp.
-        val back = g.accept(waze, 200, road, t + NavViewIdSource.FRESH_MS + 1, 10.0)
+        val back = g.accept(waze, 200, road, t + 4_000L + 1, 10.0)
         assertEquals(Verdict.WARMUP, back.verdict)
     }
 

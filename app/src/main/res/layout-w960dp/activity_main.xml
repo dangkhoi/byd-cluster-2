@@ -77,14 +77,12 @@
                 số thật. Tách làm hai checkbox là bày ra cơ chế thay vì ý định — và tệ hơn: tắt nội suy thì
                 bộ đọc màn CHẠY MÀ VÔ NGHĨA, vì `refine()` bỏ qua khi chưa có mốc. -->
                 <!-- Distance assist removed: firmware animates natively -->
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp" android:text="Nguồn dẫn đường (hướng rẽ · khoảng cách · đường)"
-                    android:textColor="@color/text_secondary" android:textSize="13sp" />
-                <Spinner android:id="@+id/spinner_nav_source" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
-                <!-- T3 (b3-full-nav-capture · R2): nguồn dẫn đang active (SourceArbiter.activeSource) — cập nhật ở refresh(). -->
+                <!-- Selector CHỌN nguồn dẫn đường ĐÃ GỠ (closing 2026-08-28 · ui-closing-cleanup): sau khi gỡ
+                     nav VietMap/Waze, chỉ còn Google Maps (notification) làm nguồn ⇒ không cần chọn. Prefs.sourceMode
+                     giữ mặc định AUTO. Dòng "Đang dẫn: …" dưới đây là chỉ báo TRẠNG THÁI read-only
+                     (SourceArbiter.activeSource) — cập nhật ở refresh(), KHÔNG phải selector. -->
                 <TextView android:id="@+id/txt_nav_source_active" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Đang dẫn: —"
+                    android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Đang dẫn: —"
                     android:textColor="@color/text_secondary" android:textSize="12sp"
                     android:contentDescription="Nguồn dẫn đường đang hoạt động" />
                 <!-- op39 self-diagnose (docs/specs/nav-cluster-op39-selfdiagnose.html · D3): op 39 "Giữa + ETA" là
@@ -103,14 +101,6 @@
                 <CheckBox android:id="@+id/cb_marquee" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
                     android:text="Chạy chữ tên đường dài (marquee)" android:textColor="@color/text_secondary" />
-                <!-- Data-collection logging + screenshots (owner 2026-08-18): MẶC ĐỊNH TẮT. Dùng thường KHÔNG
-                     thu thập dữ liệu. Chủ chỉ BẬT trước một chuyến thu thập; tắt lại sau. Storage-cap luôn-bật
-                     (DiagStorageCap, ~150 MB) làm chốt chặn. Nhấn-giữ ẩn trên nhãn phiên bản cũng gạt công tắc
-                     này. PHẢI có mặt ở CẢ layout dọc lẫn w960dp — MainActivity.onCreate bind non-null. -->
-                <Switch android:id="@+id/switch_diag_logging" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
-                    android:text="Thu thập dữ liệu chẩn đoán (log + ảnh)" android:textColor="@color/text_secondary"
-                    android:contentDescription="Bật hoặc tắt thu thập dữ liệu chẩn đoán: nhật ký và ảnh chụp. Mặc định tắt." />
                 <!-- Nguồn tốc độ + cảnh báo đã DỜI sang cột phải (card Cluster Cast · spec §4.2).
                      btn_nav_stop ở lại cột Nav+HUD này. -->
                 <Button android:id="@+id/btn_reconnect_nav" android:layout_width="match_parent"
@@ -360,6 +350,47 @@
                         android:layout_weight="1" android:layout_marginStart="4dp" android:minHeight="@dimen/touch_min"
                         android:background="@drawable/btn_outline" android:text="Đặt lại"
                         android:textAllCaps="false" android:textColor="@color/brand" />
+                </LinearLayout>
+
+                <!-- ── Vị trí bong bóng VietMap trên cụm (item 4 · spec vietmap-overlay-position-ui) ──────
+                     KÉO-THẢ trong khung proxy cụm (VmBubblePlacementView) + "Nửa phải" + "Đặt lại" + "Áp dụng".
+                     Cùng bộ id vm_bubble_placement_container / btn_vm_pos_right_half / btn_vm_pos_reset /
+                     btn_vm_pos_apply / txt_vm_pos_hint với bản dọc (LayoutVariantIdParityTest — bài học F3/P0:
+                     thiếu id ở biến thể xe render = NPE lúc mở app). Chỉ dùng được khi Cluster Cast ON —
+                     MainActivity mờ + khoá kéo-thả + nút khi OFF; nhắc song ngữ qua Lang.t. -->
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:layout_marginTop="14dp" android:layout_marginBottom="12dp" android:background="@color/divider" />
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="Vị trí bong bóng VietMap trên cụm" android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_status" android:fontFamily="sans-serif-medium" />
+                <!-- Toggle bong bóng VietMap trên cụm (owner 2026-08-28, default TẮT). Nhãn đặt lúc chạy qua Lang.t.
+                     Bật ⇒ auto-start VietMap một lần (giống badge tốc độ) + mở panel kéo-thả (khi Cast ON). Cùng bộ
+                     id với bản dọc (LayoutVariantIdParityTest — bài học F3/P0). -->
+                <Switch android:id="@+id/switch_vm_bubble_enabled" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="8dp" android:minHeight="@dimen/touch_min"
+                    android:checked="false" android:text="Hiện bong bóng VietMap trên cụm"
+                    android:textColor="@color/text_secondary"
+                    android:contentDescription="Bật hoặc tắt bong bóng VietMap trên cụm" />
+                <TextView android:id="@+id/txt_vm_pos_hint" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                    android:text="Bật Cluster Cast để chỉnh vị trí" android:textColor="@color/text_secondary"
+                    android:textSize="@dimen/text_label" />
+                <FrameLayout android:id="@+id/vm_bubble_placement_container" android:layout_width="match_parent"
+                    android:layout_height="140dp" android:layout_marginTop="10dp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:layout_marginTop="8dp">
+                    <Button android:id="@+id/btn_vm_pos_right_half" android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_height="wrap_content" android:layout_marginEnd="4dp" android:minHeight="@dimen/touch_min"
+                        android:background="@drawable/btn_outline" android:text="Nửa phải" android:textAllCaps="false"
+                        android:textColor="@color/brand" android:contentDescription="Đặt bong bóng VietMap ở nửa phải cụm" />
+                    <Button android:id="@+id/btn_vm_pos_reset" android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_height="wrap_content" android:layout_marginStart="4dp" android:layout_marginEnd="4dp"
+                        android:minHeight="@dimen/touch_min" android:background="@drawable/btn_outline" android:text="Đặt lại"
+                        android:textAllCaps="false" android:textColor="@color/brand" android:contentDescription="Đặt lại vị trí bong bóng VietMap về mặc định" />
+                    <Button android:id="@+id/btn_vm_pos_apply" android:layout_width="0dp" android:layout_weight="1"
+                        android:layout_height="wrap_content" android:layout_marginStart="4dp" android:minHeight="@dimen/touch_min"
+                        android:background="@drawable/btn_primary" android:text="Áp dụng" android:textAllCaps="false"
+                        android:textColor="@android:color/white" android:contentDescription="Gửi vị trí hiện tại tới bong bóng VietMap" />
                 </LinearLayout>
 
                 <TextView android:id="@+id/cast_recovery_toggle" android:layout_width="match_parent"

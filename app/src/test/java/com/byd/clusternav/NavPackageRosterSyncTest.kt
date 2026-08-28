@@ -13,21 +13,23 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Khoá **roster app dẫn đường** khỏi lệch nhau (08-22).
+ * Khoá **roster app dẫn đường** khỏi lệch nhau (08-22), CẬP NHẬT 2026-08-28.
  *
  * ── VÌ SAO PHẢI CÓ ───────────────────────────────────────────────────────────────────────────────────────
- * Danh sách gói từng bị chép ở 5 nơi. Nguy hiểm nhất là bản **XML**
- * (`res/xml/nav_accessibility_config.xml` → `android:packageNames`): đó là cổng của `system_server`. Thiếu
- * một gói ở đó thì framework **không giao AccessibilityEvent** cho service ⇒ nguồn đó chết câm — không
+ * Bản **XML** (`res/xml/nav_accessibility_config.xml` → `android:packageNames`) là cổng của `system_server`.
+ * Thiếu một gói ở đó thì framework **không giao AccessibilityEvent** cho service ⇒ nguồn đó chết câm — không
  * crash, không log, không test đỏ. Kotlin không import được XML nên chỉ có test này bắc cầu được.
  *
- * Đây đúng loại lỗi CLAUDE.md §8 nói: "compile xanh không có nghĩa là code chạy".
+ * ── 2026-08-28: đường ĐỌC dẫn đường VietMap/Waze qua a11y ĐÃ GỠ ─────────────────────────────────────────
+ * Roster a11y [NavApps.ALL] nay CHỈ còn Google Maps (booster cự-ly ground-truth). VietMap/Waze không còn đọc
+ * qua a11y ⇒ [NavApps.DESC_ONLY] rỗng, và WAZE/VIETMAP KHÔNG còn trong ALL (chúng chỉ còn là nhóm chọn nguồn
+ * của [SourceArbiter]). Speed badge của VietMap đi qua widget, không qua a11y.
  */
 class NavPackageRosterSyncTest {
 
     private val xml by lazy { SourceRoots.text("src/main/res/xml/nav_accessibility_config.xml") }
 
-    /** `android:packageNames` trong XML phải khớp CHÍNH XÁC [NavApps.ALL]. */
+    /** `android:packageNames` trong XML phải khớp CHÍNH XÁC [NavApps.ALL] (nay = Google Maps). */
     @Test
     fun `XML packageNames khop chinh xac NavApps ALL`() {
         val attr = Regex("""android:packageNames="([^"]+)"""").find(xml)
@@ -37,20 +39,19 @@ class NavPackageRosterSyncTest {
             NavApps.ALL, fromXml,
             "roster XML lệch NavApps.ALL — gói thiếu ở XML sẽ KHÔNG nhận được event a11y (chết câm)",
         )
+        assertEquals(NavApps.GMAPS, NavApps.ALL, "sau 2026-08-28 roster a11y CHỈ còn Google Maps")
     }
 
-    /** Hai roster Kotlin ở `:app` phải là chính [NavApps], không phải bản chép. */
+    /** Roster Kotlin ở `:app` phải là chính [NavApps], không phải bản chép. */
     @Test
     fun `roster Kotlin khong con ban chep`() {
         assertEquals(NavApps.NOTIFICATION, NavNotificationListener.MAPS_PACKAGES)
         val svc = SourceRoots.text("src/main/java/com/byd/clusternav/modules/navaccess/NavAccessibilityService.kt")
-        assertTrue(svc.contains("navPackages = NavApps.ALL"), "navPackages phải trỏ NavApps.ALL")
         assertTrue(svc.contains("maps = NavApps.GMAPS"), "nhánh GMaps-only phải trỏ NavApps.GMAPS")
     }
 
     /**
-     * Thay cho test cũ ở `NavSourceLabelsTest` vốn **RỖNG**: nó đi qua `SourceArbiter.shouldFeed(..., AUTO)`,
-     * mà nhánh AUTO không đọc ba set package dòng nào — xoá sạch cả ba set test vẫn xanh. Ở đây assert THẲNG.
+     * Mọi gói trong roster a11y phải có nhãn hãng (status line không hiện tên gói thô). Nay chỉ còn GMaps.
      */
     @Test
     fun `moi goi trong roster deu co nhan hang, khong roi ve ten goi tho`() {
@@ -62,98 +63,65 @@ class NavPackageRosterSyncTest {
     }
 
     /**
-     * Roster KHẢ NĂNG [NavApps.DESC_ONLY] (app chỉ phơi content-desc, không có resource-id) phải là **tập
-     * con** của roster đọc-được [NavApps.ALL].
-     *
-     * VÌ SAO: một gói nằm trong DESC_ONLY mà KHÔNG có trong ALL thì nó không nằm trong `android:packageNames`
-     * ⇒ `system_server` không giao AccessibilityEvent ⇒ nhánh content-desc chết câm y hệt lỗi roster lệch mà
-     * cả file test này sinh ra để chặn. Và nó phải RỜI KHỎI họ Waze: họ Waze có resource-id, cho nó đi nhánh
-     * content-desc là chạy thừa một vòng đi cây trên mỗi nhịp enum.
+     * [NavApps.DESC_ONLY] rỗng sau khi gỡ đường content-desc (2026-08-28) — và rỗng thì trivially ⊆ ALL.
+     * Giữ khẳng định "⊆ ALL" làm canh cửa: nếu ai đó thêm lại một gói vào DESC_ONLY mà quên thêm vào ALL
+     * (⇒ mất event a11y) thì test này đỏ.
      */
     @Test
-    fun `roster DESC_ONLY nam trong ALL va khong dam vao ho Waze`() {
-        assertTrue(NavApps.DESC_ONLY.isNotEmpty(), "roster rỗng ⇒ nhánh content-desc là code chết")
+    fun `roster DESC_ONLY rong va la tap con cua ALL`() {
+        assertTrue(NavApps.DESC_ONLY.isEmpty(), "đường content-desc đã gỡ ⇒ DESC_ONLY phải rỗng")
         assertTrue(NavApps.ALL.containsAll(NavApps.DESC_ONLY), "gói ngoài ALL sẽ không nhận được event a11y")
-        assertTrue(
-            NavApps.DESC_ONLY.none { it in NavApps.WAZE },
-            "họ Waze đọc bằng view-id — không được đưa vào nhánh content-desc",
-        )
-        assertTrue(
-            NavApps.DESC_ONLY.none { it in NavApps.GMAPS },
-            "GMaps đi đường notification đã proven — nhánh content-desc không được chạm vào (CLAUDE.md §6)",
-        )
     }
 
     /**
-     * Roster **KÊNH** [NavApps.NOTIFICATION] vs roster **ĐỌC-ĐƯỢC** [NavApps.ALL] — khoá cả hai chiều.
+     * Roster **KÊNH** [NavApps.NOTIFICATION] vs roster **ĐỌC-ĐƯỢC** [NavApps.ALL].
      *
-     * ── VÌ SAO (08-23) ───────────────────────────────────────────────────────────────────────────────
-     * (a) NOTIFICATION ⊆ ALL: một gói đi kênh notification mà không có trong `android:packageNames` thì mất
-     *     kênh a11y — nửa dữ liệu biến mất im lặng, đúng lỗi cả file này sinh ra để chặn.
-     * (b) GMaps PHẢI ở trong NOTIFICATION: đó là đường ĐANG CHẠY ngoài hiện trường (CLAUDE.md §6). Bỏ nó ra
-     *     là tắt nguồn nav chính của xe.
-     * (c) VietMap PHẢI ở NGOÀI NOTIFICATION nhưng Ở TRONG ALL: ngoài để notification của nó không đóng mốc
-     *     `SourceArbiter.lastDataByPkg[vietmap]` (mốc đó chặn kênh IMAGE ⇒ mất mũi tên screen-capture,
-     *     backlog B3.42); trong ALL để **không mất kênh content-desc** — `NavApps.DESC_ONLY` chỉ có tác dụng
-     *     nếu `system_server` còn giao AccessibilityEvent cho gói đó.
-     * (d) NOTIFICATION ∩ DESC_ONLY = ∅: DESC_ONLY nghĩa là "app chỉ phơi dữ liệu qua content-desc". Một gói
-     *     ở cả hai là mâu thuẫn khai báo — và là đúng cấu hình đã hỏng ở B3.42.
+     * Sau 2026-08-28 cả ba (ALL, NOTIFICATION, GMAPS) đều bằng nhau = Google Maps. VietMap/Waze KHÔNG còn ở
+     * bất kỳ roster a11y/notification nào; chúng chỉ còn là nhóm chọn nguồn của SourceArbiter.
      */
     @Test
-    fun `roster kenh NOTIFICATION tach dung khoi roster doc-duoc ALL`() {
-        assertTrue(NavApps.ALL.containsAll(NavApps.NOTIFICATION), "gói ngoài ALL sẽ không nhận được event a11y")
-        assertTrue(NavApps.NOTIFICATION.containsAll(NavApps.GMAPS), "GMaps là đường notification đã proven — §6")
+    fun `roster kenh NOTIFICATION va doc-duoc ALL deu la GMaps`() {
         assertEquals(NavApps.GMAPS, NavApps.NOTIFICATION, "chỉ GMaps có mũi tên trong notification (đo 08-20)")
+        assertEquals(NavApps.GMAPS, NavApps.ALL, "a11y roster chỉ còn GMaps (booster cự-ly)")
+        assertTrue(NavApps.ALL.containsAll(NavApps.NOTIFICATION), "NOTIFICATION ⊆ ALL")
         for (pkg in NavApps.VIETMAP) {
-            assertTrue(pkg !in NavApps.NOTIFICATION, "$pkg đi kênh notification ⇒ tự khoá kênh IMAGE của chính nó")
-            assertTrue(pkg in NavApps.ALL, "$pkg phải còn trong ALL, nếu không thì mất luôn kênh content-desc")
+            assertTrue(pkg !in NavApps.NOTIFICATION, "$pkg không đi kênh notification")
+            assertTrue(pkg !in NavApps.ALL, "$pkg không còn đọc qua a11y (đường VietMap/Waze đã gỡ)")
         }
         for (pkg in NavApps.WAZE) {
-            assertTrue(pkg !in NavApps.NOTIFICATION, "$pkg: notification chỉ có tickerText (đo 08-22) — 0 dữ liệu")
-            assertTrue(pkg in NavApps.ALL, "$pkg phải còn trong ALL (kênh view-id a11y)")
+            assertTrue(pkg !in NavApps.NOTIFICATION, "$pkg: notification chỉ có tickerText (đo 08-22)")
+            assertTrue(pkg !in NavApps.ALL, "$pkg không còn đọc qua a11y (đường VietMap/Waze đã gỡ)")
         }
-        assertTrue(
-            NavApps.NOTIFICATION.none { it in NavApps.DESC_ONLY },
-            "một gói không thể vừa 'chỉ phơi qua content-desc' vừa cấp dữ liệu qua notification",
-        )
     }
 
     /**
-     * MẶT HÀNH VI của cùng bất biến (đo trên chính [SourceArbiter], không suy luận): với gói đi kênh
-     * notification, một nhịp DATA **chặn** kênh IMAGE; với VietMap — gói KHÔNG đi kênh notification — không
-     * có ai đóng mốc DATA nên kênh IMAGE **vẫn mở**. Đây chính là bất biến owner yêu cầu 08-23:
-     * *"VietMap có notification thì kênh IMAGE vẫn mở"*.
+     * [SourceArbiter] vẫn phân biệt kênh DATA↔IMAGE (logic thuần KHÔNG đổi dù đường ẢNH đã gỡ ở tầng app):
+     * gói đi notification (GMaps) — một nhịp DATA chặn kênh IMAGE; gói KHÔNG đi notification (VietMap) —
+     * không ai đóng mốc DATA nên kênh IMAGE vẫn mở ở mức trọng tài. Khoá logic trọng tài, không phải sự tồn
+     * tại của consumer ảnh.
      */
     @Test
-    fun `VietMap co notification thi kenh IMAGE VAN MO`() {
+    fun `SourceArbiter phan biet DATA va IMAGE theo roster notification`() {
         SourceArbiter.clear()
         val vietmap = NavApps.VIETMAP.first()
         val gmaps = NavApps.GMAPS.first()
 
-        // Cơ chế (mặt đối chứng): gói TRONG roster notification đi qua handle() ⇒ shouldFeed(DATA) ⇒ IMAGE bị chặn.
         assertTrue(gmaps in NavApps.NOTIFICATION)
         assertTrue(SourceArbiter.shouldFeed(gmaps, NavSourceMode.AUTO, 1_000L, NavChannel.DATA))
         assertFalse(
             SourceArbiter.shouldFeed(gmaps, NavSourceMode.AUTO, 1_100L, NavChannel.IMAGE),
-            "kênh DATA còn tươi thì ảnh phải thua — đây là cơ chế, không phải bug",
+            "kênh DATA còn tươi thì ảnh phải thua — cơ chế trọng tài",
         )
 
-        // VietMap: listener không bao giờ gọi shouldFeed cho nó (không ở roster kênh) ⇒ chỉ có nhịp IMAGE.
         SourceArbiter.clear()
         assertTrue(vietmap !in NavApps.NOTIFICATION)
-        assertFalse(SourceArbiter.isDataFresh(vietmap, 1_000L), "không ai được đóng mốc DATA cho VietMap")
-        assertTrue(
-            SourceArbiter.shouldFeed(vietmap, NavSourceMode.AUTO, 1_000L, NavChannel.IMAGE),
-            "mũi tên + cự ly screen-capture của VietMap phải lên được cụm",
-        )
+        assertFalse(SourceArbiter.isDataFresh(vietmap, 1_000L), "không ai đóng mốc DATA cho VietMap")
         SourceArbiter.clear()
     }
 
     /**
-     * Tiền tố resource-id của họ Waze phủ CẢ bản zin lẫn bản mod.
-     * Đo tĩnh bằng aapt2 (2026-08-22): WazeMod DUAL có manifest `com.chisadin.wazemod` nhưng
-     * `resources.arsc` ghi `Package name=com.waze` ⇒ `viewIdResourceName` mang tiền tố `com.waze`.
-     * Waze zin thì applicationId = arsc package = `com.waze`. Nên MỘT tiền tố là đủ, không cần hỏi người dùng.
+     * Tiền tố resource-id của họ Waze phủ CẢ bản zin lẫn bản mod (giữ nguyên — SourceArbiter PREFER_WAZE dùng).
+     * Đo tĩnh bằng aapt2 (2026-08-22): WazeMod DUAL manifest `com.chisadin.wazemod` nhưng arsc `com.waze`.
      */
     @Test
     fun `tien to resource Waze phu ca ban zin lan ban mod`() {

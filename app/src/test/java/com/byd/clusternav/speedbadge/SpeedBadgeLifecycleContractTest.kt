@@ -85,8 +85,11 @@ class SpeedBadgeLifecycleContractTest {
     }
 
     @Test
-    fun `prefs declares badgeEnabled defaulting to ON`() {
-        assertTrue(prefs.contains("getBoolean(K_BADGE_ENABLED, true)"), "badgeEnabled default is true (ON)")
+    fun `prefs declares badgeEnabled defaulting to OFF`() {
+        assertTrue(
+            prefs.contains("getBoolean(K_BADGE_ENABLED, false)"),
+            "badgeEnabled default is false (OFF) — owner 2026-08-28: VietMap speed badge off by default",
+        )
         assertTrue(prefs.contains("fun setBadgeEnabled(ctx: Context, v: Boolean)"), "setter persists the flag")
     }
 

@@ -4,7 +4,6 @@ import com.byd.clusternav.navigation.ManeuverHold
 import com.byd.clusternav.navigation.NavArrivalGuard
 import com.byd.clusternav.navigation.NavFormat
 import com.byd.clusternav.navigation.NavParse
-import com.byd.clusternav.navigation.SegmentShotDecision
 import com.byd.clusternav.navigation.SourceArbiter
 import com.byd.clusternav.navigation.TurnDistanceInterpolator
 import android.app.Notification
@@ -20,13 +19,7 @@ import com.byd.clusternav.vietmapwidget.VietMapWidgetBridge
 import com.byd.clusternav.vietmapwidget.VietMapWidgetFreshness
 import com.byd.clusternav.vietmapwidget.VietMapWidgetOwner
 import com.byd.clusternav.modules.clustercast.ClusterNavLaneWidget
-import com.byd.clusternav.screencapture.ScreenCaptureNavSource
 import android.content.Context
-import com.byd.clusternav.navigation.screencapture.CameraMatch
-import com.byd.clusternav.navigation.screencapture.ScreenCaptureSignal
-import com.byd.clusternav.navigation.Lane
-import com.byd.clusternav.navigation.LaneInfo
-import com.byd.clusternav.navigation.Maneuver
 
 /**
  * Adapter MỎNG cho notification dẫn đường (Google Maps / ReVanced). Chỉ làm:
@@ -70,14 +63,6 @@ class NavNotificationListener : NotificationListenerService() {
     // được arrow → dùng lại hướng trước thay vì rớt straight. Reset ở ranh giới phiên (đến nơi / gỡ noti).
     @Volatile private var lastManeuverIcon: Int = -1
 
-    // B3 (đơn giản hoá 08-21): đầu ra nguồn ẢNH — NavOutputOwner đọc ScreenCaptureSignal → push BydHal (cụm-lane
-    // + HUD đọc-CAN qua pushNavigation). Cụm hiện UI THẬT của app cast (KHÔNG tự vẽ overlay nữa). Khởi/dừng cùng
-    // ScreenCaptureNavSource (gated Prefs.enabled). @Volatile: set ở luồng lifecycle.
-    @Volatile private var navOutputOwner: NavOutputOwner? = null
-    // DEBUG-only (BuildConfig.DEBUG → KHÔNG có trong release OTA): receiver inject 1 frame làn+camera TỔNG HỢP
-    // qua `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME` để test overlay render off-car (emulator).
-    private var debugFrameReceiver: android.content.BroadcastReceiver? = null
-
     // D4 (closeout 1.28): last-logged dist|road|eta for log-on-change on the accepted-notification log — kills
     // per-notification spam while keeping a low-rate signal. Reset at session boundaries (like lastManeuverIcon).
     @Volatile private var lastNavLogKey: String? = null
@@ -115,11 +100,6 @@ class NavNotificationListener : NotificationListenerService() {
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
         }.onFailure { Log.e(TAG, "signal teardown on disconnect failed", it) }
-        // B3: binding dropped → gate closed → stop the capture source (symmetric to the signal teardown above).
-        runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
-            .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
-        // B3: dừng đầu ra nguồn ảnh (owner keep-alive) đối xứng với capture source.
-        runCatching { navOutputOwner?.stop() }.onFailure { Log.w(TAG, "nav output owner stop failed", it) }
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.UNKNOWN) }
             .onFailure { Log.e(TAG, "permission state update failed", it) }
         runCatching {
@@ -152,18 +132,6 @@ class NavNotificationListener : NotificationListenerService() {
         runCatching { NavRepository.setPermission(applicationContext, NavigationPermission.GRANTED) }
             .onFailure { Log.e(TAG, "coordinator connect failed", it) }
         Log.i(TAG, "listener connected -> authoritative coordinator ready")
-        // B3 (screen-capture nav): gate is now open (master Nav+HUD ON + listener bound) → start the capture
-        // source. Its per-tick self-gate (SourceArbiter.isFresh || a11y foreground) decides whether to actually
-        // capture. Degrade-safe; never blocks the connect path.
-        runCatching { ScreenCaptureNavSource.get(applicationContext).start() }
-            .onFailure { Log.w(TAG, "screen-capture source start failed", it) }
-        // B3 (đơn giản hoá 08-21): start OUTPUT owner (ScreenCaptureSignal → BydHal cụm-lane + HUD đọc-CAN qua
-        // pushNavigation). Cụm hiện app CAST trực tiếp (không tự vẽ overlay). Degrade-safe; không chặn connect.
-        runCatching {
-            val owner = navOutputOwner ?: NavOutputOwner(applicationContext).also { navOutputOwner = it }
-            owner.start()
-        }.onFailure { Log.w(TAG, "nav output owner start failed", it) }
-        maybeRegisterDebugFrameReceiver()
         // QUAN TRỌNG: nav có thể ĐÃ dẫn trước khi listener bind (cài/mở app sau khi đang dẫn, hoặc xe đỗ
         // -> noti đứng yên, onNotificationPosted không kích hoạt). Quét noti hiện tại + bơm ngay.
         runCatching {
@@ -176,69 +144,6 @@ class NavNotificationListener : NotificationListenerService() {
         }.onFailure { Log.e(TAG, "scan active notifications failed", it) }
     }
 
-    /**
-     * DEBUG-only (gate `BuildConfig.DEBUG` → KHÔNG có trong release OTA): đăng ký receiver inject 1 frame nav
-     * TỔNG HỢP (làn + camera) vào `ScreenCaptureSignal` khi nhận `am broadcast -a com.byd.clusternav.DEBUG_NAV_FRAME`.
-     * Owner tick đọc signal → BydHal push (cụm-lane + HUD đọc-CAN). Test đường HAL push (HAL null off-car → chỉ log;
-     * on-car đẩy thật). Idempotent; degrade-safe.
-     */
-    private fun maybeRegisterDebugFrameReceiver() {
-        if (!BuildConfig.DEBUG || debugFrameReceiver != null) return
-        val rx = object : android.content.BroadcastReceiver() {
-            override fun onReceive(c: Context?, i: android.content.Intent?) {
-                val now = SystemClock.elapsedRealtime()
-                val pkg = "com.chisadin.wazemod"
-                // Mỗi broadcast = 1 frame SẠCH: clear hết rồi publish theo extras (review UX từng cấu hình).
-                ScreenCaptureSignal.clear()
-                // --es lanes "L:0,S:1,S+R:1,R:0"  (mỗi cell = khoá[+khoá]:rec) — rỗng ⇒ không có làn
-                val laneSpec = i?.getStringExtra("lanes")?.trim().orEmpty()
-                if (laneSpec.isNotEmpty()) {
-                    val lanes = laneSpec.split(",").map { cell ->
-                        val parts = cell.split(":")
-                        val arrows = parts[0].split("+").mapNotNull { debugManeuver(it.trim()) }
-                        Lane(arrows, parts.getOrNull(1)?.trim() == "1")
-                    }
-                    ScreenCaptureSignal.publishLane(pkg, LaneInfo(lanes), now)
-                }
-                // --ei cam N : >0 icon+cự ly · 0 icon-only · <0/absent = không camera
-                val cam = i?.getIntExtra("cam", -1) ?: -1
-                if (cam >= 0) {
-                    ScreenCaptureSignal.publishCamera(pkg, CameraMatch(true, 1f, "debug", null, if (cam > 0) cam else null), now)
-                }
-                Log.i(TAG, "DEBUG_NAV_FRAME lanes='$laneSpec' cam=$cam")
-            }
-        }
-        runCatching {
-            val filter = android.content.IntentFilter("com.byd.clusternav.DEBUG_NAV_FRAME")
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(rx, filter, Context.RECEIVER_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(rx, filter)
-            }
-            debugFrameReceiver = rx
-            Log.i(TAG, "DEBUG frame-inject receiver registered (debug build only)")
-        }.onFailure { Log.w(TAG, "debug frame receiver register failed", it) }
-    }
-
-    /** DEBUG: khoá ngắn → Maneuver cho receiver review overlay (L/R/S/SL/SR/HL/HR/U/UR/RA/D/W/C/M). */
-    private fun debugManeuver(k: String): Maneuver? = when (k.uppercase()) {
-        "L", "TURN_LEFT" -> Maneuver.TURN_LEFT
-        "R", "TURN_RIGHT" -> Maneuver.TURN_RIGHT
-        "S", "STRAIGHT" -> Maneuver.STRAIGHT
-        "SL" -> Maneuver.SLIGHT_LEFT
-        "SR" -> Maneuver.SLIGHT_RIGHT
-        "HL" -> Maneuver.SHARP_LEFT
-        "HR" -> Maneuver.SHARP_RIGHT
-        "U" -> Maneuver.UTURN
-        "UR" -> Maneuver.UTURN_RIGHT
-        "RA" -> Maneuver.ROUNDABOUT
-        "D" -> Maneuver.DESTINATION
-        "W" -> Maneuver.WAYPOINT
-        "C" -> Maneuver.CONTINUE
-        "M" -> Maneuver.MERGE
-        else -> null
-    }
-
     override fun onDestroy() {
         connected = false
         // ★ Revive: teardown tín hiệu (cô lập).
@@ -248,17 +153,6 @@ class NavNotificationListener : NotificationListenerService() {
             bridge.stop(VietMapWidgetOwner.NAVIGATION)
             bridge.removeListener(speedLimitPusher)
         }.onFailure { Log.e(TAG, "signal teardown on destroy failed", it) }
-        // B3: service dying → stop the capture source (releases executor future + offscreen mirror).
-        runCatching { ScreenCaptureNavSource.get(applicationContext).stop() }
-            .onFailure { Log.w(TAG, "screen-capture source stop failed", it) }
-        // B3: service dying → CLOSE output owner (shuts down its keep-alive scheduler). onListenerDisconnected chỉ
-        // stop() (tái dùng qua các lần bind); onDestroy là teardown thật — release ở đây, nếu không rebind sẽ tích
-        // luỹ scheduler thread cũ mỗi destroy→recreate (head unit này hay drop bind). Null để (re)connect dựng sạch.
-        runCatching { navOutputOwner?.close() }.onFailure { Log.w(TAG, "nav output owner close failed", it) }
-        navOutputOwner = null
-        // DEBUG-only: gỡ receiver inject frame nav tổng hợp (nếu đã đăng ký).
-        runCatching { debugFrameReceiver?.let { unregisterReceiver(it) } }
-        debugFrameReceiver = null
         super.onDestroy()
     }
 
@@ -506,9 +400,6 @@ class NavNotificationListener : NotificationListenerService() {
             ?: com.byd.clusternav.navigation.ArrowClassifier.classify(arrow?.asPixelFrame())
         // Chống nháy HUD: frame lỗi đọc → GIỮ hướng rẽ trước (không rớt -1 → straight); fresh hợp lệ → cập nhật mốc.
         val classifiedIcon = ManeuverHold.resolve(freshIcon, lastManeuverIcon)
-        // T4 (telemetry): snapshot the maneuver icon BEFORE the in-place hold update so the segment-change
-        // decision at the end of handle() can still see an icon change.
-        val prevManeuverIcon = lastManeuverIcon
         if (classifiedIcon in 0..28) lastManeuverIcon = classifiedIcon
 
         // TASK 1 (closeout 1.28): mang MANEUVER CÓ HƯỚNG cho họ vòng xuyến sang NavState.maneuver. Bottleneck cũ:
@@ -560,18 +451,9 @@ class NavNotificationListener : NotificationListenerService() {
         // D4 (closeout 1.28): log-on-change — only Log.i when dist|road|eta changes from the previous emission
         // (kills per-notification spam; W/E + state-change logs above stay unconditional).
         val navKey = "${state.distance}|${state.road}|${state.eta}"
-        val prevNavKey = lastNavLogKey
         if (navKey != lastNavLogKey) {
             lastNavLogKey = navKey
             Log.i(TAG, "nav dist='${state.distance}' road='${state.road}' eta='${state.eta}'")
-        }
-        // T4 (telemetry): on a real segment/maneuver change (NOT the ~4 Hz heartbeat), trigger a debounced
-        // (~3 s) screenshot of BOTH displays over the dadb loopback — verbose-gated, OFF-main, degrade-safe.
-        // The seg-<n>-<ts>-*.png files correlate with the CSV rows above by timestamp; a screenshot failure
-        // never touches nav (SegmentShotCapturer wraps every shell in runCatching).
-        if (NavLog.verbose &&
-            SegmentShotDecision.segmentChanged(prevNavKey, navKey, prevManeuverIcon, classifiedIcon)) {
-            runCatching { SegmentShotCapturer.get(applicationContext).onSegmentChange() }
         }
     }
 

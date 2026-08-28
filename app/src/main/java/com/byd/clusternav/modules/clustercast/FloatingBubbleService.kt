@@ -121,6 +121,9 @@ class FloatingBubbleService : Service() {
             // TRIAL (2026-08-14): re-pin a cast app that an external trigger (e.g. Kiki starting GMaps
             // navigation) pulled off the cluster. Cheap-gated + serial-executed inside the coordinator.
             runCatching { SimpleCastRuntime.coordinator(applicationContext).repinEscapedCastApps() }
+            // Item 4: re-áp vị trí bong bóng VietMap ĐÃ LƯU mỗi nhịp (nếu VietMap-mod dựng lại bong bóng lúc
+            // đang lái / ClusterNav chạy nền) → luôn TỰ về đúng vị trí owner đã chỉnh. send() tự gate Cast ON.
+            runCatching { com.byd.clusternav.VmOverlayPosition.applyOnOpen(applicationContext) }
             if (!destroyed) handler.postDelayed(this, REFRESH_INTERVAL_MS)
         }
     }

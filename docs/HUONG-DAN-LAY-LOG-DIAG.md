@@ -20,6 +20,9 @@ VietMap/Waze khi chiếu lên cụm, app **chưa đủ thông tin để vẽ mũ
 ---
 
 ## BƯỚC 1 — Lái thử (phần quan trọng nhất)
+
+> ⚠️ **BẮT BUỘC trước khi lái:** phải **ĐĂNG NHẬP** VietMap và Waze, và app phải **ĐANG DẪN ĐƯỜNG THẬT** (đã chọn điểm đến, đang có mũi tên rẽ). Nếu app báo "Phiên hết hạn / đăng nhập lại" hoặc chỉ mở bản đồ mà KHÔNG dẫn → **log sẽ rỗng phần ngã rẽ = mất công**. Kiểm: màn hình có đang hiện mũi tên + "còn Xm rẽ ..." thì mới OK.
+
 Lái bình thường, **đi qua NHIỀU ngã rẽ**. Cần thu đủ cả 2 app:
 
 **A. VietMap** (~10–15 phút):

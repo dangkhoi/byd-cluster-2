@@ -1,19 +1,35 @@
 # ClusterNav 2.0 — Project Backlog
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-08-25 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
+> **Trạng thái**: Current · **Cập nhật**: 2026-08-28 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
 
 > File quản lý công việc chung. **Tái cấu trúc 2026-08-25** (owner: "tách off-car/on-car, đánh lại status"): §0 DASHBOARD dưới đây là **VIEW CHÍNH** (tách theo NƠI LÀM + status 2 TRỤC, đọc 10 giây); **chi tiết + bằng chứng [ĐO] đầy đủ giữ nguyên ở mục A–F** bên dưới (không xoá — đó là ký ức/bằng chứng dự án).
 >
 > **Status 2 TRỤC** (thay bộ 1-ô cũ cho hết rối):
 > · **Làm (code)**: ✅ xong · 🔨 đang dở · 🔲 chưa làm · ❌ bác/revert
 > · **Xe (verify)**: 🟢 đã xác nhận trên xe · 🚗 code xong CHỜ xe · — không cần xe
-> Branch: `feat/speed-limit-badge-hal-hud` (main `f7843c0` — không đụng tới khi PASS on-car). APK mới nhất: **v1.27**.
+> Branch: `feat/speed-limit-badge-hal-hud` (main `f7843c0` — không đụng tới khi PASS on-car). APK mới nhất: **v1.29** (code 30, phiên CLOSING) + **VietMap mod** (universal-mod3).
 
 ---
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
 
-### 🐞 REGRESSION v1.26 (owner báo on-car 2026-08-26) — ĐIỀU TRA TRƯỚC
+### 🏁 CLOSING 2026-08-28 (owner chốt sản phẩm gọn) — UNCOMMITTED, CHỜ TEST XE
+**Scope chốt = 4 đường:** GMaps noti→cụm+HUD (proven) · VietMap widget→badge tốc-độ · **VietMap-mod bong-bóng→cụm (chỉnh vị trí)** · phím-thoại→trợ lý. **Gỡ HẾT** nav screen-capture/a11y VietMap+Waze + chẩn đoán.
+
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| CL-1 | Gỡ screen-capture/a11y VietMap+Waze (~39 file) + diag của chúng; `NavApps.ALL=GMAPS`, `DESC_ONLY=∅` | ✅ | — |
+| CL-2 | Gỡ selector nguồn + toggle diag (giữ `txt_nav_source_active` read-only) | ✅ | — |
+| CL-3 | **Item 4 — chỉnh vị trí bong bóng VietMap trên cụm**: mod receiver `posrx` + fix mapping 1-1 (gravity TOP\|LEFT + NO_LIMITS) · `VmOverlayPosition`+`VmBubblePlacementView` kéo-thả · persistence 3 nơi | ✅ | 🚗 (mapping 1-1 [ĐO] emulator; lên cụm khi Cast ON) |
+| CL-4 | Badge tốc-độ **default TẮT**; thêm toggle bong bóng `vm_bubble_enabled` **default TẮT** (cả 2 layout); ON lưu bền | ✅ | 🚗 |
+| CL-5 | Auto-start VietMap gate = badge **HOẶC** bong bóng; dedup `pidof` (bật cả 2 vẫn 1 lần); `ensureRunning` cả 2 handler | ✅ | 🚗 auto-start dùng **dadb = phía XE** (emulator ECONNREFUSED 5555; fallback không-dadb đã revert vì BAL) |
+| CL-6 | Seal T11 re-pin **lần 9** (portrait `activity_main.xml`) | ✅ | — |
+| CL-7 | APK **v1.29** (code 30) release + **VietMap mod** (universal-mod3, receiver+mapping) → `~/Desktop/ClusterNav-oncar-test/`. Full test 5 module **0 fail** | ✅ | 🚗 CHỜ TEST rồi mới commit |
+
+> **Runbook re-mod nhanh** mỗi bản VietMap mới: `docs/runbook-mod-vietmap-cluster.md` (§3 tìm target obfuscated · §4 redirect display · §10 receiver vị trí + **fix mapping smali thật** · §5–7 build/ký/gộp).
+> **MOOT do CL-1** (screen-capture nav đã gỡ — KHÔNG còn theo dõi): F4/F4b/F4c/F4e · B3.20 · B3.34 · B3.50 · B3.52 · B3.56 · B3.57 · B3.58 · Waze+5 · REG-A/B/C (đều thuộc pipeline screen-capture/a11y đã bỏ). Giữ lịch sử bên dưới làm ký ức, KHÔNG phải việc đang mở.
+
+### 🐞 REGRESSION v1.26 (owner báo on-car 2026-08-26) — ⚠ MOOT do CLOSING gỡ screen-capture (giữ lịch sử)
 | ID | Triệu chứng | TT | Ghi chú |
 |----|-------------|----|---------|
 | REG-A | Cast qua lại app lên cụm **lag**; trả app về **đơ 1 chút** rồi mới bình thường | 🔲 điều tra | emulator repro được (cast là off-car). Nghi: tải của pipeline screen-capture/window-enum (F4/B3) chạy nền trên cụm, HOẶC lifecycle overlay badge lúc display 1 add/remove. **v1.27 KHÔNG chạm cast → KHÔNG sửa.** |

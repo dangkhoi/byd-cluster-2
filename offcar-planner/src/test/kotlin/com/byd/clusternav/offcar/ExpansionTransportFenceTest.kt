@@ -530,13 +530,74 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ (giữ lại để trace): strings.xml = 4b068200…6fa1.
          *
+         * ⚠ CẬP NHẬT 2026-08-28 (lần 5) — owner duyệt (task ui-closing-cleanup), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **closing UI cleanup** (sau khi gỡ nav VietMap/Waze — chỉ còn Google Maps):
+         *   1) GỠ selector "chọn nguồn dẫn đường" (`spinner_nav_source` + nhãn) — chỉ còn một nguồn nên không
+         *      cần chọn; `Prefs.sourceMode` giữ mặc định AUTO. Dòng trạng thái `txt_nav_source_active` GIỮ.
+         *   3) THÊM panel "Vị trí bong bóng VietMap trên cụm" (`btn_vm_pos_left/right/up/down/right_half/apply`
+         *      + `txt_vm_pos_hint`) ở CẢ hai biến thể layout (portrait + `layout-w960dp`), gate theo Cluster Cast.
+         * `strings.xml` KHÔNG đổi (nhãn đặt lúc chạy qua `Lang.t`), nên hằng strings.xml giữ nguyên.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 20dca831…4412.
+         *
+         * ⚠ CẬP NHẬT 2026-08-28 (lần 6) — owner duyệt (task diag-remove-and-placement-ui), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **UI vị trí bong bóng VietMap chuyển sang KÉO-THẢ**: gỡ 4 nút mũi tên
+         * `btn_vm_pos_{left,right,up,down}` (owner chê), thay bằng khung proxy cụm kéo-thả
+         * `vm_bubble_placement_container` (VmBubblePlacementView — giống UI đặt biển báo tốc độ) + thêm nút
+         * `btn_vm_pos_reset` ("Đặt lại"); giữ `btn_vm_pos_right_half` + `btn_vm_pos_apply` + `txt_vm_pos_hint`.
+         * Đổi ở CẢ hai biến thể layout (LayoutVariantIdParityTest giữ parity id). `strings.xml` KHÔNG đổi
+         * (nhãn đặt lúc chạy qua `Lang.t`), nên hằng strings.xml giữ nguyên.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = f13eeda5…d39f7.
+         *
+         * ⚠ CẬP NHẬT 2026-08-28 (lần 7) — owner duyệt (task move-vm-block-up), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **chuyển khối UI "Vị trí bong bóng VietMap trên cụm" LÊN TRÊN mục
+         * "Khắc phục sự cố"** (`cast_recovery_toggle`): khối vm (comment + `vm_bubble_placement_container` +
+         * `btn_vm_pos_right_half` / `btn_vm_pos_reset` / `btn_vm_pos_apply` + `txt_vm_pos_hint`) trước nằm DƯỚI
+         * card Cast, nay DÁN ngay TRƯỚC `cast_recovery_toggle` (trong `cast_body`). CHỈ DI CHUYỂN vị trí + thụt
+         * lề cho khớp ngữ cảnh chèn — KHÔNG đổi id/nội dung (số id bất biến, LayoutVariantIdParityTest xanh).
+         * Đổi ở CẢ hai biến thể layout; chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc.
+         * `strings.xml` KHÔNG đổi.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 5744260b…81da0a.
+         *
+         * ⚠ CẬP NHẬT 2026-08-28 (lần 8) — owner duyệt (task remove-diag-logging-toggle), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **gỡ công tắc "Thu thập dữ liệu chẩn đoán (log + ảnh)"**
+         * (`switch_diag_logging` + comment kèm theo) khỏi CẢ hai biến thể layout. Công tắc này đã vô nghĩa:
+         * nguồn dữ liệu nó thu (screen-capture/log dẫn đường VietMap/Waze) đã bị gỡ — chỉ còn Google Maps.
+         * Wiring MainActivity (`setDiagLogging` + nhấn-giữ ẩn trên nhãn phiên bản), `NavLogExport`, receiver
+         * `EXPORT_LOGS` (NavAccessibilityService) và `Prefs.setNavVerboseLog` gỡ theo vì thành orphan.
+         * GIỮ log chẩn đoán GMaps hợp lệ: `NavLog.verbose` + `Prefs.navVerboseLog` getter (nay chỉ do cờ build
+         * `-PdiagLog=true`/`BuildConfig.DIAG_LOG` điều khiển) + `NavNotifLog`/`NavNotifRawLog`/`DiagStorageCap`.
+         * `strings.xml` KHÔNG đổi (text công tắc hardcode trong layout, không phải `@string`) nên hằng
+         * strings.xml giữ nguyên. Đổi ở CẢ hai biến thể (LayoutVariantIdParityTest giữ parity id); chỉ bản dọc
+         * bị pin hash ở đây nên chỉ cập nhật hằng bản dọc.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 183dcd38…3e77dd.
+         *
+         * ⚠ CẬP NHẬT 2026-08-28 (lần 9) — owner duyệt (task vm-toggles-autostart), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm công tắc bong bóng VietMap trên cụm** (`switch_vm_bubble_enabled`,
+         * **mặc định TẮT** — opt-in) vào ĐẦU card "Vị trí bong bóng VietMap trên cụm", ở CẢ hai biến thể layout
+         * (LayoutVariantIdParityTest giữ parity id). Công tắc gate panel kéo-thả vị trí bong bóng và, khi bật,
+         * tự khởi động VietMap MỘT LẦN (giống badge tốc độ; dedup pidof). Đi kèm việc đổi mặc định badge tốc độ
+         * VietMap sang TẮT (`Prefs.badgeEnabled` default false) — thuần code, không đụng layout. `strings.xml`
+         * KHÔNG đổi (nhãn công tắc + nhắc đặt lúc chạy qua `Lang.t`), nên hằng strings.xml giữ nguyên. Chỉ bản
+         * dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 7d283550…b5ae15.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "20dca831c4da2edf28f8058bf20a4d1be8a51fe74ba08031da19cea0ac5f4412",
+            "app/src/main/res/layout/activity_main.xml" to "6369e4970769ed21971577295dda1b19a565cd0f4ef71d68b6be7d3456b2dfb2",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

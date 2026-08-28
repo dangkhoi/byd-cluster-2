@@ -38,9 +38,6 @@ object NavRepository {
     /** Owns the cluster center-nav HAL writer (Giữa+ETA). Created with the coordinator; stopped on nav stop. */
     @Volatile private var hudOwner: NavigationHudOwner? = null
 
-    /** log-on-change cho nhánh "chưa có quyền" của [ingestContent] (đường ảnh gọi 4 Hz). */
-    @Volatile private var lastPermissionBlockPkg: String? = null
-
     private const val TAG = "NavRepository"
 
     fun connect(context: Context, permission: NavigationPermission): NavigationSessionCoordinator = synchronized(lock) {
@@ -60,10 +57,9 @@ object NavRepository {
     /**
      * CỬA VÀO của đường THÔNG BÁO (Google Maps). Vỏ mỏng: dựng khung bằng [NavContentBuilder.fromNotification]
      * (phép DỜI CHỖ nguyên văn của biểu thức từng nằm ở đây — CLAUDE.md §6, khoá bằng `GmapsContentGoldenTest`)
-     * rồi đi CHUNG một đường với đường ảnh qua [ingestFrame].
+     * rồi đưa vào phễu qua [ingestFrame].
      *
-     * Cố ý KHÔNG gọi [ingestContent]: `publish` ở đây phải đẩy CHÍNH `NavState` gốc (nó mang bitmap mũi tên
-     * `arrow` mà `ClusterBroadcaster` đọc), còn `ingestContent` chỉ dựng lại được `NavState` từ khung.
+     * `publish` ở đây đẩy CHÍNH `NavState` gốc (nó mang bitmap mũi tên `arrow` mà `ClusterBroadcaster` đọc).
      */
     fun ingest(context: Context, packageName: String, displayName: String?, value: NavState) {
         ingestFrame(
@@ -81,41 +77,10 @@ object NavRepository {
     }
 
     /**
-     * CỬA VÀO của đường ẢNH (VietMap/Waze qua screen-capture + a11y) — F4, spec
-     * `docs/specs/nav-input-output-architecture.html`.
-     *
-     * CÙNG một cửa với [ingest]: chốt phiên, cụm giữa + giờ đến, HUD, dải làn đều mọc từ đây. Trả `true` khi
-     * khung đã vào phễu.
-     *
-     * KHÔNG NÉM KHI CHƯA CÓ QUYỀN: [NavigationSessionCoordinator.startSession]/`acceptFrame` có
-     * `check(permission == GRANTED)`. Đường ảnh tick 4 Hz nên một lần rớt binding sẽ là 4 exception/giây bị
-     * `runCatching` của owner nuốt im lặng. Ở đây trả về sớm + log-on-change để nó thành MỘT dòng đọc được.
-     */
-    fun ingestContent(
-        context: Context,
-        packageName: String,
-        displayName: String?,
-        content: NavigationFrameContent,
-    ): Boolean {
-        if (permission() != NavigationPermission.GRANTED) {
-            if (lastPermissionBlockPkg != packageName) {
-                lastPermissionBlockPkg = packageName
-                android.util.Log.i(TAG, "bỏ khung ảnh của $packageName: chưa có quyền notification")
-            }
-            return false
-        }
-        lastPermissionBlockPkg = null
-        val frame = ingestFrame(context, packageName, displayName, content)
-        publish(frame.toNavState())
-        return true
-    }
-
-    /**
      * DỪNG PHIÊN **chỉ khi** [packageName] đúng là nguồn đang giữ phiên. Trả `true` nếu đã dừng.
      *
      * Vì sao không nhả vô điều kiện (bài học F1 — gỡ một kênh chết kéo theo thứ nó gánh hộ): [stop] còn kéo
-     * theo `ClusterBroadcaster.stop` + `hudOwner.stop()` + `SourceArbiter.clear()`. Đường ảnh của app A hết
-     * tươi mà nhả vô điều kiện là GIẾT phiên Google Maps đang chạy bằng notification.
+     * theo `ClusterBroadcaster.stop` + `hudOwner.stop()` + `SourceArbiter.clear()`.
      */
     fun stopIfSource(context: Context, packageName: String): Boolean {
         val runtime = synchronized(lock) { coordinator } ?: return false

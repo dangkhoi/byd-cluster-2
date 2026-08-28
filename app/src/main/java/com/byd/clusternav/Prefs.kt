@@ -242,18 +242,18 @@ object Prefs {
     }
 
     // ─── Nhật ký chi tiết (verbose) + miễn trừ lần đầu (closeout 1.28) ──────────────────────────
-    // Verbose-log gate: OTA ships a RELEASE apk (no BuildConfig.DEBUG) and the owner debugs on-car via logcat, so
-    // this is a RUNTIME flag, MẶC ĐỊNH TẮT (tuning xong ở 1.28). Flip bằng nhấn-giữ ẨN trên nhãn phiên bản
-    // (MainActivity). NavLog phản chiếu vào bộ nhớ để hot-path đọc @Volatile field, KHÔNG chạm SharedPreferences
-    // mỗi frame (~4×/s). Bật lên = lại có CSV/PNG chẩn đoán + log ManeuverSig + 3 log per-frame đầy đủ.
+    // Verbose-log gate for the app's OWN diagnostics (GMaps notification CSV [NavNotifLog]/[NavNotifRawLog],
+    // ManeuverSignature notes, per-frame logs) + the [DiagStorageCap] periodic sweep. Controlled SOLELY by the
+    // build flag now: the runtime UI switch + hidden long-press were removed 2026-08-28 (the VietMap/Waze
+    // capture they collected is gone — see NavAccessibilityService/NavLog), so nothing writes this pref anymore.
+    // MẶC ĐỊNH TẮT. NavLog mirrors it into a @Volatile field so hot paths never touch SharedPreferences.
     private const val K_NAV_VERBOSE_LOG = "nav_verbose_log"
-    // Default = BuildConfig.DIAG_LOG. In a NORMAL release/debug build DIAG_LOG is FALSE, so this is
-    // `getBoolean(K_NAV_VERBOSE_LOG, false)` exactly as before → A8/D3 preserved (normal use collects NO
-    // logs/PNGs/screenshots, privacy default unchanged). Only a DIAG build (`-PdiagLog=true`) makes DIAG_LOG
-    // true → verbose is pre-ON for a teammate's drive-test WITHOUT them finding the hidden toggle. This is only
-    // a DEFAULT: once the user flips the "Thu thập dữ liệu chẩn đoán" switch, the persisted value wins either way.
+    // Default = BuildConfig.DIAG_LOG. In a NORMAL release/debug build DIAG_LOG is FALSE → this returns false
+    // → A8/D3 preserved (normal use collects NO logs/PNGs, privacy default unchanged). Only a DIAG build
+    // (`-PdiagLog=true`) makes DIAG_LOG true → verbose pre-ON for a teammate's drive-test. The pref key is kept
+    // as the backing store but is now read-only (no setter): with the toggle gone it always resolves to the
+    // DIAG_LOG default. Read by [NavLog.init]; that gate is load-bearing for the remaining GMaps diagnostics.
     fun navVerboseLog(ctx: Context): Boolean = sp(ctx).getBoolean(K_NAV_VERBOSE_LOG, BuildConfig.DIAG_LOG)
-    fun setNavVerboseLog(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_NAV_VERBOSE_LOG, v).apply()
 
     // Miễn trừ lần đầu (no-warranty / không liên kết BYD / tự chịu rủi ro) — hiện MỘT lần rồi ghim cờ.
     private const val K_DISCLAIMER_SHOWN = "disclaimer_shown"
@@ -272,11 +272,12 @@ object Prefs {
     private const val K_BADGE_CENTER_Y = "badge_center_y"
     private const val K_BADGE_ENABLED = "badge_enabled"
 
-    // ★ Badge on/off (owner 2026-08-18): MẶC ĐỊNH BẬT. Gate riêng cho biển báo tốc độ trên CỤM (overlay
-    // display 1) — độc lập với nguồn tốc độ/HUD. Khi TẮT: SpeedBadgeOverlay.show() gỡ overlay + không attach
-    // (real pipeline lẫn debug force-show đều tôn trọng vì cả hai đi qua show()). Đọc trực tiếp trong overlay
-    // trên main handler (SharedPreferences cache sẵn nên rẻ, không chạm notification thread).
-    fun badgeEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_BADGE_ENABLED, true)
+    // ★ Badge on/off: MẶC ĐỊNH TẮT (owner 2026-08-28: mặc định tắt biển báo tốc độ VietMap trên cụm; trước
+    // đây 2026-08-18 mặc định BẬT). Gate riêng cho biển báo tốc độ trên CỤM (overlay display 1) — độc lập với
+    // nguồn tốc độ/HUD. Khi TẮT: SpeedBadgeOverlay.show() gỡ overlay + không attach (real pipeline lẫn debug
+    // force-show đều tôn trọng vì cả hai đi qua show()). Đọc trực tiếp trong overlay trên main handler
+    // (SharedPreferences cache sẵn nên rẻ, không chạm notification thread).
+    fun badgeEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_BADGE_ENABLED, false)
     fun setBadgeEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_BADGE_ENABLED, v).apply()
 
     // ★ Biển "giới hạn sắp tới" (spec upcoming-speed-limit-badge, owner 2026-08-18): MẶC ĐỊNH BẬT (theo tiền lệ
@@ -290,6 +291,15 @@ object Prefs {
     private const val K_SHOW_ALERT_CHIP = "show_alert_chip"
     fun showAlertChip(ctx: Context): Boolean = sp(ctx).getBoolean(K_SHOW_ALERT_CHIP, false)
     fun setShowAlertChip(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_SHOW_ALERT_CHIP, v).apply()
+
+    // ─── VietMap bubble-on-cluster toggle (owner 2026-08-28) ────────────────────────────────────
+    // Gate cho VỊ TRÍ bong bóng VietMap trên cụm (panel kéo-thả VmBubblePlacementView + VmOverlayPosition).
+    // MẶC ĐỊNH TẮT (opt-in). Giống badge tốc độ: khi BẬT sẽ auto-start VietMap MỘT LẦN ([VietMapAutostart],
+    // dedup bằng pidof) để bản mod VietMap có mặt mà nhận broadcast VM_BUBBLE_POS. runNow() auto-start nếu
+    // badge HOẶC cờ này bật — hai cờ độc lập, dedup pidof đảm bảo chỉ start một lần dù cả hai bật.
+    private const val K_VM_BUBBLE_ENABLED = "vm_bubble_enabled"
+    fun vmBubbleEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_VM_BUBBLE_ENABLED, false)
+    fun setVmBubbleEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_VM_BUBBLE_ENABLED, v).apply()
     // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
     private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"

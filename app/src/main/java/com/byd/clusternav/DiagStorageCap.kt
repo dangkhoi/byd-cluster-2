@@ -10,10 +10,8 @@ import java.util.concurrent.Executors
 
 /**
  * Defensive, ALWAYS-ON storage cap for the app-external diagnostics dir (`getExternalFilesDir(null)`) — where
- * every verbose writer lands its output: NavArrowLog (`nav_arrow_log_*.csv` + `nav_arrow_pngs_*` dirs), NavDistanceLog
- * (`nav_log_*.csv`), NavNotifLog / NavNotifRawLog / NavAccessLog (`*.csv`), VietMapSignalLog
- * (`vietmap_signal_*` / `vietmap_views_*` csv), SegmentShotCapturer + VietMap alert PNGs (`diag`), ClusterCast TEE
- * (`castlog`).
+ * every verbose writer lands its output: NavNotifLog / NavNotifRawLog (`*.csv`, the GMaps notification capture)
+ * and the ClusterCast TEE (`castlog`).
  *
  * A data-collection drive with per-frame PNGs + screenshots previously filled the car's storage (7 GB+). This
  * prunes the dir down to [CAP_BYTES] (~150 MB) by deleting the OLDEST files first, using the pure, unit-tested
@@ -91,7 +89,7 @@ object DiagStorageCap {
         }
     }
 
-    /** Depth-first removal of directories left empty after pruning (so stale `nav_arrow_pngs_*` / `diag` dirs go too). */
+    /** Depth-first removal of directories left empty after pruning (so stale empty subdirs go too). */
     private fun pruneEmptyDirs(dir: File) {
         val children = dir.listFiles() ?: return
         for (c in children) {

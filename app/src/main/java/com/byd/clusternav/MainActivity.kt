@@ -14,6 +14,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -62,15 +63,6 @@ class MainActivity : Activity() {
         val versionName = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
         val titleView = findViewById<TextView>(R.id.txt_app_title)
         titleView.text = "ClusterNav" + (versionName?.let { " · v$it" } ?: "")
-        // D5 (closeout 1.28): HIDDEN verbose-log toggle — long-press the version label. It now ROUTES THROUGH
-        // the visible "Thu thập dữ liệu chẩn đoán" switch so both stay in sync; the switch's listener persists
-        // (Prefs), mirrors the live NavLog gate, trims storage on enable, and Toasts. No BuildConfig.DEBUG (OTA
-        // ships a RELEASE apk); default OFF. Fallback flips directly if the switch view is somehow absent.
-        titleView.setOnLongClickListener {
-            val sw = findViewById<Switch>(R.id.switch_diag_logging)
-            if (sw != null) sw.isChecked = !sw.isChecked else setDiagLogging(!NavLog.verbose)
-            true
-        }
 
         navEnabled = findViewById(R.id.switch_enabled)
         navDot = findViewById(R.id.dot_status)
@@ -149,53 +141,12 @@ class MainActivity : Activity() {
         Prefs.setInterpolate(this, true)
         Prefs.setAccBooster(this, true)
 
-        // Nav-source selector (Auto/GMaps/Waze Mod/VietMap). Nguồn tốc độ không còn selector (chỉ VietMap).
-        // Owner Q1 = revive tất cả. Waze-Mod nav-source chạy song song GMaps; speed-source chọn nguồn tín hiệu biển
-        // báo. Xem docs/specs/waze-vietmap-signal-revival.html.
-        // Navigation source selector (turn-by-turn direction)
-        val navSourceSpinner = findViewById<android.widget.Spinner>(R.id.spinner_nav_source)
-        // T3 (b3-full-nav-capture · R2): AUTO / GMaps / Waze / VietMap → Prefs.setSourceMode (SourceArbiter honours it).
-        // Nhãn kèm NĂNG LỰC THẬT của từng nguồn (08-22) — ba nguồn KHÔNG ngang nhau, và trước đây menu
-        // trình bày như nhau khiến người dùng chọn xong không hiểu vì sao cụm im:
-        //   • Google Maps — notification: mũi tên + cự ly + đường, chạy NỀN hẳn (nguồn đầy đủ duy nhất).
-        //   • VietMap     — notification cho đường + cự ly ở nền; MŨI TÊN chỉ có khi app hiển thị (capture).
-        //   • Waze       — mục này là NHÓM {com.waze, com.chisadin.wazemod}, không phải một gói: hai bản
-        //                    dùng chung bộ resource-id nên đọc y hệt nhau (đo aapt2 08-22). Cự ly + tên đường
-        //                    + ETA đọc được qua view-id a11y; mũi tên vẫn cần app hiển thị (capture).
-        val navSources = arrayOf(
-            "Tự động (app dẫn trước)",
-            "Google Maps — chạy nền, đủ mũi tên + cự ly",
-            "Waze / Waze Mod — cần hiện trên màn chính hoặc cụm",
-            // ĐÍNH CHÍNH 2026-08-23 (B3.44 + B3.48): nhãn cũ hứa "nền có cự ly" — SAI kể từ B3.44.
-            // `NavApps.NOTIFICATION` nay CHỈ còn GMaps ⇒ VietMap không còn kênh nền nào cấp cự ly; cả mũi tên
-            // lẫn cự ly đều đi đường ẢNH, tức app PHẢI hiển thị. Và từ B3.48, chọn đích danh VietMap mà
-            // VietMap không dẫn thì cụm IM LẶNG (không nhường cho GMaps nữa) — nhãn phải nói đúng chuyện đó,
-            // nếu không người dùng chọn xong sẽ không hiểu vì sao cụm trống.
-            "VietMap — cần app hiện (mũi tên + cự ly qua ảnh)",
-        )
-        val navSourceModes = intArrayOf(Prefs.AUTO, Prefs.PREFER_GMAPS, Prefs.PREFER_WAZE, Prefs.PREFER_VIETMAP)
-        navSourceSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, navSources)
-        val currentNavMode = Prefs.sourceMode(this)
-        navSourceSpinner.setSelection(navSourceModes.indexOf(currentNavMode).coerceAtLeast(0))
-        navSourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                // B3.49 — ĐỔI MENU PHẢI CÓ HIỆU LỰC TỨC THÌ. Ghi prefs KHÔNG đủ: `NavOutputOwner.tick` không
-                // đọc Prefs/SourceArbiter, nó bắn theo độ tươi của ScreenCaptureSignal (6 s) ⇒ mũi tên app cũ
-                // còn nằm trên cụm tới 6 giây sau khi tài xế đã chọn app khác. NavSourceModeSwitch bỏ NGAY các
-                // kênh ảnh mà cổng mode mới không cho phép — và CHỈ những kênh đó (xem KDoc: vì sao không
-                // SourceArbiter.clear(), vì sao không ScreenCaptureSignal.clear()).
-                // So với mode ĐANG LƯU là bắt buộc: Spinner bắn onItemSelected cả lúc setSelection() khi dựng
-                // màn hình, chạy vô điều kiện = mỗi lần mở app lại xoá oan kênh của app đang dẫn.
-                com.byd.clusternav.navigation.NavSourceModeSwitch.onModeSelected(
-                    previousMode = Prefs.sourceMode(this@MainActivity),
-                    selectedMode = navSourceModes[pos],
-                    persist = { mode -> Prefs.setSourceMode(this@MainActivity, mode) },
-                )
-                refresh()   // reflect the mode change in the active-source line immediately
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
-        // Active nav source (SourceArbiter.activeSource) — kept current by refresh().
+        // Nguồn dẫn đường: BỎ selector chọn nguồn (closing 2026-08-28, spec ui-closing-cleanup). Sau khi gỡ
+        // nav VietMap/Waze, chỉ còn Google Maps (notification) làm nguồn dẫn đường ⇒ không còn gì để chọn.
+        // `Prefs.sourceMode` giữ mặc định AUTO — SourceArbiter ở AUTO chạy đúng với một nguồn GMaps duy nhất.
+        // Enum NavSourceMode + SourceArbiter + NavSourceModeSwitch GIỮ NGUYÊN (hợp đồng nội bộ, còn test :core).
+        // Dòng "Đang dẫn: …" (txt_nav_source_active) là chỉ báo TRẠNG THÁI (read-only, KHÔNG phải selector) —
+        // giữ lại; refresh() cập nhật theo SourceArbiter.activeSource.
         navSourceActive = findViewById(R.id.txt_nav_source_active)
 
         // ── Nguồn tốc độ: BỎ selector (08-22) ─────────────────────────────────────────────────────
@@ -232,15 +183,6 @@ class MainActivity : Activity() {
             cb.setOnCheckedChangeListener { _, on -> Prefs.setMarquee(this, on) }
         }
 
-        // Data-collection logging + screenshots (owner 2026-08-18) — MẶC ĐỊNH TẮT. Normal use collects NO data.
-        // Set the checked state BEFORE attaching the listener so opening the app never fires setDiagLogging
-        // (no spurious toast / storage scan). The hidden long-press on the version label routes through this
-        // same switch, so the two controls always agree.
-        findViewById<Switch>(R.id.switch_diag_logging)?.also { sw ->
-            sw.isChecked = Prefs.navVerboseLog(this)
-            sw.setOnCheckedChangeListener { _, on -> setDiagLogging(on) }
-        }
-
         // 1.21 Item 1 (owner): "Tự khởi động nền" — nổ máy chỉ chạy setup nền (BootSetupService qua
         // RebindReceiver), KHÔNG bung MainActivity trên màn chính (né size-compat dudu). Mặc định BẬT; tắt →
         // giữ hành vi cũ (tự mở Home lúc nổ máy). Chỉ đổi hành vi lúc boot/OTA — mở app bằng icon vẫn như thường.
@@ -257,6 +199,10 @@ class MainActivity : Activity() {
         // Nav trên cụm chỉ còn op 39 "Giữa + ETA" (owner chốt 2026-08-12) — bỏ nút chọn mode + nút test.
         // Chỉ còn dòng trạng thái op39 (ASSERTED / Cast đang bật / chưa gửi được) để chẩn đoán.
         navClusterStatus.bind()
+
+        // Item 4 (spec vietmap-overlay-position-ui): panel chỉnh VỊ TRÍ bong bóng VietMap-mod trên cụm
+        // (nhích ←→↑↓ + preset "Nửa phải" + "Áp dụng"). Gate: chỉ chỉnh được khi Cluster Cast ON.
+        setupVmOverlayControls()
 
         findViewById<Button>(R.id.btn_reconnect_nav).setOnClickListener {
             if (notificationAccessGranted()) {
@@ -335,6 +281,9 @@ class MainActivity : Activity() {
             NavConnect.ensureConnected(applicationContext)
         }
         cast.onResume()
+        // Item 4: áp lại vị trí bong bóng VietMap-mod trên cụm (no-op nếu Cluster Cast OFF — cụm chưa live).
+        // Gate + gửi broadcast VM_BUBBLE_POS nằm trong VmOverlayPosition; mod VietMap có receiver dời bong bóng.
+        runCatching { VmOverlayPosition.applyOnOpen(this) }
         // Nút nổi hiện NGAY sau khi bật Cast + cấp quyền overlay, không cần mở lại app. onCreate() chỉ
         // start service khi overlay ĐÃ có; nếu user vừa cấp quyền ở màn hệ thống rồi quay lại, luồng về
         // đây qua onResume — start lại service để onStartCommand → showBubble() (idempotent, no-op nếu
@@ -414,6 +363,8 @@ class MainActivity : Activity() {
         // F3: quay lại màn hình phải thấy đúng danh sách gán đang lưu (vd vừa cài/gỡ app đích, hoặc màn
         // hình bị huỷ-dựng lại). Vẽ lại từ Prefs — không giữ bản sao trên UI.
         rebuildVoiceKeyBindingList()
+        // Item 4: bật/tắt panel vị trí bong bóng VietMap theo Cluster Cast (cụm chỉ live khi Cast ON).
+        refreshVmOverlayPanel()
     }
 
     private fun View.tint(color: Int) {
@@ -441,9 +392,8 @@ class MainActivity : Activity() {
      * người dùng. `when` vét cạn nên thêm giá trị mới là trình dịch bắt ngay, không lặng lẽ rơi về tên thô.
      */
     private fun NavigationSourceReason.readable(): String = when (this) {
-        // B3.57 — "quyền truy cập thông báo" là GRANT app cần để kết nối phễu đọc dẫn đường; NÓ gate cả đường
-        // notification (GMaps) LẪN đường ảnh/a11y (VietMap/Waze qua `ingestContent`). Viết là "để đọc dẫn
-        // đường" thay vì ngầm định notification là NGUỒN dữ liệu duy nhất (VietMap/Waze đọc màn hình).
+        // B3.57 — "quyền truy cập thông báo" là GRANT app cần để kết nối phễu đọc dẫn đường Google Maps
+        // (notification). Viết là "để đọc dẫn đường" thay vì ngầm định một nguồn cụ thể.
         NavigationSourceReason.PERMISSION_UNKNOWN -> Lang.t("Chưa rõ quyền truy cập thông báo", "Notification access unknown")
         NavigationSourceReason.PERMISSION_MISSING -> Lang.t("Cần quyền truy cập thông báo để đọc dẫn đường", "Grant notification access to read navigation")
         NavigationSourceReason.NO_ACTIVE_SESSION -> Lang.t("Chưa có phiên dẫn đường", "No active navigation session")
@@ -473,35 +423,6 @@ class MainActivity : Activity() {
         NavigationOutputFailureReason.EXECUTOR_REJECTED -> Lang.t("luồng gửi đã dừng", "executor rejected")
         NavigationOutputFailureReason.DISPLAY_ACK_REJECTED -> Lang.t("cụm từ chối xác nhận", "cluster acknowledgement rejected")
         NavigationOutputFailureReason.INTERNAL_CONTRACT_ERROR -> Lang.t("sai hợp đồng nội bộ", "internal contract error")
-    }
-
-    /**
-     * Apply the diagnostic data-collection state (verbose logging + PNG dumps + screenshots): persist it,
-     * mirror the live in-memory [NavLog.verbose] gate, and — when turning ON — trim the diagnostics dir to the
-     * storage cap ([DiagStorageCap]) BEFORE a collection drive begins (so leftover data from a prior session
-     * doesn't count against the budget). Single source of truth shared by the visible switch and the hidden
-     * long-press. Default is OFF: normal use collects no data.
-     */
-    private fun setDiagLogging(on: Boolean) {
-        Prefs.setNavVerboseLog(this, on)
-        NavLog.verbose = on
-        if (on) DiagStorageCap.enforce(this, force = true)
-        // Turning collection OFF also FLUSHES the collected diagnostics to a file-manager-visible folder
-        // (/sdcard/Download/ClusterNavLog) so a teammate who forgets the export step can just flip the switch
-        // off and grab the files without adb. Background thread (opens a dadb loopback socket) + degrade-safe.
-        if (!on) {
-            val appCtx = applicationContext
-            Thread {
-                val dest = NavLogExport.exportToSharedStorage(appCtx)
-                android.util.Log.i("MainActivity", "diag-logging OFF → export → ${dest ?: "failed"}")
-            }.start()
-        }
-        Toast.makeText(
-            this,
-            Lang.t("Thu thập dữ liệu chẩn đoán: ", "Diagnostic data collection: ") +
-                if (on) Lang.t("BẬT", "ON") else Lang.t("TẮT", "OFF"),
-            Toast.LENGTH_SHORT,
-        ).show()
     }
 
     /**
@@ -896,6 +817,91 @@ class MainActivity : Activity() {
      * sau khi start thì đưa ClusterNav lại foreground (relaunch launcher qua shell — không BAL-block, không recreate)
      * để VietMap KHÔNG đè. Chạy nền, degrade-safe. Gọi ở CUỐI [onCreate] (chỉ khi tạo mới).
      */
+    // ── Item 4: chỉnh VỊ TRÍ bong bóng VietMap-mod trên cụm (spec vietmap-overlay-position-ui) ──────
+    // [VmOverlayPosition] lưu x/y (Prefs) + bắn broadcast VM_BUBBLE_POS tới mod VietMap để dời bong bóng.
+    // Chỉ có nghĩa khi Cluster Cast ON (cụm mới "live" cho bong bóng lên) → gate: bật nút khi castOn(),
+    // ngược lại disable + nhắc bật Cast. nudge()/presetRightHalf() TỰ gửi ngay; nút "Áp dụng" gửi lại vị
+    // trí đang lưu (dùng khi bong bóng vừa dựng lại). Nhãn song ngữ đặt lúc chạy qua [Lang.t] (đúng lối
+    // đang dùng — không thêm vào strings.xml đang bị seal).
+    private var vmPlacementView: VmBubblePlacementView? = null
+
+    private fun setupVmOverlayControls() {
+        // Toggle bong bóng VietMap trên cụm (owner 2026-08-28, default TẮT). Detach listener trước khi khôi phục
+        // isChecked để không bắn sự kiện giả; nhãn song ngữ đặt lúc chạy qua Lang.t. Bật ⇒ auto-start VietMap MỘT
+        // LẦN (VietMapAutostart, dedup pidof) giống hành vi badge tốc độ, rồi refresh panel kéo-thả.
+        findViewById<Switch>(R.id.switch_vm_bubble_enabled)?.apply {
+            setOnCheckedChangeListener(null)
+            text = Lang.t("Hiện bong bóng VietMap trên cụm", "Show VietMap bubble on cluster")
+            isChecked = Prefs.vmBubbleEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, checked ->
+                Prefs.setVmBubbleEnabled(this@MainActivity, checked)
+                if (checked) VietMapAutostart.ensureRunning(this@MainActivity, this@MainActivity.packageName)
+                refreshVmOverlayPanel()
+            }
+        }
+        findViewById<FrameLayout>(R.id.vm_bubble_placement_container)?.let { container ->
+            val view = VmBubblePlacementView(
+                this,
+                VmOverlayPosition.CLUSTER_WIDTH, VmOverlayPosition.CLUSTER_HEIGHT,
+                VmOverlayPosition.BUBBLE_WIDTH, VmOverlayPosition.BUBBLE_HEIGHT,
+            ) { absX, absY ->
+                // Kéo-thả xong → convert góc-trên-trái tuyệt đối sang offset-từ-tâm + lưu + bắn (nếu Cast ON).
+                VmOverlayPosition.setAbsoluteTopLeft(this, absX, absY)
+                refreshVmOverlayPanel()
+            }
+            view.setBubbleTopLeftCluster(VmOverlayPosition.absLeftX(this), VmOverlayPosition.absTopY(this))
+            container.removeAllViews()
+            container.addView(
+                view,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            vmPlacementView = view
+        }
+        findViewById<Button>(R.id.btn_vm_pos_right_half)?.setOnClickListener {
+            VmOverlayPosition.presetRightHalf(this); syncVmMarker(); refreshVmOverlayPanel()
+        }
+        findViewById<Button>(R.id.btn_vm_pos_reset)?.setOnClickListener {
+            VmOverlayPosition.presetRightHalf(this); syncVmMarker(); refreshVmOverlayPanel()
+        }
+        findViewById<Button>(R.id.btn_vm_pos_apply)?.setOnClickListener {
+            VmOverlayPosition.send(this)
+            Toast.makeText(this, Lang.t("Đã áp dụng vị trí bong bóng VietMap", "VietMap bubble position applied"), Toast.LENGTH_SHORT).show()
+        }
+        refreshVmOverlayPanel()
+    }
+
+    /** Đồng bộ marker kéo-thả về vị trí đã lưu (sau khi bấm "Nửa phải" / "Đặt lại"). */
+    private fun syncVmMarker() {
+        vmPlacementView?.setBubbleTopLeftCluster(VmOverlayPosition.absLeftX(this), VmOverlayPosition.absTopY(this))
+    }
+
+    /**
+     * Bật/tắt panel vị trí theo toggle bong bóng VietMap + Cluster Cast: chỉ chỉnh được khi CẢ toggle BẬT VÀ
+     * Cast ON (cụm mới live cho bong bóng mod VietMap lên). Toggle TẮT ⇒ mờ + khoá + nhắc "Bật toggle để
+     * chỉnh"; toggle bật nhưng Cast OFF ⇒ nhắc "Bật Cluster Cast để chỉnh vị trí". Gọi ở
+     * [setupVmOverlayControls] (lúc dựng) và [refresh] (mỗi nhịp 1 s — bám công tắc lúc app đang mở).
+     */
+    private fun refreshVmOverlayPanel() {
+        val enabled = Prefs.vmBubbleEnabled(this)
+        val castOn = VmOverlayPosition.castOn(this)
+        val on = enabled && castOn
+        vmPlacementView?.isEnabled = on
+        vmPlacementView?.alpha = if (on) 1f else 0.4f
+        intArrayOf(R.id.btn_vm_pos_right_half, R.id.btn_vm_pos_reset, R.id.btn_vm_pos_apply)
+            .forEach { id -> findViewById<Button>(id)?.isEnabled = on }
+        findViewById<TextView>(R.id.txt_vm_pos_hint)?.text = when {
+            !enabled -> Lang.t("Bật toggle để chỉnh", "Turn on the toggle to adjust")
+            !castOn -> Lang.t("Bật Cluster Cast để chỉnh vị trí", "Turn on Cluster Cast to adjust position")
+            else -> Lang.t(
+                "Kéo bong bóng trong khung để đặt vị trí, rồi bấm Áp dụng",
+                "Drag the bubble in the frame to position it, then tap Apply",
+            )
+        }
+    }
+
     private fun maybeAutoStartVietMap() {
         // Case MỞ APP: start VietMap nếu chưa chạy, rồi đưa ClusterNav lại trước. (Boot headless → BootSetupService.)
         VietMapAutostart.ensureRunning(this, returnToSelfPkg = packageName)

@@ -47,12 +47,12 @@ object NavApps {
      * 2026-08-22, `OPENBYD-VIEWID-PROBE`), trong khi content-desc thì đọc được đủ cự ly + đường + ETA
      * ([VietMapDescParser]). App nào sau này cũng đo ra như vậy thì thêm vào ĐÂY — một nơi duy nhất.
      *
-     * VÌ SAO KHÔNG chạy nhánh content-desc cho MỌI app: đường notification **Google Maps** đang chạy ngoài
-     * hiện trường (CLAUDE.md §6) và `holderTurnMeters` ưu tiên ô cự-ly view-id hơn mẫu đọc-màn của GMaps
-     * (`NavAccessibilityService.holderTurnMeters`). Cho nhánh content-desc bắn cho GMaps là lặng lẽ đổi
-     * nguồn cự-ly của một đường đã proven — đúng thứ §6 cấm. Thu hẹp bằng roster, mở rộng bằng phép đo.
+     * ⚠ RỖNG từ 2026-08-28: toàn bộ đường ĐỌC dẫn đường VietMap/Waze (screen-capture + a11y content-desc +
+     * view-id) đã bị GỠ (owner chốt: chậm/lag/thiếu data). VietMap chỉ còn nuôi **speed badge** qua widget
+     * (gói `vietmapwidget`, KHÔNG qua a11y), Waze không còn kênh nào. Google Maps đi đường NOTIFICATION. Vì thế
+     * không app nào còn đọc bằng content-desc ⇒ tập này rỗng. Giữ lại `val` (thay vì xoá) vì API công khai.
      */
-    val DESC_ONLY: Set<String> = VIETMAP
+    val DESC_ONLY: Set<String> = emptySet()
 
     /**
      * App mà ClusterNav lấy dữ liệu dẫn đường **qua KÊNH NOTIFICATION** (`NavNotificationListener`).
@@ -123,6 +123,13 @@ object NavApps {
      */
     val NOTIFICATION: Set<String> = GMAPS
 
-    /** Toàn bộ app dẫn đường được đọc. Phải khớp `android:packageNames` trong XML cấu hình a11y. */
-    val ALL: Set<String> = GMAPS + WAZE + VIETMAP
+    /**
+     * Toàn bộ app dẫn đường được đọc qua a11y. Phải khớp `android:packageNames` trong XML cấu hình a11y
+     * (`NavPackageRosterSyncTest` khoá cặp này).
+     *
+     * ⚠ CHỈ CÒN GMAPS từ 2026-08-28: đường ĐỌC dẫn đường VietMap/Waze (screen-capture + a11y) đã bị GỠ. A11y
+     * giờ chỉ phục vụ (a) booster cự-ly ground-truth của Google Maps và (b) `onKeyEvent` cho nút vật lý →
+     * trợ lý (key event KHÔNG bị `packageNames` lọc). VietMap speed badge đi qua widget, không qua a11y.
+     */
+    val ALL: Set<String> = GMAPS
 }
