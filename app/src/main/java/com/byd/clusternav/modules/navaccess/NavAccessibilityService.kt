@@ -71,6 +71,14 @@ class NavAccessibilityService : AccessibilityService() {
         event ?: return super.onKeyEvent(event)
         val app = applicationContext
 
+        // CHẨN ĐOÁN Bug 1 (owner 2026-09-01): log MỌI phím tới đây (chỉ DOWN, thưa). onKeyEvent được gọi ⟺ service
+        // ĐANG bound + có cờ filter key. Dùng để chốt trên xe: (a) nút 305 (xoay màn) có TỚI accessibility không —
+        // nếu bấm 305 mà KHÔNG có dòng này ⇒ hệ thống nuốt trước, KHÔNG map được (khác 328 mic tới được); (b) sau lái
+        // xe bấm nút mà KHÔNG có dòng nào ⇒ service mất bound (rebind chưa phục hồi). Xem logcat tag "NavAccess".
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            Log.i(TAG, "onKeyEvent DOWN keycode=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)})")
+        }
+
         if (Prefs.voiceKeyLearn(app)) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 Prefs.setVoiceKeyLearn(app, false)

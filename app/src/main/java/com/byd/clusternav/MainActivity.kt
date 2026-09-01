@@ -241,12 +241,13 @@ class MainActivity : Activity() {
         // (tránh đua nhiều client dadb + popup Allow khi user chưa cần nav). Bật công tắc mới grant+connect.
         if (Prefs.enabled(this)) {
             NavConnect.ensureConnected(applicationContext)
-            // Reboot leaves the accessibility service ENABLED in the setting but NOT BOUND (measured
-            // 2026-08-14, docs/diagnostics/oncar-handoff-voicekey-2026-08-14.md §8) → onKeyEvent + screenRead
-            // dead. accessibilityBoosterGranted() only reads the ENABLED setting, so it can't see that; the
-            // in-process connected flag can. Escalate to the dadb grant when the setting is missing OR the
-            // service is enabled-but-not-bound — grantAccessibility confirms via dumpsys before toggling
-            // (no flicker if already bound), so a stale connected flag at cold start is harmless.
+        }
+        // Accessibility service = HAI việc ĐỘC LẬP: (a) booster đọc cự-ly GMaps (cần Nav+HUD) + (b) nút vật lý →
+        // trợ lý (cần voice-key). GRANT/force-rebind khi BẤT KỲ cái nào bật — phím-thoại KHÔNG phụ thuộc Nav+HUD
+        // (owner 2026-09-01: hai tính năng riêng; trước gate chung vào Nav+HUD nên voice-key chết khi Nav+HUD tắt).
+        // Reboot để service ENABLED-nhưng-CHƯA-bound → onKeyEvent chết; grantAccessibility verify dumpsys trước khi
+        // toggle (không flicker nếu đã bound). Escalate khi thiếu setting HOẶC enabled-nhưng-chưa-bound.
+        if (Prefs.enabled(this) || Prefs.voiceKeyEnabled(this)) {
             if (!accessibilityBoosterGranted() || !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) NavConnect.grantAccessibility(applicationContext)
         }
         runCatching { RebindReceiver.scheduleWatchdog(applicationContext) }
@@ -279,6 +280,21 @@ class MainActivity : Activity() {
         // đụng nav đang chạy tốt).
         if (Prefs.enabled(this) && notificationAccessGranted() && !NavNotificationListener.connected) {
             NavConnect.ensureConnected(applicationContext)
+        }
+        // Bug 1 (owner 2026-09-01): phím-thoại chết sau lái xe/reboot (service ENABLED nhưng KHÔNG bound → onKeyEvent
+        // không chạy; 305 lẫn 328 rơi về mặc định). onCreate chỉ grant khi Nav+HUD BẬT — Nav+HUD default TẮT nên mở
+        // app không tự lành, restart app vô ích (đúng triệu chứng owner). Nay: hễ phím-thoại BẬT mà service chưa
+        // connected → grant + force-rebind qua dadb NGAY khi mở/quay lại app (không cần toggle tay, không gate Nav+HUD).
+        //
+        // reset=FALSE (KHÔNG dùng reset=true ở đây): onResume chạy NGAY sau onCreate, mà onCreate cũng grant khi
+        // voiceKeyEnabled && !connected (đúng cảnh sau reboot). reset=true sẽ XOÁ single-flight [grantingAcc] mà
+        // lần grant onCreate vừa đặt → HAI phiên dadb force-rebind toggle SONG SONG trên cùng
+        // enabled_accessibility_services (đọc-sửa-ghi + remove/re-add đan nhau). Để reset=false cho single-flight tự
+        // gộp: onCreate làm việc, onResume no-op nếu đang chạy (và tự thử lại ở resume sau khi cờ đã nhả). Grant treo
+        // KHÔNG kẹt cờ vĩnh viễn — doGrantAccessibilityWithTimeout ép nhả sau GRANT_TIMEOUT_MS (9s). Toggle tay
+        // OFF→ON vẫn giữ reset=true (đó là nơi cần xoá cờ kẹt aggressive theo yêu cầu tường minh của owner).
+        if (Prefs.voiceKeyEnabled(this) && !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) {
+            NavConnect.grantAccessibility(applicationContext, reset = false)
         }
         cast.onResume()
         // Item 4: áp lại vị trí bong bóng VietMap-mod trên cụm (no-op nếu Cluster Cast OFF — cụm chưa live).
@@ -902,8 +918,30 @@ class MainActivity : Activity() {
         }
     }
 
+    private var vmAutoStartedThisSession = false
+
     private fun maybeAutoStartVietMap() {
-        // Case MỞ APP: start VietMap nếu chưa chạy, rồi đưa ClusterNav lại trước. (Boot headless → BootSetupService.)
-        VietMapAutostart.ensureRunning(this, returnToSelfPkg = packageName)
+        val app = applicationContext
+        // Gate giống VietMapAutostart.runNow: chỉ khi bật badge tốc độ HOẶC bong bóng VietMap trên cụm.
+        if (!Prefs.badgeEnabled(app) && !Prefs.vmBubbleEnabled(app)) return
+        if (vmAutoStartedThisSession) return
+        val li = runCatching { packageManager.getLaunchIntentForPackage(VietMapAutostart.PKG) }.getOrNull() ?: return  // chưa cài
+        vmAutoStartedThisSession = true
+        // FIX on-car 2026-09-01 (owner: "start clusternav thì VietMap không lên theo, phải tự mở"):
+        // đường CŨ dùng dadb (pidof+monkey qua LocalDeviceShell) KHÔNG chạy trên xe (fail im lặng — dadb loopback
+        // lúc mở app chưa sẵn / cap no-retry). Đổi sang mở VietMap TRỰC TIẾP bằng startActivity từ activity
+        // FOREGROUND (main thread) — app thường mở được launcher app khác, KHÔNG cần dadb, KHÔNG bị chặn
+        // background-activity-start vì ClusterNav đang foreground. Chờ 1 nhịp cho activity resumed hẳn. 1 lần/phiên
+        // (không nhảy lại mỗi lần quay về app). VietMap ra trước để user vào dẫn đường → bong bóng lên cụm (qua mod).
+        li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        window.decorView.postDelayed({
+            // Chỉ bung VietMap khi Activity CÒN sống (foreground): user đóng app trong 1.2 s đó thì đừng kéo VietMap
+            // lên nữa (vừa lạc lối UX, vừa dễ bị Android chặn background-activity-start). Cùng lối guard với các
+            // callback bất đồng bộ khác trong file (isFinishing/isDestroyed).
+            if (!isFinishing && !isDestroyed) {
+                runCatching { startActivity(li); android.util.Log.i("MainActivity", "autostart VietMap OK (startActivity, badge=${Prefs.badgeEnabled(app)} bubble=${Prefs.vmBubbleEnabled(app)})") }
+                    .onFailure { android.util.Log.w("MainActivity", "autostart VietMap fail: ${it.message}") }
+            }
+        }, 1200)
     }
 }

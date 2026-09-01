@@ -41,8 +41,8 @@ android {
         applicationId = "com.byd.clusternav2"
         minSdk = 29
         targetSdk = 37
-        versionCode = 30
-        versionName = "1.29"
+        versionCode = 31
+        versionName = "1.30"
 
         // DIAG build flag — a DIAGNOSTIC log-collection build for a teammate to drive-test VietMap/Waze.
         // Default FALSE so the normal RELEASE build stays byte-identical (A8/D3: verbose logging default OFF —

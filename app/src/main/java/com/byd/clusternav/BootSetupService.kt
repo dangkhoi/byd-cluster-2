@@ -49,23 +49,24 @@ class BootSetupService : Service() {
         if (!startForegroundOnce()) { stopSelf(startId); return START_NOT_STICKY }
         Thread({
             runCatching {
-                if (Prefs.enabled(applicationContext)) {
-                    val latch = CountDownLatch(1)
-                    // Accessibility grant + 1.20 force-bind — only escalate when the service is NOT already
-                    // bound (idempotent anyway: grantAccessibility verifies dumpsys before toggling, so an
-                    // already-bound service is a no-op / no flicker). grantAccessibility is async on its own
-                    // thread and reports back on the main looper → count the latch down from the callback.
+                // Accessibility grant + 1.20 force-bind: cần khi Nav+HUD (booster đọc GMaps) HOẶC voice-key
+                // (nút vật lý → trợ lý) bật. Voice-key KHÔNG phụ thuộc Nav+HUD (owner 2026-09-01: hai tính năng
+                // RIÊNG — trước gate chung Nav+HUD nên phím-thoại chết sau boot khi Nav+HUD tắt). Chỉ escalate khi
+                // service CHƯA bound (idempotent: grantAccessibility verify dumpsys trước khi toggle → no-op/no
+                // flicker nếu đã bound). Async trên thread riêng, báo về main looper → đếm latch; giữ FGS sống tới
+                // khi grant xong (bounded GRANT_TIMEOUT_MS).
+                if (Prefs.enabled(applicationContext) || Prefs.voiceKeyEnabled(applicationContext)) {
                     if (!NavAccessibilitySource.connected) {
+                        val latch = CountDownLatch(1)
                         NavConnect.grantAccessibility(applicationContext) { latch.countDown() }
-                    } else {
-                        latch.countDown()
+                        latch.await(GRANT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                     }
-                    // Re-assert the cluster-lane output (belt-and-suspenders for an old lane=false pref).
+                }
+                if (Prefs.enabled(applicationContext)) {
+                    // Re-assert the cluster-lane output (belt-and-suspenders for an old lane=false pref). Nav+HUD only.
                     NavRepository.setOutputEnabled(
                         applicationContext, NavigationOutputTarget.CLUSTER_LANE, true,
                     )
-                    // Keep the FGS (process) alive until the grant finishes, bounded so we ALWAYS stop.
-                    latch.await(GRANT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 }
                 // BOOT headless: auto-start VietMap (nền, chỉ khi CHƯA chạy) để badge speed-limit có nguồn;
                 // sau khi start thì VỀ HOME (không đè launcher — app mình vốn không foreground trên boot). Đồng bộ
