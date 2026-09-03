@@ -918,30 +918,11 @@ class MainActivity : Activity() {
         }
     }
 
-    private var vmAutoStartedThisSession = false
-
     private fun maybeAutoStartVietMap() {
-        val app = applicationContext
-        // Gate giống VietMapAutostart.runNow: chỉ khi bật badge tốc độ HOẶC bong bóng VietMap trên cụm.
-        if (!Prefs.badgeEnabled(app) && !Prefs.vmBubbleEnabled(app)) return
-        if (vmAutoStartedThisSession) return
-        val li = runCatching { packageManager.getLaunchIntentForPackage(VietMapAutostart.PKG) }.getOrNull() ?: return  // chưa cài
-        vmAutoStartedThisSession = true
-        // FIX on-car 2026-09-01 (owner: "start clusternav thì VietMap không lên theo, phải tự mở"):
-        // đường CŨ dùng dadb (pidof+monkey qua LocalDeviceShell) KHÔNG chạy trên xe (fail im lặng — dadb loopback
-        // lúc mở app chưa sẵn / cap no-retry). Đổi sang mở VietMap TRỰC TIẾP bằng startActivity từ activity
-        // FOREGROUND (main thread) — app thường mở được launcher app khác, KHÔNG cần dadb, KHÔNG bị chặn
-        // background-activity-start vì ClusterNav đang foreground. Chờ 1 nhịp cho activity resumed hẳn. 1 lần/phiên
-        // (không nhảy lại mỗi lần quay về app). VietMap ra trước để user vào dẫn đường → bong bóng lên cụm (qua mod).
-        li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        window.decorView.postDelayed({
-            // Chỉ bung VietMap khi Activity CÒN sống (foreground): user đóng app trong 1.2 s đó thì đừng kéo VietMap
-            // lên nữa (vừa lạc lối UX, vừa dễ bị Android chặn background-activity-start). Cùng lối guard với các
-            // callback bất đồng bộ khác trong file (isFinishing/isDestroyed).
-            if (!isFinishing && !isDestroyed) {
-                runCatching { startActivity(li); android.util.Log.i("MainActivity", "autostart VietMap OK (startActivity, badge=${Prefs.badgeEnabled(app)} bubble=${Prefs.vmBubbleEnabled(app)})") }
-                    .onFailure { android.util.Log.w("MainActivity", "autostart VietMap fail: ${it.message}") }
-            }
-        }, 1200)
+        // Autostart VietMap là thao tác NỀN (ClusterNav vốn chạy headless — headlessAutostart/BootSetupService).
+        // dadb là cách DUY NHẤT launch app khác từ nền (startActivity-từ-nền bị Android 10 chặn BAL). Phân biệt
+        // cast-active vs silent-bg + gate (cast-default / badge / bóng) nằm trong VietMapAutostart.runNow. Case MỞ
+        // APP: returnToSelfPkg = ClusterNav (user đang xem) cho nhánh silent-bg.
+        VietMapAutostart.ensureRunning(this, returnToSelfPkg = packageName)
     }
 }

@@ -3,6 +3,7 @@ package com.byd.clusternav
 import android.content.Context
 import android.util.Log
 import com.byd.clusternav.carexec.LocalDeviceShell
+import com.byd.clusternav.carexec.LocalShellResult
 import com.byd.clusternav.carexec.LocalShellRetry
 import com.byd.clusternav.navigation.NavApps
 
@@ -36,24 +37,53 @@ object VietMapAutostart {
      */
     fun runNow(ctx: Context, returnToSelfPkg: String?) {
         val app = ctx.applicationContext
-        if (!Prefs.badgeEnabled(app) && !Prefs.vmBubbleEnabled(app)) return
+        // Tín hiệu CAST-MẶC-ĐỊNH: VietMap có phải app tự-chiếu-lên-cụm không. Đọc THẲNG pref "clustercast/autoCast"
+        // (KHÔNG phụ thuộc singleton ClusterCast đã load chưa — runNow chạy từ boot/nền). Cặp file/khoá PHẢI khớp
+        // producer [ClusterCast.save] / [ClusterCast.loadPrefs] (PREF="clustercast", key "autoCast", String) — đổi
+        // một bên phải đổi bên kia.
+        val castDefault = runCatching {
+            app.getSharedPreferences("clustercast", Context.MODE_PRIVATE).getString("autoCast", "") == PKG
+        }.getOrDefault(false)
+        val silentReason = Prefs.badgeEnabled(app) || Prefs.vmBubbleEnabled(app)   // badge tốc độ / bong bóng
+        if (!castDefault && !silentReason) return                                  // không lý do nào ⇒ thôi
         if (runCatching { app.packageManager.getLaunchIntentForPackage(PKG) }.getOrNull() == null) return  // chưa cài
+        // Log QUYẾT ĐỊNH (TRƯỚC dadb) — verify được cả khi dadb fail (vd emulator): nhánh nào + vì tín hiệu nào.
+        Log.i(TAG, "autostart quyết định: castDefault=$castDefault badge=${Prefs.badgeEnabled(app)} bubble=${Prefs.vmBubbleEnabled(app)} → ${if (castDefault) "ACTIVE" else "silent-bg"}")
         runCatching {
             val keys = AdbKeys.ensure(app)
-            LocalDeviceShell.session(keys, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
-                if (sh("pidof $PKG").output.trim().isNotEmpty()) {
-                    Log.i(TAG, "VietMap đã chạy → bỏ auto-start (không đè)")
+            // sessionResult (KHÔNG phải session): [LocalDeviceShell.session] nuốt lỗi MỞ PHIÊN thành `null` IM
+            // LẶNG (nó chỉ map Failed→null, KHÔNG ném), nên `onFailure` bên dưới CHỈ bắt được ngoại lệ thật (vd
+            // AdbKeys.ensure) — KHÔNG bắt được ca dadb không nối được localhost:5555, mà đó CHÍNH là dạng hỏng của
+            // Bug 2 cần chẩn đoán trên xe. Đọc kết quả để log LÝ DO đã phân loại (PORT_CLOSED / AWAITING_APPROVAL /
+            // IO_ERROR…). KHÔNG đổi hành vi thực thi: session() vốn gọi cùng sessionResult() rồi vứt Failed.
+            val result = LocalDeviceShell.sessionResult(keys, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
+                val running = sh("pidof $PKG").output.trim().isNotEmpty()
+                if (castDefault) {
+                    // CAST-default ⇒ VietMap phải ACTIVE để đường cast chiếu lên cụm. LUÔN launch activity — kể cả
+                    // process đã sống (widget/service): pidof chỉ biết PROCESS, KHÔNG biết activity/nav đang mở.
+                    // KHÔNG trả foreground (để VietMap active cho cast).
+                    sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
+                    Log.i(TAG, "autostart CAST-default → launch VietMap ACTIVE (process đã chạy=$running)")
                 } else {
-                    sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")   // start CHỈ khi chưa chạy
-                    Thread.sleep(1500)                                            // chờ process VietMap lên (widget có nguồn)
-                    if (returnToSelfPkg != null) {
-                        sh("monkey -p $returnToSelfPkg -c android.intent.category.LAUNCHER 1")   // đưa ClusterNav lại trước
+                    // SILENT background (badge/bóng): chỉ cần PROCESS VietMap sống (widget/bong bóng). Đã sống ⇒ GIỮ
+                    // NGUYÊN (không đưa ra trước). Chưa sống ⇒ start rồi TRẢ VỀ NỀN (returnToSelfPkg = app-open đang
+                    // xem ClusterNav; null = boot ⇒ HOME) — KHÔNG để VietMap đè foreground. ClusterNav vốn chạy nền.
+                    if (running) {
+                        Log.i(TAG, "autostart silent-bg → VietMap process đã sống, giữ nguyên (không đưa ra trước)")
                     } else {
-                        sh("am start -a android.intent.action.MAIN -c android.intent.category.HOME")  // boot: về launcher, không đè
+                        sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
+                        Thread.sleep(1500)
+                        if (returnToSelfPkg != null) sh("monkey -p $returnToSelfPkg -c android.intent.category.LAUNCHER 1")
+                        else sh("am start -a android.intent.action.MAIN -c android.intent.category.HOME")
+                        Log.i(TAG, "autostart silent-bg → VietMap chưa chạy, started + trả nền (${returnToSelfPkg ?: "HOME"})")
                     }
-                    Log.i(TAG, "VietMap chưa chạy → đã start + trả foreground (${returnToSelfPkg ?: "HOME"})")
                 }
                 Unit
+            }
+            // Phiên dadb KHÔNG mở được (Bug 2 trên xe / emulator không có loopback) — session() sẽ nuốt thành null,
+            // nên phải log tường minh ở đây để hiện trường biết VietMap CHƯA auto-start và VÌ SAO.
+            if (result is LocalShellResult.Failed) {
+                Log.w(TAG, "autostart: phiên dadb KHÔNG mở được (${result.reason}, ${result.attempts} lần thử) — VietMap CHƯA auto-start (localhost:5555 chưa sẵn?)")
             }
         }.onFailure { Log.w(TAG, "auto-start VietMap failed: ${it.message}") }
     }
