@@ -836,13 +836,33 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ lần-24 (giữ trace): activity_main.xml = 1a7c90f7…d636f921.
          *
+         * ⚠ CẬP NHẬT 2026-09-06 (lần 26 · nới spacing dọc — hết dính) — owner duyệt (task loosen-spacing), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **nới lại KHOẢNG CÁCH DỌC** (owner báo on-car sau v1.34: padding / margin /
+         * line-height quá chật, các phần tử "dính dính vào nhau"). Gốc: v1.34 thu MỌI khoảng dọc còn ~70% trong
+         * khi chữ đã về cỡ gốc v1.32 ⇒ chữ đủ to nhưng khe hở quá hẹp + không giãn dòng. Cách sửa: nâng
+         * padding / margin DỌC từ ~70% lên ~88-92% cỡ gốc v1.32 (thoải mái, vẫn NGẮN HƠN v1.32 một chút vì v1.32
+         * vốn quá cao). Trong file này (chỉ inline dp DỌC — marginTop/Bottom · paddingTop/Bottom · minHeight
+         * toggle) theo map 3->4 · 4->5 · 6->7 · 7->9 · 8->11 · 10->13 · (minHeight) 34->44 = 57 giá trị mỗi biến
+         * thể; dp NGANG (rộng · paddingStart/End · marginStart/End · drawablePadding) + cỡ chữ (sp) + kích thước
+         * custom-view VUÔNG (SpeedDial/Pm25Gauge/…) + chiều cao vùng vẽ (140/98/45dp) GIỮ NGUYÊN. Khoảng thẻ↔thẻ
+         * và tap target nâng qua token `@dimen/gap` 10->13 + `@dimen/touch_min` 40->46 (dimens.xml); giãn dòng
+         * `android:lineSpacingMultiplier` 1.2 thêm vào style chữ NHIỀU DÒNG (Cockpit.Text.Hint · Cockpit.Row.Subtitle)
+         * — KHÔNG thêm cho tiêu đề/nhãn một dòng (styles.xml); các style Row/HeroCard/Compact/StatusPill/Segment/
+         * ListRow/Spinner/Pill nâng metric dọc tương ứng. GIỮ fix viền 2 nét của v1.33 (ở drawable — KHÔNG đụng).
+         * KHÔNG thêm/gỡ/đổi @+id nào ⇒ bộ id vẫn 87, parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest).
+         * `strings.xml` KHÔNG đổi. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng
+         * (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ lần-25 (giữ trace): activity_main.xml = 046d23b0…03fd8d98.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "046d23b05bbbcc702990b3220bbc95aa0eb0b21a92d7d9f960f3c02b03fd8d98",
+            "app/src/main/res/layout/activity_main.xml" to "0678a33d50cf0c5b2c4137617230e24861814b4ffa2666225371ee89bf650091",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

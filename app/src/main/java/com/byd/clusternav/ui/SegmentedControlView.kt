@@ -66,10 +66,10 @@ class SegmentedControlView @JvmOverloads constructor(
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         background = context.getDrawable(R.drawable.segment_track_bg)
-        // v1.34 (FIX 2): restore the horizontal track inset (3dp) so segment text fits; keep the vertical inset
-        // reduced (2dp) so the control stays short — mockup `.seg{padding:3px}`.
+        // loosen-spacing: horizontal track inset 3dp (mockup `.seg{padding:3px}`); vertical inset raised
+        // 2->3dp so the segmented control is not cramped (owner on-car: elements felt too tight after v1.34).
         val ph = dp(3f)
-        val pv = dp(2f)
+        val pv = dp(3f)
         setPadding(ph, pv, ph, pv)
     }
 
@@ -84,7 +84,7 @@ class SegmentedControlView @JvmOverloads constructor(
                 gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)        // v1.34 (FIX 2): text restored (was 9f)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setPadding(dp(13f), dp(4f), dp(13f), dp(4f))          // v1.34: horiz 13dp restored, vert 4dp kept — mockup `.seg span{padding:6px 13px}`
+                setPadding(dp(13f), dp(5f), dp(13f), dp(5f))          // loosen-spacing: horiz 13dp; vert 4->5dp (mockup `.seg span{padding:6px 13px}`, ~90%) so labels breathe
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { select(index, fromUser = true) }

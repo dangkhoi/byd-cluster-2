@@ -32,7 +32,7 @@
             android:text="ClusterNav" style="@style/Cockpit.Text.Title" />
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginBottom="7dp" android:text="Trạng thái sống"
+            android:layout_marginBottom="9dp" android:text="Trạng thái sống"
             style="@style/Cockpit.Text.SectionHeader" />
 
         <!-- ══ HERO · trạng thái sống (glanceable, READ-ONLY — nối trong MainActivity.updateHeroStrip) ══
@@ -50,7 +50,7 @@
                     android:text="Đang dẫn · Google Maps" style="@style/Cockpit.HeroLead" />
             </LinearLayout>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="8dp">
+                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="11dp">
                 <ImageView android:id="@+id/hero_nav_icon" android:layout_width="56dp" android:layout_height="56dp"
                     android:layout_marginEnd="16dp" android:padding="13dp" android:scaleType="fitCenter"
                     android:background="@drawable/turn_tile_bg" android:src="@drawable/ic_turn_right_g"
@@ -60,7 +60,7 @@
                     <TextView android:id="@+id/hero_dist" android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="—" style="@style/Cockpit.HeroDist" />
                     <TextView android:id="@+id/hero_road" android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp" android:text="Đang chờ nguồn" android:maxLines="1"
+                        android:layout_marginTop="4dp" android:text="Đang chờ nguồn" android:maxLines="1"
                         android:ellipsize="end" style="@style/Cockpit.HeroStreet" />
                 </LinearLayout>
                 <com.byd.clusternav.ui.SpeedDialView android:id="@+id/hero_speed"
@@ -85,7 +85,7 @@
                     android:text="Cluster Cast" style="@style/Cockpit.HeroLead" />
             </LinearLayout>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="8dp">
+                android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="11dp">
                 <View android:id="@+id/dot_cast" android:layout_width="9dp" android:layout_height="9dp"
                     android:layout_marginEnd="10dp" android:background="@drawable/status_dot" />
                 <TextView android:id="@+id/hero_cast" android:layout_width="0dp" android:layout_height="wrap_content"
@@ -93,7 +93,7 @@
                     style="@style/Cockpit.Text.Value" />
             </LinearLayout>
             <com.byd.clusternav.ui.ClusterPreviewView android:id="@+id/hero_cast_preview"
-                android:layout_width="match_parent" android:layout_height="45dp" android:layout_marginTop="8dp"
+                android:layout_width="match_parent" android:layout_height="45dp" android:layout_marginTop="11dp"
                 android:contentDescription="Xem trước cụm" />
         </LinearLayout>
 
@@ -109,12 +109,12 @@
                     android:text="Nhanh" style="@style/Cockpit.HeroLead" />
             </LinearLayout>
             <Button android:id="@+id/cast_zone_full" style="@style/Cockpit.Button.Primary"
-                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="11dp"
                 android:background="@drawable/btn_primary" android:textColor="@android:color/white"
                 android:drawableStart="@drawable/ic_cast_g" android:drawablePadding="8dp"
                 android:text="Chiếu full cụm" />
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:layout_marginTop="6dp">
+                android:orientation="horizontal" android:layout_marginTop="7dp">
                 <Button android:id="@+id/cast_zone_left" style="@style/Cockpit.Button.Secondary"
                     android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
                     android:layout_marginEnd="4dp" android:drawableStart="@drawable/ic_left_g"
@@ -129,7 +129,7 @@
         <!-- ══════════════════════════════ BẢNG TÍNH NĂNG (1 cột) ══════════════════════════════ -->
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="4dp" android:layout_marginBottom="7dp" android:text="Bảng tính năng"
+            android:layout_marginTop="5dp" android:layout_marginBottom="9dp" android:text="Bảng tính năng"
             style="@style/Cockpit.Text.SectionHeader" />
 
         <!-- ── GROUP · Navigation + HUD (gập, mở sẵn) ─────────────────────────────────────────── -->
@@ -155,7 +155,7 @@
             <!-- status mini-area (luôn hiện) -->
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingTop="7dp" android:paddingBottom="7dp">
+                android:paddingTop="9dp" android:paddingBottom="9dp">
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:orientation="horizontal" android:gravity="center_vertical">
                     <View android:id="@+id/dot_status" android:layout_width="12dp" android:layout_height="12dp"
@@ -164,22 +164,22 @@
                         android:layout_weight="1" android:text="Đang chờ nguồn" style="@style/Cockpit.Text.Hint" />
                 </LinearLayout>
                 <TextView android:id="@+id/txt_lane_status" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp" android:text="Cụm: tắt" style="@style/Cockpit.Text.Hint" />
+                    android:layout_marginTop="7dp" android:text="Cụm: tắt" style="@style/Cockpit.Text.Hint" />
                 <TextView android:id="@+id/txt_hud_status" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp" android:text="HUD: tắt" android:visibility="gone"
+                    android:layout_marginTop="4dp" android:text="HUD: tắt" android:visibility="gone"
                     style="@style/Cockpit.Text.Hint" />
                 <TextView android:id="@+id/txt_nav_source_active" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Đang dẫn: —"
+                    android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="Đang dẫn: —"
                     style="@style/Cockpit.Text.Hint" android:contentDescription="Nguồn dẫn đường đang hoạt động" />
                 <TextView android:id="@+id/txt_cluster_op39_status" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="4dp"
+                    android:layout_height="wrap_content" android:layout_marginTop="5dp"
                     android:text="Cụm: chờ dẫn đường" style="@style/Cockpit.Text.Hint"
                     android:contentDescription="Trạng thái hiển thị dẫn đường trên cụm" />
             </LinearLayout>
             <!-- body_nav (gập) -->
             <LinearLayout android:tag="body_nav" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingBottom="13dp">
                 <!-- #6: nav→HUD output toggle ẩn; id giữ (visibility=gone) để findViewById không null. -->
                 <CheckBox android:id="@+id/cb_hud" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_min" android:text="Bật đầu ra HUD độc lập"
@@ -202,7 +202,7 @@
                 </LinearLayout>
                 <Button android:id="@+id/btn_reconnect_nav" style="@style/Cockpit.Button.Compact.Secondary"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_gravity="start" android:layout_marginTop="6dp"
+                    android:layout_gravity="start" android:layout_marginTop="7dp"
                     android:text="Cấp quyền / kết nối lại" />
             </LinearLayout>
         </LinearLayout>
@@ -228,38 +228,38 @@
             </LinearLayout>
             <TextView android:id="@+id/txt_cast_disabled_hint" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="6dp" android:visibility="gone"
+                android:paddingBottom="7dp" android:visibility="gone"
                 android:text="Đang tắt · cụm vẫn hiện dẫn đường và HUD như thường. Bật để chiếu app lên cụm."
                 style="@style/Cockpit.Text.Hint" />
             <!-- Thân Cast — hiện khi công tắc BẬT (CastEnableSwitch). -->
             <LinearLayout android:id="@+id/cast_body" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:orientation="vertical"
-                android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="10dp">
+                android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="13dp">
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="Chạm nút nổi để chiếu app đang mở · chạm lại để về màn chính"
                     style="@style/Cockpit.Text.Hint" />
                 <FrameLayout android:id="@+id/cast_geometry_container" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="7dp" />
+                    android:layout_height="wrap_content" android:layout_marginTop="9dp" />
                 <View android:layout_width="match_parent" android:layout_height="1dp"
-                    android:layout_marginTop="8dp" android:layout_marginBottom="8dp" android:background="@color/divider" />
+                    android:layout_marginTop="11dp" android:layout_marginBottom="11dp" android:background="@color/divider" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="Tỉ lệ chia đôi cụm — dùng khi chạm ô nửa trái/nửa phải của nút nổi"
                     style="@style/Cockpit.Text.Hint" />
                 <LinearLayout android:id="@+id/split_ratio_buttons" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp"
+                    android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="5dp"
                     android:contentDescription="Tỉ lệ chia đôi cụm khi chiếu hai app" />
                 <View android:layout_width="match_parent" android:layout_height="1dp"
-                    android:layout_marginTop="8dp" android:layout_marginBottom="8dp" android:background="@color/divider" />
+                    android:layout_marginTop="11dp" android:layout_marginBottom="11dp" android:background="@color/divider" />
                 <Switch android:id="@+id/cb_autostart" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_min" android:textColor="@color/text_secondary"
                     android:text="Tự khởi động: chiếu full cụm" />
                 <Spinner android:id="@+id/spinner_autostart_app" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="4dp" android:minHeight="@dimen/touch_min" />
+                    android:layout_height="wrap_content" android:layout_marginTop="5dp" android:minHeight="@dimen/touch_min" />
                 <Switch android:id="@+id/cb_autostart_split" android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_min" android:textColor="@color/text_secondary"
                     android:text="Tự khởi động: chia đôi (trái + phải)" />
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:orientation="horizontal" android:layout_marginTop="4dp">
+                    android:orientation="horizontal" android:layout_marginTop="5dp">
                     <Spinner android:id="@+id/spinner_autostart_left" android:layout_width="0dp"
                         android:layout_weight="1" android:layout_height="wrap_content"
                         android:layout_marginEnd="4dp" android:minHeight="@dimen/touch_min"
@@ -295,46 +295,46 @@
             <!-- status + recheck (luôn hiện; PHẢI giữ thứ tự switch < status < recheck — VoiceKeyStatusWiringContractTest) -->
             <TextView android:id="@+id/txt_voicekey_status" style="@style/Cockpit.StatusPill"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginStart="16dp" android:layout_marginTop="3dp" android:text="Phím-thoại: —" />
+                android:layout_marginStart="16dp" android:layout_marginTop="4dp" android:text="Phím-thoại: —" />
             <Button android:id="@+id/btn_voicekey_recheck" style="@style/Cockpit.Button.Compact.Secondary"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_gravity="start"
-                android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginTop="6dp"
+                android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginTop="7dp"
                 android:text="Kiểm tra / Sửa ngay" android:contentDescription="Kiểm tra và sửa kết nối phím thoại" />
             <!-- body_vk (gập) -->
             <LinearLayout android:tag="body_vk" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingTop="6dp" android:paddingBottom="10dp">
+                android:paddingTop="7dp" android:paddingBottom="13dp">
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
                     android:text="Gán nút (vô-lăng/táp-lô) để mở app. Gán được NHIỀU nút cho NHIỀU app. Không đổi chức năng gốc của nút chưa gán."
                     style="@style/Cockpit.Text.Hint" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:text="1 · Chọn nút" style="@style/Cockpit.Text.Hint" />
+                    android:layout_marginTop="11dp" android:text="1 · Chọn nút" style="@style/Cockpit.Text.Hint" />
                 <Spinner android:id="@+id/spinner_voicekey_button" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
                 <TextView android:id="@+id/txt_voicekey_current" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp" android:text="Nút đang chọn: —" style="@style/Cockpit.Text.Hint" />
+                    android:layout_marginTop="4dp" android:text="Nút đang chọn: —" style="@style/Cockpit.Text.Hint" />
                 <Button android:id="@+id/btn_voicekey_learn" style="@style/Cockpit.Button.Compact.Secondary"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_gravity="start" android:layout_marginTop="6dp"
+                    android:layout_gravity="start" android:layout_marginTop="7dp"
                     android:text="Học phím mới…" android:contentDescription="Học một nút vật lý mới trên xe" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:text="2 · Chọn app sẽ mở" style="@style/Cockpit.Text.Hint" />
+                    android:layout_marginTop="11dp" android:text="2 · Chọn app sẽ mở" style="@style/Cockpit.Text.Hint" />
                 <Spinner android:id="@+id/spinner_voicekey_target" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" />
                 <Button android:id="@+id/btn_voicekey_add" style="@style/Cockpit.Button.Compact.Secondary"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_gravity="start" android:layout_marginTop="7dp"
+                    android:layout_gravity="start" android:layout_marginTop="9dp"
                     android:text="3 · Thêm gán" android:contentDescription="Thêm cặp nút và app đang chọn vào danh sách gán" />
                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp" android:text="Đã gán (app chỉ nghe theo danh sách này)"
+                    android:layout_marginTop="13dp" android:text="Đã gán (app chỉ nghe theo danh sách này)"
                     style="@style/Cockpit.Text.Hint" />
                 <TextView android:id="@+id/txt_voicekey_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
+                    android:layout_marginTop="4dp"
                     android:text="Chưa gán nút nào — hiện KHÔNG có nút nào mở app. Chọn nút + app rồi bấm “Thêm gán”."
                     style="@style/Cockpit.Text.Hint" />
                 <LinearLayout android:id="@+id/list_voicekey_bindings" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="3dp" />
+                    android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="4dp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -361,25 +361,25 @@
             </LinearLayout>
             <LinearLayout android:tag="body_badge" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingBottom="13dp">
                 <Switch android:id="@+id/switch_upcoming_badge" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="@dimen/touch_min" android:checked="true"
                     android:text="Hiện giới hạn sắp tới" android:textColor="@color/text_secondary"
                     android:contentDescription="Bật hoặc tắt biển giới hạn tốc độ sắp tới trên cụm" />
                 <Switch android:id="@+id/switch_alert_chip" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="3dp" android:minHeight="@dimen/touch_min"
+                    android:layout_height="wrap_content" android:layout_marginTop="4dp" android:minHeight="@dimen/touch_min"
                     android:checked="false" android:text="Hiện cảnh báo/camera VietMap" android:textColor="@color/text_secondary"
                     android:contentDescription="Bật hoặc tắt chip cảnh báo/camera VietMap trên cụm" />
                 <TextView android:id="@+id/txt_speed_source_bind" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Nguồn: chưa kết nối"
+                    android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Nguồn: chưa kết nối"
                     style="@style/Cockpit.Text.Hint" />
                 <Button android:id="@+id/btn_vietmap_widget_diag" style="@style/Cockpit.Button.Secondary"
-                    android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+                    android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp"
                     android:text="Kết nối / Dữ liệu VietMap" />
                 <FrameLayout android:id="@+id/badge_placement_container" android:layout_width="match_parent"
-                    android:layout_height="98dp" android:layout_marginTop="7dp" />
+                    android:layout_height="98dp" android:layout_marginTop="9dp" />
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="6dp">
+                    android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="7dp">
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:layout_marginEnd="10dp" android:text="Cỡ" style="@style/Cockpit.Text.Hint" />
                     <SeekBar android:id="@+id/seek_badge_size" android:layout_width="0dp" android:layout_weight="1"
@@ -408,12 +408,12 @@
             </LinearLayout>
             <LinearLayout android:tag="body_bubble" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingBottom="13dp">
                 <TextView android:id="@+id/txt_vm_pos_hint" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:text="Bật Cluster Cast để chỉnh vị trí"
                     style="@style/Cockpit.Text.Hint" />
                 <FrameLayout android:id="@+id/vm_bubble_placement_container" android:layout_width="match_parent"
-                    android:layout_height="98dp" android:layout_marginTop="7dp" />
+                    android:layout_height="98dp" android:layout_marginTop="9dp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -442,13 +442,13 @@
             </LinearLayout>
             <LinearLayout android:tag="body_seat" android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingBottom="13dp">
                 <TextView android:id="@+id/txt_seat_comfort_hint" android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Tự áp dụng ~5 giây sau khi mở app / nổ máy. Làm mát và sưởi loại trừ nhau."
                     style="@style/Cockpit.Text.Hint" />
                 <com.byd.clusternav.comfort.SeatDiagramView android:id="@+id/seat_diagram"
-                    android:layout_width="match_parent" android:layout_height="140dp" android:layout_marginTop="7dp"
+                    android:layout_width="match_parent" android:layout_height="140dp" android:layout_marginTop="9dp"
                     android:contentDescription="Sơ đồ ghế nhìn từ trên — chạm ghế để chọn mức 0/1/2" />
             </LinearLayout>
         </LinearLayout>
@@ -527,14 +527,14 @@
             </LinearLayout>
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingBottom="10dp">
+                android:paddingBottom="13dp">
                 <Button android:id="@+id/btn_check_update" style="@style/Cockpit.Button.Compact.Secondary"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:layout_gravity="start" android:layout_marginTop="6dp"
+                    android:layout_gravity="start" android:layout_marginTop="7dp"
                     android:text="⬇ Kiểm tra cập nhật" />
                 <TextView android:id="@+id/cast_recovery_toggle" android:layout_width="match_parent"
-                    android:layout_height="wrap_content" android:minHeight="34dp" android:gravity="center_vertical"
-                    android:layout_marginTop="6dp" android:text="Khắc phục sự cố"
+                    android:layout_height="wrap_content" android:minHeight="44dp" android:gravity="center_vertical"
+                    android:layout_marginTop="7dp" android:text="Khắc phục sự cố"
                     android:textSize="@dimen/text_body" android:textColor="@color/brand" android:focusable="true"
                     android:contentDescription="Mở hoặc đóng nhóm hành động khắc phục sự cố" />
                 <LinearLayout android:id="@+id/cast_recovery_actions" android:layout_width="match_parent"
@@ -545,22 +545,22 @@
                         android:text="Dừng toàn bộ" />
                     <Button android:id="@+id/cast_stop" style="@style/Cockpit.Button.Compact.Warning"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_gravity="start" android:layout_marginTop="4dp"
+                        android:layout_gravity="start" android:layout_marginTop="5dp"
                         android:text="Dừng — trả đồng hồ"
                         android:contentDescription="Dừng Cluster Cast và trả đồng hồ" />
                     <Button android:id="@+id/cast_diagnostics" style="@style/Cockpit.Button.Compact.Text"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_gravity="start" android:layout_marginTop="4dp"
+                        android:layout_gravity="start" android:layout_marginTop="5dp"
                         android:text="Chẩn đoán"
                         android:contentDescription="Mở chẩn đoán Cluster Cast chỉ đọc" />
                     <Button android:id="@+id/cast_clear_cluster" style="@style/Cockpit.Button.Compact.Warning"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_gravity="start" android:layout_marginTop="4dp"
+                        android:layout_gravity="start" android:layout_marginTop="5dp"
                         android:text="Trả cụm về đồng hồ (cứu hộ)"
                         android:contentDescription="Trả cụm về đồng hồ: đưa mọi app trên cụm về màn chính rồi đóng đường chiếu" />
                     <Button android:id="@+id/cast_deep_rescue" style="@style/Cockpit.Button.Compact.Warning"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:layout_gravity="start" android:layout_marginTop="4dp"
+                        android:layout_gravity="start" android:layout_marginTop="5dp"
                         android:text="Dọn sạch cụm (gỡ kẹt DashCast)"
                         android:contentDescription="Dọn sạch cụm khi kẹt do DashCast: dừng hẳn chiếu của app này, force-stop DashCast, reset cụm về đồng hồ. Không mở lại chiếu." />
                 </LinearLayout>
