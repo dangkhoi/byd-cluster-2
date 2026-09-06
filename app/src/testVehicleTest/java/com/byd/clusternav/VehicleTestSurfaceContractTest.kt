@@ -35,6 +35,27 @@ class VehicleTestSurfaceContractTest {
     }
 
     @Test
+    fun `HAL probe receiver is vehicleTest-only exported with exactly one fixed action`() {
+        // The HAL probe is a NEW intended vehicleTest surface (on-car HAL fire tool). It is exported so an adb
+        // `am broadcast` from the shell uid can reach it, but it must carry exactly ONE fixed action and add no
+        // extra manifest surface. main/release exclusion is guarded by the freedom test below + source-set split.
+        val element = manifestElement("receiver", ".HalProbeReceiver")
+        assertTrue(element.contains("android:exported=\"true\""), "probe must be reachable by adb on-car")
+        assertFalse(element.contains("android:permission"))
+        assertEquals(
+            1,
+            Regex("<intent-filter").findAll(element).count(),
+            "HAL probe receiver must declare exactly one intent-filter",
+        )
+        assertEquals(
+            1,
+            Regex("com\\.byd\\.clusternav\\.vehicletest\\.HAL_PROBE").findAll(element).count(),
+            "exactly one fixed HAL_PROBE action, no other actions",
+        )
+        assertFalse(overlay.contains("<uses-permission"), "the vehicleTest overlay adds no permissions")
+    }
+
+    @Test
     fun `receiver remains private inert and fixed`() {
         val expected = linkedMapOf(
             "ACTION_LIST_PACKAGE_METADATA" to "com.byd.clusternav.vehicleTest.T10_LIST_PACKAGE_METADATA",
@@ -247,6 +268,9 @@ class VehicleTestSurfaceContractTest {
             "HudSignProbeActivity",
             "com.byd.clusternav.vehicleTest.T10_",
             "T10FastField",
+            "HalProbeReceiver",
+            "HalProbePresets",
+            "com.byd.clusternav.vehicletest.HAL_PROBE",
         )
         listOf("app/src/main", "app/src/release").map(root::resolve).filter(Files::exists).forEach { sourceRoot ->
             Files.walk(sourceRoot).use { paths ->
@@ -299,7 +323,10 @@ class VehicleTestSurfaceContractTest {
             .find(xml)?.value
         val single = Regex("<$tag\\b[^>]*android:name=\"${Regex.escape(name)}\"[^>]*/>")
             .find(xml)?.value
-        return paired ?: single ?: error("manifest element missing: $tag $name")
+        // Prefer the self-closing (single) match: a self-closing element followed by a later paired element of
+        // the same tag would otherwise let the greedy `paired` regex span across both. Paired elements never
+        // match `single` (their opening tag ends in `>`, not `/>`), so they still resolve via `paired`.
+        return single ?: paired ?: error("manifest element missing: $tag $name")
     }
 
     private fun read(relative: String): String = Files.readString(root.resolve(relative))

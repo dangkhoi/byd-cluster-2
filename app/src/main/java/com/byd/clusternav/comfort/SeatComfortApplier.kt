@@ -6,19 +6,26 @@ import com.byd.clusternav.Prefs
 import com.byd.clusternav.modules.hal.BydHal
 
 /**
- * Áp mức làm-mát/sưởi ghế lên HAL (device 1023) — bản sao hành vi app tham chiếu `com.byd.mecanum.dashboard`,
- * nhưng đi ĐƯỜNG REFLECTION SẴN CÓ của ClusterNav ([BydHal.device] + [BydHal.setInt]) thay vì binder proxy.
+ * Áp mức làm-mát/sưởi ghế lên HAL qua **`BYDAutoSettingDevice`** ([BydHal.SETTING]) bằng method-TÊN
+ * `setSeatVentilatingState(seatID, state)` / `setSeatHeatingState(seatID, state)` — đi ĐƯỜNG REFLECTION
+ * SẴN CÓ của ClusterNav ([BydHal.device] + [BydHal.callNamedInt]) như [com.byd.clusternav.body.BodyworkControl].
+ *
+ * ⚠ SỬA on-car 2026-09-06 (`docs/diagnostics/seat-vietmaploop-oncar-2026-09-06.md`): bản trước ghi raw
+ * feature-id (họ `0x431010xx`) qua `BYDAutoAcDevice.set(int[], ev)` → HAL trả `NOT_PROVISIONED` (rc=-2147482648)
+ * NGAY CẢ ghế trước. Đường đúng (OEM `com.byd.airconditioning` dùng) = SETTING device + method-tên + seatID
+ * **1-based** (1..4) + state **1=Tắt/2=Mức1/3=Mức2**. Đường AC + raw-id + `HAL_VALUE` đã bỏ hẳn.
  *
  * ── Vòng đời ─────────────────────────────────────────────────────────────────────────────────────
  *  • [applyOnStart] — gọi lúc mở app (MainActivity.onCreate) và lúc boot nền (BootSetupService). Nếu công
- *    tắc ghế TẮT → no-op. Nếu BẬT → chạy NỀN, ngủ ~5 s (khớp `Handler.postDelayed 5000` của app tham chiếu:
- *    chờ HAL/cabin sẵn sàng sau khi khởi động) rồi ghi từng ghế có mức ≠ Tắt.
+ *    tắc ghế TẮT → no-op. Nếu BẬT → chạy NỀN, ngủ ~5 s (chờ HAL/cabin sẵn sàng sau khởi động) rồi ghi từng
+ *    ghế có mức ≠ Tắt. Chỉ ghi method của mode đang chọn (mát ↔ sưởi loại trừ nhau ở MCU).
  *  • [applyNow] — cho nút "Áp dụng ngay" trong app (không delay).
  *
  * ── An toàn (degrade-safe) ───────────────────────────────────────────────────────────────────────
- * Toàn bộ bọc `runCatching`. Off-car / không có HAL → `device()` trả null → log rồi return, KHÔNG ném, KHÔNG
- * crash. Bộ test đầy đủ chạy off-car nên đường này PHẢI không ném. Mỗi lần ghi có [Log] tag "SeatComfort"
- * (seat/mode/featureId/value/rc) để owner xác minh trên xe bằng logcat.
+ * Toàn bộ bọc `runCatching`; [BydHal.callNamedInt] cũng KHÔNG BAO GIỜ ném (ROM thiếu method / HAL từ chối →
+ * trả chuỗi rc). Off-car / không có HAL → `device()` trả null → log rồi return. Bộ test đầy đủ chạy off-car
+ * nên đường này PHẢI không ném. Mỗi lần ghi có [Log] tag "SeatComfort" (method/seatId/state/rc) để owner xác
+ * minh trên xe bằng `logcat -s SeatComfort`.
  */
 object SeatComfortApplier {
 
@@ -51,20 +58,21 @@ object SeatComfortApplier {
             } else {
                 SeatComfort.SeatMode.COOL
             }
+            val method = SeatComfort.methodFor(mode)
             val seats = SeatComfort.seatsForModel(isHanModel(app))
-            val acDev = BydHal.device(BydHal.AC, BydHal.systemBypassContext(), BydHal.bypass(app))
-            if (acDev == null) {
-                Log.i(TAG, "AcDevice null (off-car / no HAL) — bỏ áp ghế, mode=$mode seats=$seats")
+            val dev = BydHal.device(BydHal.SETTING, BydHal.systemBypassContext(), BydHal.bypass(app))
+            if (dev == null) {
+                Log.i(TAG, "SettingDevice null (off-car / no HAL) — bỏ áp ghế, mode=$mode seats=$seats")
                 return@runCatching
             }
             var applied = 0
             for (seat in seats) {
                 val level = Prefs.seatComfortLevel(app, seat)
-                if (level == SeatComfort.LEVEL_OFF) continue
-                val fid = SeatComfort.featureId(seat, mode)
-                val value = SeatComfort.halValue(level)
-                val rc = runCatching { BydHal.setInt(acDev, fid, value) }.getOrElse { BydHal.root(it) }
-                Log.i(TAG, "ghi ghế=$seat mode=$mode featureId=0x${Integer.toHexString(fid)} value=$value rc=$rc")
+                if (level == SeatComfort.LEVEL_OFF) continue          // apply-on-start chỉ BẬT ghế có mức
+                val seatId = SeatComfort.seatId(seat)                 // 0-based UI → 1-based HAL
+                val state = SeatComfort.stateForLevel(level)          // 0/1/2 → 1/2/3
+                val rc = BydHal.callNamedInt(dev, method, seatId, state)
+                Log.i(TAG, "ghi ghế: $method(seatId=$seatId, state=$state) [seatIndex=$seat mode=$mode] $rc")
                 applied++
             }
             Log.i(TAG, "áp xong: $applied ghế, mode=$mode, seats=$seats")

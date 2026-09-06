@@ -176,4 +176,22 @@ class L2CockpitUiWiringContractTest {
         assertFalse(b.contains("Prefs.set"), "hero must not WRITE any pref (read-only)")
         assertFalse(b.contains("dispatch("), "hero must not dispatch cast intents (read-only)")
     }
+
+    @Test
+    fun `hero_nav_icon and hero_road are wired to NavRepository state and the neutral Maneuver`() {
+        val b = body(mainActivity, "private fun updateHeroStrip(navStatusText: String)")
+        assertTrue(b.contains("NavRepository.state"), "hero reads the published nav snapshot")
+        // T1(b): hero_nav_icon ← maneuver arrow (was a static placeholder before).
+        assertTrue(b.contains("R.id.hero_nav_icon"), "wires the hero maneuver arrow image")
+        assertTrue(b.contains(".maneuver"), "reads the neutral maneuver from state")
+        assertTrue(b.contains("heroArrowRes("), "maps the maneuver to an arrow drawable")
+        // T1(a): hero_road ← street/road name, not the source-status string.
+        assertTrue(b.contains("R.id.hero_road"), "wires hero_road")
+        assertTrue(b.contains(".road"), "hero_road reads the street/road name from state")
+
+        // heroArrowRes routes through the PURE core classifier to EXISTING turn drawables.
+        val hr = body(mainActivity, "private fun heroArrowRes(m: Maneuver): Int")
+        assertTrue(hr.contains("toHeroArrow()"), "heroArrowRes routes through the pure toHeroArrow classifier")
+        assertTrue(hr.contains("R.drawable.ic_turn_"), "maps to existing ic_turn_* arrow drawables")
+    }
 }

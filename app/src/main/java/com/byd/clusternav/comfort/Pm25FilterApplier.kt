@@ -11,12 +11,17 @@ import com.byd.clusternav.modules.hal.BydHal
  * `BYDAutoAcDevice` và **CHỈ có trên ROM xe, KHÔNG có trong SDK jar** ⇒ gọi bằng `getMethod(...).invoke(...)`,
  * MỖI lời gọi bọc `runCatching` riêng (ROM thiếu method phải no-op, KHÔNG crash).
  *
- * ── Cơ chế (RE ground-truth) ─────────────────────────────────────────────────────────────────────
- *  • BẬT  → `enablePurificationFunctionPrompt(0)` (tắt POPUP nhắc lọc) + `setAutoCleanAirState(1)` (xe tự
- *    theo dõi PM2.5 + lọc LIÊN TỤC, không popup). Nếu KHI ĐÓ mức đọc được ≥ [Pm25Filter.HEAVY] → thêm
- *    `setQuickCleanAirState(1)` (lọc-ngay). KHÔNG cần service polling — xe tự giám sát qua autoClean.
- *  • TẮT  → `setAutoCleanAirState(0)` + `enablePurificationFunctionPrompt(1)` (khôi phục popup mặc định).
+ * ── Cơ chế (RE ground-truth + sửa on-car 2026-09-06) ────────────────────────────────────────────
+ *  • BẬT  → `setAutoCleanAirState(1)` (xe tự theo dõi PM2.5 + lọc LIÊN TỤC, không popup) — ĐƯỜNG CHÍNH,
+ *    proven on-car rc=0. RỒI best-effort `enablePurificationFunctionPrompt(0)` (tắt POPUP nhắc lọc). Nếu KHI
+ *    ĐÓ mức đọc được ≥ [Pm25Filter.HEAVY] → thêm `setQuickCleanAirState(1)` (lọc-ngay). KHÔNG cần polling.
+ *  • TẮT  → `setAutoCleanAirState(0)` (đường chính) + best-effort `enablePurificationFunctionPrompt(1)` (khôi phục popup).
  *  • ĐỌC  → `BYDAutoPM2p5Device.getPM2p5Level()[0]` (device 1008) cho hiển thị; off-car → [Pm25Filter.INVALID].
+ *
+ * ⚠ `enablePurificationFunctionPrompt` là **BEST-EFFORT**: on-car (2026-09-06) trả `rc=-2147482645` (sentinel
+ *   TỪ CHỐI, KHÁC `NOT_PROVISIONED`) và KHÔNG xuất hiện trong app OEM `com.byd.airconditioning` (không có bằng
+ *   chứng arg đúng) ⇒ trim này không hỗ trợ. Nó KHÔNG BAO GIỜ được chặn đường `setAutoCleanAirState` đang chạy
+ *   — nên gọi SAU đường chính + log **DEBUG** (không phải lỗi). Lọc vẫn chạy; chỉ popup nhắc lọc có thể còn hiện.
  *
  * ── Vòng đời ─────────────────────────────────────────────────────────────────────────────────────
  *  • [applyOnStart] — gọi lúc mở app (MainActivity.onCreate) và boot nền (BootSetupService). Công tắc TẮT ⇒
@@ -78,12 +83,12 @@ object Pm25FilterApplier {
                 Log.i(TAG, "AcDevice null (off-car / no HAL) — bỏ bật lọc")
                 return@runCatching
             }
-            acInt(acDev, "enablePurificationFunctionPrompt", 0)   // tắt popup nhắc lọc
-            acInt(acDev, "setAutoCleanAirState", 1)               // bật lọc-liên-tục (xe tự theo dõi)
+            acInt(acDev, "setAutoCleanAirState", 1)               // ĐƯỜNG CHÍNH: bật lọc-liên-tục (proven on-car rc=0)
+            acInt(acDev, "enablePurificationFunctionPrompt", 0, bestEffort = true)   // best-effort tắt popup (trim có thể không hỗ trợ)
             val level = readLevel(app)
             Log.i(TAG, "read level=$level (${Pm25Filter.levelLabelEn(level)})")
             if (Pm25Filter.isDirty(level)) acInt(acDev, "setQuickCleanAirState", 1)   // đang bẩn → lọc ngay
-            Log.i(TAG, "bật lọc PM2.5 xong (autoClean=1, prompt=0)")
+            Log.i(TAG, "bật lọc PM2.5 xong (autoClean=1, prompt=best-effort)")
         }.onFailure { Log.w(TAG, "bật lọc thất bại (degrade-safe, bỏ qua)", it) }
     }
 
@@ -95,21 +100,30 @@ object Pm25FilterApplier {
                 Log.i(TAG, "AcDevice null (off-car / no HAL) — bỏ tắt lọc")
                 return@runCatching
             }
-            acInt(acDev, "setAutoCleanAirState", 0)               // tắt lọc-liên-tục
-            acInt(acDev, "enablePurificationFunctionPrompt", 1)   // khôi phục popup mặc định
-            Log.i(TAG, "tắt lọc PM2.5 xong (autoClean=0, prompt=1)")
+            acInt(acDev, "setAutoCleanAirState", 0)               // ĐƯỜNG CHÍNH: tắt lọc-liên-tục
+            acInt(acDev, "enablePurificationFunctionPrompt", 1, bestEffort = true)   // best-effort khôi phục popup mặc định
+            Log.i(TAG, "tắt lọc PM2.5 xong (autoClean=0, prompt=best-effort)")
         }.onFailure { Log.w(TAG, "tắt lọc thất bại (degrade-safe, bỏ qua)", it) }
     }
 
     /**
      * Gọi 1 method int-arg trên AC device qua REFLECTION (`getMethod(name, int).invoke(dev, arg)`), bọc
-     * `runCatching` RIÊNG: ROM thiếu method / HAL từ chối → log lỗi rồi bỏ qua, KHÔNG ném. Method GHI này
-     * KHÔNG có trong SDK jar nên KHÔNG gọi biên dịch được — chỉ reflection.
+     * `runCatching` RIÊNG: ROM thiếu method / HAL từ chối → log rồi bỏ qua, KHÔNG ném. Method GHI này KHÔNG có
+     * trong SDK jar nên KHÔNG gọi biên dịch được — chỉ reflection.
+     *
+     * [bestEffort] = true cho lời gọi KHÔNG-thiết-yếu (vd `enablePurificationFunctionPrompt` tắt popup): trim
+     * không hỗ trợ → rc sentinel từ chối (on-car 2026-09-06: `-2147482645`). Đó KHÔNG PHẢI lỗi và KHÔNG được
+     * chặn đường lọc chính ([enableNow] gọi `setAutoCleanAirState` TRƯỚC) — nên log ở mức **DEBUG** (mặc định
+     * logcat không hiện), tránh làm owner tưởng lọc hỏng. best-effort=false ⇒ log INFO như cũ (đường chính).
      */
-    private fun acInt(acDev: Any, method: String, arg: Int) {
+    private fun acInt(acDev: Any, method: String, arg: Int, bestEffort: Boolean = false) {
         val rc = runCatching {
             acDev.javaClass.getMethod(method, Int::class.javaPrimitiveType).invoke(acDev, arg)
         }.getOrElse { BydHal.root(it) }
-        Log.i(TAG, "$method($arg) rc=$rc")
+        if (bestEffort) {
+            Log.d(TAG, "$method($arg) rc=$rc (best-effort; trim không hỗ trợ ⇒ bỏ qua, KHÔNG ảnh hưởng lọc)")
+        } else {
+            Log.i(TAG, "$method($arg) rc=$rc")
+        }
     }
 }

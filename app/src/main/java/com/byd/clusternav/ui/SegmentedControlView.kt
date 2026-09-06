@@ -66,7 +66,7 @@ class SegmentedControlView @JvmOverloads constructor(
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         background = context.getDrawable(R.drawable.segment_track_bg)
-        val p = dp(3f)                                                 // mockup `.seg{padding:3px}`
+        val p = dp(2f)                                                 // mockup `.seg{padding:3px}` ×0.7
         setPadding(p, p, p, p)
     }
 
@@ -79,9 +79,9 @@ class SegmentedControlView @JvmOverloads constructor(
             val tv = TextView(context).apply {
                 text = label
                 gravity = Gravity.CENTER
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setPadding(dp(13f), dp(6f), dp(13f), dp(6f))           // mockup `.seg span{padding:6px 13px}`
+                setPadding(dp(9f), dp(4f), dp(9f), dp(4f))            // mockup `.seg span{padding:6px 13px}` ×0.7
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { select(index, fromUser = true) }

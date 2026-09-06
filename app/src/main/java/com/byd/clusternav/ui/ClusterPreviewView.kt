@@ -68,11 +68,11 @@ class ClusterPreviewView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** Default ~140×54dp when a dimension is UNBOUNDED (wrap_content) so the preview never collapses. */
+    /** Default ~98×38dp when a dimension is UNBOUNDED (wrap_content) so the preview never collapses. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         setMeasuredDimension(
-            resolveSize(dp(140f).toInt(), widthMeasureSpec),
-            resolveSize(dp(54f).toInt(), heightMeasureSpec),
+            resolveSize(dp(98f).toInt(), widthMeasureSpec),
+            resolveSize(dp(38f).toInt(), heightMeasureSpec),
         )
     }
 
@@ -83,7 +83,7 @@ class ClusterPreviewView @JvmOverloads constructor(
         if (w <= 0f || h <= 0f) return
 
         val stroke = dp(1f)
-        val radius = dp(12f)
+        val radius = dp(8f)
         rect.set(stroke / 2f, stroke / 2f, w - stroke / 2f, h - stroke / 2f)
 
         // Clip everything to the rounded cluster face.
@@ -117,7 +117,7 @@ class ClusterPreviewView @JvmOverloads constructor(
         // Optional centred caption.
         val text = label
         if (!text.isNullOrEmpty()) {
-            labelPaint.textSize = minOf(h * 0.22f, dp(11f))
+            labelPaint.textSize = minOf(h * 0.22f, dp(8f))
             val fm = labelPaint.fontMetrics
             canvas.drawText(text, w / 2f, h / 2f - (fm.ascent + fm.descent) / 2f, labelPaint)
         }

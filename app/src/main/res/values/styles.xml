@@ -93,8 +93,8 @@
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:gravity">center</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingStart">18dp</item>
-        <item name="android:paddingEnd">18dp</item>
+        <item name="android:paddingStart">13dp</item>
+        <item name="android:paddingEnd">13dp</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="android:elevation">0dp</item>
     </style>
@@ -108,8 +108,8 @@
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:gravity">center</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingStart">18dp</item>
-        <item name="android:paddingEnd">18dp</item>
+        <item name="android:paddingStart">13dp</item>
+        <item name="android:paddingEnd">13dp</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="android:elevation">0dp</item>
     </style>
@@ -124,8 +124,8 @@
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:gravity">center</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingStart">18dp</item>
-        <item name="android:paddingEnd">18dp</item>
+        <item name="android:paddingStart">13dp</item>
+        <item name="android:paddingEnd">13dp</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="android:elevation">0dp</item>
     </style>
@@ -152,33 +152,33 @@
          (outline / warning-outline / borderless) via an explicit parent, so only the size changes. Consumers
          pair these with android:layout_width="wrap_content" so the button no longer fills the row. -->
     <style name="Cockpit.Button.Compact.Secondary" parent="@style/Cockpit.Button.Secondary">
-        <item name="android:minHeight">38dp</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">14dp</item>
-        <item name="android:paddingTop">7dp</item>
-        <item name="android:paddingBottom">7dp</item>
+        <item name="android:minHeight">27dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
     <!-- Cockpit.Button.Compact.Warning — compact caution action (outlined amber). Same metrics as
          Compact.Secondary; inherits the warning face from Cockpit.Button.Warning. -->
     <style name="Cockpit.Button.Compact.Warning" parent="@style/Cockpit.Button.Warning">
-        <item name="android:minHeight">38dp</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">14dp</item>
-        <item name="android:paddingTop">7dp</item>
-        <item name="android:paddingBottom">7dp</item>
+        <item name="android:minHeight">27dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
     <!-- Cockpit.Button.Compact.Text — compact borderless text action. Same metrics as Compact.Secondary;
          inherits the transparent face + brand ink from Cockpit.Button.Text. -->
     <style name="Cockpit.Button.Compact.Text" parent="@style/Cockpit.Button.Text">
-        <item name="android:minHeight">38dp</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">14dp</item>
-        <item name="android:paddingTop">7dp</item>
-        <item name="android:paddingBottom">7dp</item>
+        <item name="android:minHeight">27dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
         <item name="android:textSize">@dimen/text_label</item>
     </style>
 
@@ -189,12 +189,12 @@
          (tile_nav / tile_cast / tile_mic / tile_badge / tile_bubble / tile_seat / tile_dust / tile_sys /
          tile_adv), with a white ic_*_g glyph as android:src. -->
     <style name="Cockpit.IconTile" parent="">
-        <item name="android:layout_width">34dp</item>
-        <item name="android:layout_height">34dp</item>
-        <item name="android:padding">6dp</item>
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:padding">4dp</item>
         <item name="android:scaleType">center</item>
         <item name="android:layout_gravity">center_vertical</item>
-        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:layout_marginEnd">8dp</item>
     </style>
 
     <!-- ═════════════════════════════ SWITCH ════════════════════════════════ -->
@@ -207,7 +207,7 @@
         <item name="android:textColor">@color/text_secondary</item>
         <item name="android:textSize">@dimen/text_body</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:switchPadding">10dp</item>
+        <item name="android:switchPadding">7dp</item>
     </style>
 
     <!-- ═════════════════════════════ SPINNER ═══════════════════════════════ -->
@@ -222,10 +222,10 @@
         <item name="android:overlapAnchor">false</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">36dp</item>
-        <item name="android:paddingTop">6dp</item>
-        <item name="android:paddingBottom">6dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">25dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
     </style>
 
     <!-- Cockpit.Spinner.Item — the COLLAPSED selected row (see @layout/cockpit_spinner_item). parent="" so it
@@ -237,8 +237,8 @@
         <item name="android:gravity">center_vertical</item>
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:paddingTop">10dp</item>
-        <item name="android:paddingBottom">10dp</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingBottom">7dp</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
 
@@ -251,10 +251,10 @@
         <item name="android:textSize">@dimen/text_body</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">14dp</item>
-        <item name="android:paddingTop">12dp</item>
-        <item name="android:paddingBottom">12dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
     </style>
@@ -291,11 +291,11 @@
         <item name="android:textSize">@dimen/text_label</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:gravity">center</item>
-        <item name="android:minHeight">28dp</item>
-        <item name="android:paddingStart">12dp</item>
-        <item name="android:paddingEnd">12dp</item>
-        <item name="android:paddingTop">4dp</item>
-        <item name="android:paddingBottom">4dp</item>
+        <item name="android:minHeight">20dp</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
     </style>
 
     <!-- ═════════════════════════════ SEGMENT BUTTON ════════════════════════ -->
@@ -312,10 +312,10 @@
         <item name="android:textAllCaps">false</item>
         <item name="android:textSize">@dimen/text_body</item>
         <item name="android:gravity">center</item>
-        <item name="android:minHeight">44dp</item>
-        <item name="android:minWidth">64dp</item>
-        <item name="android:paddingStart">16dp</item>
-        <item name="android:paddingEnd">16dp</item>
+        <item name="android:minHeight">31dp</item>
+        <item name="android:minWidth">45dp</item>
+        <item name="android:paddingStart">11dp</item>
+        <item name="android:paddingEnd">11dp</item>
     </style>
 
     <!-- ═════════════════════════════ LIST ROW ══════════════════════════════ -->
@@ -326,8 +326,8 @@
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:minHeight">@dimen/touch_min</item>
-        <item name="android:paddingTop">8dp</item>
-        <item name="android:paddingBottom">8dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
     </style>
 
     <!-- Cockpit.ListRowLabel — the primary label inside a Cockpit.ListRow. Primary ink, body size, centred
@@ -354,7 +354,7 @@
     <style name="Cockpit.Group" parent="">
         <item name="android:background">@drawable/group_bg</item>
         <item name="android:orientation">vertical</item>
-        <item name="android:elevation">10dp</item>
+        <item name="android:elevation">7dp</item>
         <item name="android:clipToOutline">true</item>
     </style>
 
@@ -365,11 +365,11 @@
     <style name="Cockpit.Row" parent="">
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:minHeight">58dp</item>
-        <item name="android:paddingStart">16dp</item>
-        <item name="android:paddingEnd">16dp</item>
-        <item name="android:paddingTop">13dp</item>
-        <item name="android:paddingBottom">13dp</item>
+        <item name="android:minHeight">41dp</item>
+        <item name="android:paddingStart">11dp</item>
+        <item name="android:paddingEnd">11dp</item>
+        <item name="android:paddingTop">9dp</item>
+        <item name="android:paddingBottom">9dp</item>
     </style>
 
     <!-- Cockpit.RowDivider — the 1px hairline between stacked rows (mockup `.row+.row{border-top}`). Apply to
@@ -397,8 +397,8 @@
          ink, 2dp above-gap. parent="" (see Cockpit.Row.Title). -->
     <style name="Cockpit.Row.Subtitle" parent="">
         <item name="android:textColor">@color/text_secondary</item>
-        <item name="android:textSize">12sp</item>
-        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:textSize">8sp</item>
+        <item name="android:layout_marginTop">1dp</item>
     </style>
 
     <!-- ═════════════════════════════ L2 HERO CARD ══════════════════════════ -->
@@ -409,8 +409,8 @@
     <style name="Cockpit.HeroCard" parent="">
         <item name="android:background">@drawable/hero_card_bg</item>
         <item name="android:orientation">vertical</item>
-        <item name="android:padding">18dp</item>
-        <item name="android:elevation">14dp</item>
+        <item name="android:padding">13dp</item>
+        <item name="android:elevation">10dp</item>
         <item name="android:clipToOutline">true</item>
     </style>
 
@@ -418,7 +418,7 @@
          ink, all-caps with a touch of tracking. -->
     <style name="Cockpit.HeroLead" parent="">
         <item name="android:textColor">@color/text_secondary</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">8sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.06</item>
@@ -427,14 +427,14 @@
     <!-- Cockpit.HeroDist — the big distance-to-turn readout (mockup `.dist`): 34sp medium primary ink. -->
     <style name="Cockpit.HeroDist" parent="">
         <item name="android:textColor">@color/text_primary</item>
-        <item name="android:textSize">34sp</item>
+        <item name="android:textSize">24sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <!-- Cockpit.HeroStreet — the road / maneuver subtitle under the distance (mockup `.street`): 14sp muted ink. -->
     <style name="Cockpit.HeroStreet" parent="">
         <item name="android:textColor">@color/text_secondary</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:textSize">10sp</item>
     </style>
 
     <!-- ═════════════════════════════ L2 STATUS PILLS ═══════════════════════
@@ -444,13 +444,13 @@
     <!-- Cockpit.Pill — shared capsule base (11sp bold, 10dp/4dp padding, fully rounded). Not used directly;
          the coloured variants below set the @drawable/pill_bg_* face + accent text colour. -->
     <style name="Cockpit.Pill" parent="">
-        <item name="android:textSize">11sp</item>
+        <item name="android:textSize">8sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:gravity">center</item>
-        <item name="android:paddingStart">10dp</item>
-        <item name="android:paddingEnd">10dp</item>
-        <item name="android:paddingTop">4dp</item>
-        <item name="android:paddingBottom">4dp</item>
+        <item name="android:paddingStart">7dp</item>
+        <item name="android:paddingEnd">7dp</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
     </style>
 
     <!-- Cockpit.Pill.Green — "on/active/good" capsule (mockup `.pill.gr`). -->

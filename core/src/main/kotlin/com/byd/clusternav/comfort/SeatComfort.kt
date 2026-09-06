@@ -3,73 +3,75 @@ package com.byd.clusternav.comfort
 /**
  * GHẾ — LÀM MÁT / SƯỞI TỰ ĐỘNG · pure model (không Android, unit-test off-car được).
  *
- * ── NGUỒN (RE app tham chiếu `com.byd.mecanum.dashboard`) ────────────────────────────────────────
- * Cơ chế: lệnh BYD HAL `(deviceType, featureId, value)`. `deviceType 1023` = ghế/tiện-nghi. App tham chiếu
- * gọi qua binder proxy `m.Y(sCommunicationBinder, 1023, featureId, value)`; ClusterNav KHÔNG dùng proxy đó —
- * nó đi ĐƯỜNG REFLECTION SẴN CÓ ([com.byd.clusternav.modules.hal.BydHal] `device(...)` + `setInt(...)`), CÙNG
- * HAL nền. `value` = mức ghế. Làm mát và sưởi LOẠI TRỪ NHAU (set cái này → xe reset cái kia).
+ * ── NGUỒN (RE app OEM `com.byd.airconditioning`, module `airseating`, đã đối chiếu on-car 2026-09-06) ──
+ * Ghế điều khiển qua **`BYDAutoSettingDevice`** (= [com.byd.clusternav.modules.hal.BydHal] `SETTING`) bằng
+ * method-TÊN, **KHÔNG** qua AC device và **KHÔNG** raw feature-id:
+ *  • Làm mát: `setSeatVentilatingState(int seatID, int state)`
+ *  • Sưởi:   `setSeatHeatingState(int seatID, int state)`
+ * (Nguồn: `AirSeatingVentilateAndHeatModel` gọi `mBYDAutoSettingDevice.setSeat{Ventilating,Heating}State`,
+ * `AirSeatingVentilateAndHeatFragment` gọi seatID **1..4** cho lái/phụ/sau-trái/sau-phải.)
  *
- * Bảng feature-id ghế (device 1023), mẫu `0x4310101{0,4,8,C}` rồi +8 mỗi hàng ghế:
- * | Ghế                     | COOL (làm mát) | HEAT (sưởi) |
- * |-------------------------|----------------|-------------|
- * | 0 · trước-trái (lái)    | 0x43101010     | 0x43101014  |  ← đã RE, proven trên xe owner
- * | 1 · trước-phải (phụ)    | 0x43101018     | 0x4310101C  |  ← đã RE, proven trên xe owner
- * | 2 · sau-trái (Han)      | 0x43101020     | 0x43101024  |  ← ⚠ SUY (+8/hàng) — CẦN XÁC NHẬN TRÊN XE
- * | 3 · sau-phải (Han)      | 0x43101028     | 0x4310102C  |  ← ⚠ SUY (+8/hàng) — CẦN XÁC NHẬN TRÊN XE
+ * ⚠ LỊCH SỬ: bản trước ghi thẳng raw feature-id (họ `0x431010xx`) qua `BYDAutoAcDevice.set(int[], ev)` — on-car
+ * (2026-09-06) trả `NOT_PROVISIONED` (rc=-2147482648) NGAY CẢ với ghế trước (id đã RE-proven), nên đường AC +
+ * raw-id là SAI trên xe này. Feature-id ghế thật chỉ dùng để ĐĂNG KÝ listener, KHÔNG để GHI — đã bỏ khỏi model.
  *
- * Ánh xạ giá trị (lựa chọn người dùng → giá trị HAL): OFF=0, "Mức 1"=2, "Mức 2"=3 (xem [HAL_VALUE]).
+ * ── Ánh xạ (lựa chọn người dùng → HAL) ───────────────────────────────────────────────────────────
+ *  • seatID **1-based**: index-app 0 → HAL 1 (lái), 1 → 2 (phụ), 2 → 3 (sau-trái), 3 → 4 (sau-phải).
+ *  • state (RE `AirSeatingVentilateAndHeatModel`): **1=Tắt · 2=Mức1(LOW) · 3=Mức2(HIGH)** — user-level 0/1/2
+ *    ↦ state 1/2/3 (xem [stateForLevel]).
+ *  • Làm mát và sưởi LOẠI TRỪ NHAU (set method này → MCU reset method kia) ⇒ mỗi ghế chỉ gọi MỘT method
+ *    theo mode đang chọn.
  */
 object SeatComfort {
 
     /** Chế độ TOÀN CỤC — chọn MỘT (loại trừ nhau, xe reset cái kia khi set cái này). */
     enum class SeatMode { COOL, HEAT }
 
-    /** Cấp độ TẮT (0). Mức hoạt động là 1 ("Mức 1") và 2 ("Mức 2"). */
+    /** Cấp độ người dùng TẮT (0). Mức hoạt động là 1 ("Mức 1") và 2 ("Mức 2"). */
     const val LEVEL_OFF = 0
 
-    /**
-     * Một ghế: [index] (0=FL/lái, 1=FR/phụ, 2=RL, 3=RR), [labelKey] khoá nhãn (MainActivity dịch song ngữ qua
-     * `Lang.t`), [coolFeatureId]/[heatFeatureId] = feature-id HAL cho làm mát / sưởi.
-     */
-    data class Seat(
-        val index: Int,
-        val labelKey: String,
-        val coolFeatureId: Int,
-        val heatFeatureId: Int,
-    )
+    // ── Giá trị state của HAL (setSeat{Ventilating,Heating}State) — RE AirSeatingVentilateAndHeatModel ──
+    const val STATE_OFF = 1   // VENTILATE_HEAT_STATE_OFF
+    const val STATE_L1 = 2    // VENTILATE_HEAT_STATE_LOW  ("Mức 1")
+    const val STATE_L2 = 3    // VENTILATE_HEAT_STATE_HIGH ("Mức 2")
 
-    /** Bảng ghế (theo bảng RE ở KDoc lớp). Rear (2,3) = feature-id SUY — cần xác nhận trên xe Han. */
-    val SEATS: List<Seat> = listOf(
-        Seat(0, "driver", 0x43101010, 0x43101014),
-        Seat(1, "passenger", 0x43101018, 0x4310101C),
-        Seat(2, "rear_left", 0x43101020, 0x43101024),   // EXTRAPOLATED (+8/hàng) — needs-on-car-confirm
-        Seat(3, "rear_right", 0x43101028, 0x4310102C),   // EXTRAPOLATED (+8/hàng) — needs-on-car-confirm
-    )
+    /** user-level (0/1/2) → HAL state (1/2/3). Clamp ngoài dải để không ném (degrade-safe cho pref hỏng). */
+    private val STATE: IntArray = intArrayOf(STATE_OFF, STATE_L1, STATE_L2)
+    fun stateForLevel(level: Int): Int = STATE[level.coerceIn(0, STATE.size - 1)]
 
-    /**
-     * Ánh xạ cấp-độ-người-dùng (0/1/2) → giá trị HAL. index 0 = OFF, 1 = "Mức 1", 2 = "Mức 2".
-     *
-     * ⚠ CHỈNH DỄ nếu on-car sai: app tham chiếu (proven chạy trên xe owner) gửi **2** và **3** làm hai mức
-     * hoạt động, **0** = tắt — nên để mặc định `intArrayOf(0, 2, 3)`. NẾU 2/3 không ăn trên xe thì ghế có thể
-     * dùng **1/2** → đổi mảng này thành `intArrayOf(0, 1, 2)` là xong (chỉ một chỗ).
-     */
-    val HAL_VALUE: IntArray = intArrayOf(0, 2, 3)
+    // ── Tên method trên BYDAutoSettingDevice (applier gọi qua BydHal.callNamedInt) ───────────────
+    const val METHOD_VENTILATING = "setSeatVentilatingState"   // (seatID 1..4, state 1..3) — làm mát
+    const val METHOD_HEATING = "setSeatHeatingState"           // (seatID 1..4, state 1..3) — sưởi
 
-    /** feature-id HAL cho [seatIndex] theo [mode] (COOL → coolFeatureId, HEAT → heatFeatureId). */
-    fun featureId(seatIndex: Int, mode: SeatMode): Int {
-        val seat = SEATS[seatIndex]
-        return when (mode) {
-            SeatMode.COOL -> seat.coolFeatureId
-            SeatMode.HEAT -> seat.heatFeatureId
-        }
+    /** HAL method cho [mode]: COOL → [METHOD_VENTILATING], HEAT → [METHOD_HEATING]. */
+    fun methodFor(mode: SeatMode): String = when (mode) {
+        SeatMode.COOL -> METHOD_VENTILATING
+        SeatMode.HEAT -> METHOD_HEATING
     }
 
-    /** Cấp-độ-người-dùng (0/1/2) → giá trị HAL ([HAL_VALUE]). Clamp ngoài dải để không ném (degrade-safe). */
-    fun halValue(level: Int): Int = HAL_VALUE[level.coerceIn(0, HAL_VALUE.size - 1)]
+    /**
+     * Một ghế: [index] (0=FL/lái, 1=FR/phụ, 2=RL, 3=RR) + [labelKey] khoá nhãn (MainActivity dịch song ngữ qua
+     * `Lang.t`). Không còn feature-id (ghi qua method-tên trên SETTING device).
+     */
+    data class Seat(val index: Int, val labelKey: String)
+
+    /** Bảng ghế theo thứ tự index-app 0..3. */
+    val SEATS: List<Seat> = listOf(
+        Seat(0, "driver"),
+        Seat(1, "passenger"),
+        Seat(2, "rear_left"),
+        Seat(3, "rear_right"),
+    )
+
+    /**
+     * index-app 0-based → HAL seatID **1-based** (1=lái, 2=phụ, 3=sau-trái, 4=sau-phải). UI giữ 0-based; chỉ
+     * ánh xạ +1 tại đường GHI HAL (khớp `AirSeatingVentilateAndHeatFragment` gọi 1..4).
+     */
+    fun seatId(seatIndex: Int): Int = seatIndex + 1
 
     /**
      * Danh sách chỉ-số ghế theo mẫu xe. Seal (2 ghế trước) → `[0, 1]`; Han (4 ghế) → `[0, 1, 2, 3]`.
-     * Đây là NGUỒN SỰ THẬT cho "hiện 2 hay 4 ghế" ở UI và "áp cho ghế nào" ở applier.
+     * Đây là NGUỒN SỰ THẬT cho "hiện 2 hay 4 ghế" ở UI và "áp cho ghế nào" ở applier. Han rear (3,4) hỗ trợ.
      */
     fun seatsForModel(isHan: Boolean): List<Int> = if (isHan) listOf(0, 1, 2, 3) else listOf(0, 1)
 

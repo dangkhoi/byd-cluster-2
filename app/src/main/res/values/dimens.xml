@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cockpit scale tokens. Scaled to ~70% (stage2-ui · T2 — "elements too big" on the car's large wide screen).
+  touch_min is floored at 40dp to keep a comfortable tap target for interactive rows/controls.
+-->
 <resources>
-    <dimen name="text_title">24sp</dimen>
-    <dimen name="text_status">16sp</dimen>
-    <dimen name="text_body">15sp</dimen>
-    <dimen name="text_label">13sp</dimen>
-    <dimen name="card_pad">16dp</dimen>
-    <dimen name="screen_pad">20dp</dimen>
-    <dimen name="gap">14dp</dimen>
-    <dimen name="radius">16dp</dimen>
-    <dimen name="touch_min">56dp</dimen>
+    <dimen name="text_title">17sp</dimen>
+    <dimen name="text_status">11sp</dimen>
+    <dimen name="text_body">11sp</dimen>
+    <dimen name="text_label">9sp</dimen>
+    <dimen name="card_pad">11dp</dimen>
+    <dimen name="screen_pad">14dp</dimen>
+    <dimen name="gap">10dp</dimen>
+    <dimen name="radius">11dp</dimen>
+    <dimen name="touch_min">40dp</dimen>
 </resources>

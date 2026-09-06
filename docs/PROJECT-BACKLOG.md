@@ -13,6 +13,26 @@
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
 
+### 🐞 ON-CAR 2026-09-06 (v1.32, xe BYD AUTO) — findings A–E → **ĐÃ SỬA/IMPLEMENT + SHIP v1.33** (chờ test xe lại) (chi tiết: `docs/diagnostics/seat-vietmaploop-oncar-2026-09-06.md` + `bodywork-window-trunk-RE-2026-09-06.md`)
+- **A · Ghế mát/sưởi KHÔNG chạy:** [ĐO] `SeatComfort: ghi ghế=0 … featureId=0x43101010 value=3 rc=-2147482648` = **NOT_PROVISIONED**. Ghi qua `BYDAutoAcDevice` bị HAL từ chối (ghế trước, RE-proven id, cấu hình đúng). Fix off-car: ghi qua **deviceType 1023 tường minh** như app tham chiếu (không dùng device AC) / hoặc method `setAcVentilationState`+`setAcWarmState` / thử value 2·3→1·2.
+- **B · VietMap gọi lên loop:** [ĐO] `maybeAutoStartVietMap()` từ **onCreate** → `ensureRunning`(không dedup) → `runNow` bóng-bật LUÔN launch VietMap→sleep 1.5s→trả ClusterNav (kể cả `running=true`). Mỗi onCreate/recreate(đổi theme/ngôn ngữ)/boot = VietMap nhảy lên. Fix off-car: **dedup/cooldown** + đừng launch nếu activity đã mở + đừng chạy khi recreate. (`VmOverlayPos` gửi/2s vô hại.)
+- **C · PM2.5 tự lọc: gần như ĐÃ CHẠY** (khác ghế) — [ĐO] `setAutoCleanAirState(1) rc=0` (thành công) + `read level=1` (đọc đúng); method/device đúng (khớp OEM). Verify được khi khí sạch (không gate ngưỡng). Lỗi NHỎ: `enablePurificationFunctionPrompt(0) rc=-2147482645` (tắt-popup xe không nhận) → off-car xem lại arg/bỏ; lọc vẫn chạy.
+- **D · Hero nav TRỐNG khi GMaps dẫn+cast:** [ĐO] noti GMaps CÓ đủ data (title="0 m"/text="đường"/subText ETA, groupKey `navigation_status_notification_group`, contentView=null) + listener bám ổn định, NHƯNG hero trống. Nghi parser không rút từ noti-NHÓM / ingest bị gate khi Cast. Fix+verify OFF-CAR trên emulator (bơm noti giả — đường ĐỌC device-agnostic). Chi tiết: diagnostics doc FINDING D.
+- **E · [FEATURE MỚI] điều khiển cửa sổ / cốp:** RE xong device+method (`BYDAutoBodyworkDevice.setBodyWindowCtrlState(window 1-4, state 0/1)` + `setHetchDoorStatus`). "Mở 50%" chưa rõ cơ chế % (state HAL nhị phân) — RE/test thêm. Chi tiết: `docs/diagnostics/bodywork-window-trunk-RE-2026-09-06.md`. Implement off-car + gate an toàn (tốc độ/số P).
+
+### 🚀 SHIP 2026-09-06 v1.33 (versionCode 34) — sửa 4 lỗi on-car v1.32 + 2 hạ tầng, commit + push OTA, CHỜ TEST XE
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| A | Ghế mát/sưởi → **`BYDAutoSettingDevice.setSeatVentilatingState/setSeatHeatingState`** (seatID 1-based, state 1/2/3, `BydHal.callNamedInt`); bỏ hẳn AC+`0x43101010`+HAL_VALUE | ✅ | 🚗 |
+| B | Loop VietMap → cooldown 30s + in-flight (`tryBeginRun/finishRun`) + skip-nếu-foreground + gate `savedInstanceState==null` (không chạy khi recreate) | ✅ | 🚗 |
+| D | Hero nav wire → `hero_road←state.road`, `hero_nav_icon←heroArrowRes(maneuver)` (`HeroArrow` :core), `hero_dist` gate active — tín hiệu vốn OK, chỉ wire UI | ✅ | 🚗 (verify emulator được) |
+| C | PM2.5 popup `enablePurificationFunctionPrompt` best-effort (log, KHÔNG chặn `setAutoCleanAirState` rc=0) | ✅ | 🚗 |
+| UI | Thu ~70% cả 2 layout (narrow seal re-pin **lần 24** `1a7c90f7…`, parity 87) + fix card 2-line (bỏ top-highlight `card_bg`/`group_bg`/`hero_card_bg`) | ✅ | 🚗 |
+| E | Core **cửa sổ/cốp** (`body/Bodywork`+`BodyworkControl` qua `BYDAutoBodyworkDevice.setBodyWindowCtrlState` w1-4/state 0-1 + `setHetchDoorStatus`) — CHƯA UI | ✅ core | 🚗 test qua probe |
+| PROBE | Bộ **on-car HAL probe** (`HalProbeReceiver`/`HalProbePresets`, **vehicleTest-only**, release loại trừ, bắn HAL/preset/raw-fid qua `adb am broadcast`; doc `docs/diagnostics/oncar-hal-probe.md`) | ✅ | — |
+
+Full test **1911/0** (5 module), seal lần 24, parity 87, senior review APPROVED, release không debuggable + không bề mặt test (aapt2 xác minh). `apk/ClusterNav-1.33-release.apk` (sha256 `396e5969…`, bỏ 1.32 giữ 1.0). Security scan bắt buộc trước push.
+
 ### 🚀 SHIP 2026-09-06 v1.32 (versionCode 33) — commit + merge main + push OTA, CHỜ TEST XE
 **Phiên UI lớn (trên nền 1.31):** 3 tính năng (ghế mát/sưởi tự động HAL AC · tự lọc bụi PM2.5 · chỉ báo trạng thái phím-thoại) + đại tu **Level-2 "cockpit"** (design system `Cockpit.*` khớp mockup `ui-visual-upgrade-l2.html`) + **song ngữ VI/EN** (selector Theo-xe/VI/EN) + **light mode** (selector Giao diện Theo-xe/Sáng/Tối) + hero km/h thật (SpeedProvider HAL) + fix autostart bóng VietMap. Seal narrow **lần 23**, parity **87**, full test **1894/0**, senior review APPROVED, security scan CLEAN, release APK không debuggable. `apk/ClusterNav-1.32-release.apk` (sha256 `613798b6…`). **Xe cần test:** HAL ghế (values 2/3 + Han rear ids) · PM2.5 reflection · bóng autostart · phím-thoại sau reboot · UI mới (light/dark + song ngữ) trên cụm thật.
 

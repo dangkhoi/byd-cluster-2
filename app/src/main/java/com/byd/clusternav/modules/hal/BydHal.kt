@@ -154,6 +154,24 @@ object BydHal {
         return runCatching { true to "${if (arg == null) m.invoke(dev) else m.invoke(dev, arg)}" }.getOrElse { false to root(it) }
     }
 
+    /**
+     * Gọi method [method] với **N tham số int** qua reflection (`getMethod(method, int×N).invoke(dev, args)`).
+     * Trả `"rc=<giá trị trả về>"` khi gọi được (kể cả rc lỗi của HAL, hoặc method void → `"rc=null"`), hoặc
+     * chuỗi lỗi rút gọn [root] khi ROM thiếu method / HAL ném. **Degrade-safe: KHÔNG BAO GIỜ ném.**
+     *
+     * Đây là ĐƯỜNG GHI method-TÊN dùng chung — cho probe HAL on-car (vehicleTest-only),
+     * [com.byd.clusternav.body.BodyworkControl] (cửa sổ/cốp) và (tương lai) seat-fix. Các method
+     * GHI trên device BYDAuto (`setBodyWindowCtrlState` / `setHetchDoorStatus` / `setSeatVentilatingState`…)
+     * KHÔNG có trong SDK jar ⇒ chỉ gọi được qua reflection tên-method, giống cách
+     * [com.byd.clusternav.comfort.Pm25FilterApplier] gọi `setAutoCleanAirState` trên AC device.
+     */
+    fun callNamedInt(dev: Any, method: String, vararg args: Int): String = runCatching {
+        val types = Array<Class<*>?>(args.size) { Int::class.javaPrimitiveType }
+        val boxed = Array<Any?>(args.size) { args[it] }
+        val m = dev.javaClass.getMethod(method, *types)
+        "rc=${m.invoke(dev, *boxed)}"
+    }.getOrElse { root(it) }
+
     /** Gọi getter tên [name] (0 hoặc 1 tham số int) qua reflection → chuỗi giá trị. null nếu không có/ném.
      *  ĐÂY là cách đọc THẬT trên ROM này (getCurrentSpeed(), getTyrePressureValue(area)...) — KHÔNG cần listener.
      *  Method cache theo (class#name#arity) → hot-path (steering mỗi tick) khỏi scan getMethods() lại. */

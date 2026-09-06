@@ -55,9 +55,9 @@ class SpeedDialView @JvmOverloads constructor(
         }
     }
 
-    /** Default ~60dp square when a dimension is UNBOUNDED (wrap_content) so the dial never collapses. */
+    /** Default ~42dp square when a dimension is UNBOUNDED (wrap_content) so the dial never collapses. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val d = dp(60f).toInt()
+        val d = dp(42f).toInt()
         setMeasuredDimension(resolveSize(d, widthMeasureSpec), resolveSize(d, heightMeasureSpec))
     }
 
@@ -67,7 +67,7 @@ class SpeedDialView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val ring = dp(3f)
+        val ring = dp(2f)
         val size = minOf(w, h)
         val cx = w / 2f
         val cy = h / 2f

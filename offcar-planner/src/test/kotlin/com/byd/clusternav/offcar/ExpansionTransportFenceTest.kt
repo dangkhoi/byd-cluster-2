@@ -808,13 +808,26 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ lần-22 (giữ trace): activity_main.xml = d4118a4b…bfc724.
          *
+         * ⚠ CẬP NHẬT 2026-09-06 (lần 24 · thu UI 70%) — owner duyệt (task stage2-ui · T2), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thu NHỎ toàn bộ giao diện xuống ~70%** (owner: phần tử quá to trên màn
+         * rộng của xe). Cách làm: (1) scale token dùng chung `res/values/dimens.xml` (text/padding/gap/radius;
+         * `touch_min` giữ SÀN 40dp cho tap target) + hằng literal trong `@style/Cockpit.*` (`res/values/styles.xml`)
+         * + cỡ mặc định các custom view (SpeedDial/ClusterPreview/SegmentedControl/SeatDiagram/Pm25Gauge); (2)
+         * scale các cỡ INLINE `dp/sp` trong CẢ hai biến thể layout ~0.7 (script `scripts/shrink-ui-70.py`,
+         * bỏ qua `0dp` + comment; `1dp` divider giữ nguyên). CHỈ đổi CỠ hiển thị — KHÔNG thêm/gỡ/đổi @+id nào ⇒
+         * bộ id vẫn 87, parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest). `strings.xml` KHÔNG đổi (hằng
+         * giữ nguyên). Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ lần-23 (giữ trace): activity_main.xml = dfd93e64…b37230.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "dfd93e6405d14702b9b9f9300511551660ef2a40363b5728f18c7afbc2b37230",
+            "app/src/main/res/layout/activity_main.xml" to "1a7c90f7e499909a7e8b3ad577c024eeec3421bafa37c19b574758abd636f921",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

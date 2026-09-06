@@ -17,5 +17,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- HAL PROBE (vehicleTest-only): bắn lệnh HAL nhanh qua adb để RE + kiểm tra trên xe.
+             exported=true để `adb shell am broadcast -a com.byd.clusternav.vehicletest.HAL_PROBE …`
+             tới được từ uid shell. Chỉ nằm ở src/vehicleTest → KHÔNG có trong release/debug APK. -->
+        <receiver
+            android:name=".HalProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.byd.clusternav.vehicletest.HAL_PROBE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

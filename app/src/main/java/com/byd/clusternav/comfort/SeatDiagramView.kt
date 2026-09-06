@@ -110,8 +110,8 @@ class SeatDiagramView @JvmOverloads constructor(
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         setMeasuredDimension(
-            resolveSize(dp(260f).toInt(), widthMeasureSpec),
-            resolveSize(dp(150f).toInt(), heightMeasureSpec),
+            resolveSize(dp(182f).toInt(), widthMeasureSpec),
+            resolveSize(dp(105f).toInt(), heightMeasureSpec),
         )
     }
 

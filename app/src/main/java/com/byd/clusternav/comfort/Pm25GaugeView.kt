@@ -71,7 +71,7 @@ class Pm25GaugeView @JvmOverloads constructor(
      * [onDraw] already sizes off `min(w, h)` and centres, so a non-square measured size still renders cleanly.
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val d = dp(72f).toInt()
+        val d = dp(50f).toInt()
         setMeasuredDimension(resolveSize(d, widthMeasureSpec), resolveSize(d, heightMeasureSpec))
     }
 

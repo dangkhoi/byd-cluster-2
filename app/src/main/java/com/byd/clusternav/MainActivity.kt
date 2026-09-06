@@ -20,6 +20,7 @@ import android.provider.Settings
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -30,6 +31,9 @@ import com.byd.clusternav.navigation.NavigationPermission
 import com.byd.clusternav.navigation.NavReadChannel
 import com.byd.clusternav.navigation.NavSourceLabels
 import com.byd.clusternav.navigation.SpeedSignOutput
+import com.byd.clusternav.navigation.HeroArrow
+import com.byd.clusternav.navigation.Maneuver
+import com.byd.clusternav.navigation.toHeroArrow
 
 /**
  * Home — MÀN HÌNH DUY NHẤT của app (docs/specs/cast-simplified-active-app-toggle.html): trái là
@@ -315,7 +319,10 @@ class MainActivity : Activity() {
 
         // B1 (owner 2026-08-19): "badge bật → VietMap tự chạy để widget có nguồn" — with the speed badge enabled,
         // start VietMap once so its home-widget (the badge's speed-limit source) has a live process. Degrade-safe.
-        maybeAutoStartVietMap()
+        // B2 (on-car 2026-09-06): CHỈ chạy khi onCreate là lần tạo THẬT (savedInstanceState==null) — recreate() lúc
+        // đổi ngôn ngữ/giao diện luôn có savedInstanceState≠null ⇒ KHÔNG re-trigger autostart (chống flash loop).
+        // Cooldown + in-flight trong VietMapAutostart là lớp chặn thứ hai; đây chặn ngay tại nguồn recreate.
+        if (savedInstanceState == null) maybeAutoStartVietMap()
 
         // Ghế: nếu công tắc BẬT → áp mức làm-mát/sưởi lên HAL ~5 s sau khi mở app (degrade-safe, no-op off-car).
         SeatComfortApplier.applyOnStart(this)
@@ -446,29 +453,47 @@ class MainActivity : Activity() {
     /**
      * HERO live-status strip (Level-2 · `docs/specs/ui-visual-upgrade-l2.html`) — READ-ONLY + degrade-safe.
      *
-     * Đọc từ CÙNG nguồn các dòng trạng thái hiện có, KHÔNG thêm coupling runtime:
-     *  • `hero_road` ← [navStatusText] (chính là chuỗi `navStatus` dựng trong [refresh] từ nguồn/kênh dẫn).
+     * Đọc từ CÙNG nguồn các dòng trạng thái hiện có, KHÔNG thêm coupling runtime (không ghi pref, không
+     * dispatch Cast):
+     *  • `hero_road` ← [NavRepository.state] `road` (TÊN ĐƯỜNG/hướng kế) khi đang dẫn; chưa dẫn/rỗng ⇒ dòng
+     *    trạng thái nguồn [navStatusText] làm placeholder.
+     *  • `hero_nav_icon` ← [NavRepository.state] `maneuver` (Maneuver TRUNG LẬP) → [toHeroArrow] → drawable mũi
+     *    tên có sẵn (ic_turn_left/right/straight); không maneuver/chưa dẫn/off-car ⇒ giữ placeholder tĩnh.
+     *  • `hero_dist` ← [NavRepository.state] `distance` (cự ly-tới-rẽ); gate `active` = cách [NavRepository]
+     *    đánh dấu phiên; không active/rỗng ⇒ "—".
+     *  • `hero_speed` ← [SpeedProvider.mpsOrNull] = TỐC ĐỘ THẬT CỦA XE (BYDAutoSpeedDevice.getCurrentSpeed —
+     *    đồng hồ tốc độ), ĐỘC LẬP VietMap/badge; null/off-car ⇒ dial "—".
      *  • `hero_cast` ← [com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime] prefs `castEnabled()`
      *    + `coordinator.state` (đọc-only, y như [com.byd.clusternav.modules.clustercast.MainActivityCastController]).
      *  • `hero_vk`   ← [Prefs.voiceKeyEnabled] + [com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected]
      *    (đúng cặp cờ [refreshVoiceKeyStatus] dùng).
      *
-     * `hero_nav_icon` giữ PLACEHOLDER tĩnh trong layout: hướng rẽ không có accessor đọc-only sạch trong tiến
-     * trình UI ⇒ không bịa, không mở thêm coupling. `hero_speed` ← [SpeedProvider.mpsOrNull] = TỐC ĐỘ THẬT CỦA
-     * XE (BYDAutoSpeedDevice.getCurrentSpeed — đồng hồ tốc độ), ĐỘC LẬP VietMap/badge (luôn có trên xe khi app
-     * có quyền HAL; null/off-car ⇒ "— km/h"). `hero_dist` ← [NavRepository.state]
-     * `distance` (trường `@Volatile` đã publish — cự ly-tới-rẽ notification/GMaps; không active/rỗng ⇒ "—"). Mọi
-     * lookup view đều null-safe (parity đảm bảo có mặt, nhưng vẫn thủ) và mọi đọc state bọc `runCatching`.
+     * Mọi lookup view đều null-safe (parity đảm bảo có mặt, nhưng vẫn thủ) và snapshot state đọc bọc `runCatching`.
      */
     private fun updateHeroStrip(navStatusText: String) {
-        findViewById<TextView>(R.id.hero_road)?.text = navStatusText
+        // Đọc MỘT lần snapshot dẫn đường đã publish (trường @Volatile, đọc THUẦN — không polling/coupling).
+        // active=true chính là cách [NavRepository] đánh dấu "đang có phiên": NotificationParser đặt active=true
+        // khi có khung GMaps; [NavRepository.stop] publish NavState() (active=false) khi hết dẫn.
+        val nav = runCatching { NavRepository.state }.getOrNull()
+        val navigating = nav?.active == true
 
-        // hero_dist ← cự ly-tới-rẽ từ [NavRepository.state] (trường @Volatile đã publish; đọc THUẦN, không
-        // polling/coupling). Không active hoặc rỗng ⇒ "—".
-        findViewById<TextView>(R.id.hero_dist)?.text = runCatching {
-            val nav = NavRepository.state
-            if (nav.active && nav.distance.isNotBlank()) nav.distance else "—"
-        }.getOrDefault("—")
+        // hero_road ← TÊN ĐƯỜNG/hướng kế tiếp khi đang dẫn; chưa dẫn (hoặc rỗng) ⇒ dòng TRẠNG THÁI nguồn
+        // (navStatusText) làm placeholder. (Bug T1(a) cũ: LUÔN gán navStatusText ⇒ hiện chuỗi trạng thái thay
+        // vì tên đường.)
+        findViewById<TextView>(R.id.hero_road)?.text =
+            nav?.road?.takeIf { navigating && it.isNotBlank() } ?: navStatusText
+
+        // hero_nav_icon ← MŨI TÊN hướng rẽ suy từ Maneuver TRUNG LẬP (nguồn sự thật hướng rẽ) qua toHeroArrow
+        // → drawable mũi tên có sẵn trong res/drawable. Không có maneuver / chưa dẫn / off-car ⇒ giữ placeholder
+        // tĩnh (ic_turn_right_g), đúng hành vi cũ. (Bug T1(b) cũ: icon là placeholder TĨNH, không bao giờ đổi.)
+        findViewById<ImageView>(R.id.hero_nav_icon)?.setImageResource(
+            nav?.maneuver?.takeIf { navigating }?.let { heroArrowRes(it) } ?: R.drawable.ic_turn_right_g,
+        )
+
+        // hero_dist ← cự ly-tới-rẽ từ [NavRepository.state] (đọc THUẦN). Gate `active` khớp cách NavRepository
+        // đánh dấu phiên (xác nhận T1(c)); không active hoặc rỗng ⇒ "—".
+        findViewById<TextView>(R.id.hero_dist)?.text =
+            nav?.distance?.takeIf { navigating && it.isNotBlank() } ?: "—"
 
         // hero_speed ← SpeedDialView (Level-2 · ui-visual-upgrade-l2): TỐC ĐỘ THẬT CỦA XE từ HAL
         // [SpeedProvider.mpsOrNull] đọc BYDAutoSpeedDevice.getCurrentSpeed() (đồng hồ tốc độ xe). ĐỘC LẬP
@@ -514,6 +539,18 @@ class MainActivity : Activity() {
             vkConnected -> Lang.t("Phím-thoại: ✓", "Voice key: ✓")
             else -> Lang.t("Phím-thoại: mất kết nối", "Voice key: disconnected")
         }
+    }
+
+    /**
+     * Mã drawable mũi tên HERO cho một [Maneuver] — nối [toHeroArrow] (phân loại THUẦN ở :core, có test đơn vị
+     * [HeroArrowMappingTest]) sang drawable mũi tên CÓ SẴN trong `res/drawable`. UTURN dùng lại glyph trái
+     * (VN/RHT — không có drawable quay-đầu riêng; khớp quy ước [Maneuver.toHudIcon] gộp u-turn về mã trái 9).
+     */
+    private fun heroArrowRes(m: Maneuver): Int = when (m.toHeroArrow()) {
+        HeroArrow.LEFT -> R.drawable.ic_turn_left
+        HeroArrow.RIGHT -> R.drawable.ic_turn_right
+        HeroArrow.STRAIGHT -> R.drawable.ic_turn_straight
+        HeroArrow.UTURN -> R.drawable.ic_turn_left
     }
 
     private fun View.tint(color: Int) {
