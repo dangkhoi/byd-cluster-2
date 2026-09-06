@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Cockpit scale tokens. Scaled to ~70% (stage2-ui · T2 — "elements too big" on the car's large wide screen).
-  touch_min is floored at 40dp to keep a comfortable tap target for interactive rows/controls.
+  Cockpit scale tokens.
+  v1.34 (task v134-fixes · FIX 2): text sizes RESTORED to the v1.32 originals (owner: v1.33's ~70% shrink made
+  text too small to read on the car). Only VERTICAL spacing stays reduced (~70%): `gap` (vertical card spacing)
+  and `touch_min` (row/control min HEIGHT, floored at 40dp for a comfortable tap target). Horizontal/edge tokens
+  (`card_pad`, `screen_pad`) and the cosmetic corner `radius` are restored so the full-size text fits.
+  Net: text at original size, layout noticeably shorter vertically.
 -->
 <resources>
-    <dimen name="text_title">17sp</dimen>
-    <dimen name="text_status">11sp</dimen>
-    <dimen name="text_body">11sp</dimen>
-    <dimen name="text_label">9sp</dimen>
-    <dimen name="card_pad">11dp</dimen>
-    <dimen name="screen_pad">14dp</dimen>
+    <dimen name="text_title">24sp</dimen>
+    <dimen name="text_status">16sp</dimen>
+    <dimen name="text_body">15sp</dimen>
+    <dimen name="text_label">13sp</dimen>
+    <dimen name="card_pad">16dp</dimen>
+    <dimen name="screen_pad">20dp</dimen>
     <dimen name="gap">10dp</dimen>
-    <dimen name="radius">11dp</dimen>
+    <dimen name="radius">16dp</dimen>
     <dimen name="touch_min">40dp</dimen>
 </resources>

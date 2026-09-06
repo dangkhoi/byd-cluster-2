@@ -20,6 +20,18 @@
 - **D · Hero nav TRỐNG khi GMaps dẫn+cast:** [ĐO] noti GMaps CÓ đủ data (title="0 m"/text="đường"/subText ETA, groupKey `navigation_status_notification_group`, contentView=null) + listener bám ổn định, NHƯNG hero trống. Nghi parser không rút từ noti-NHÓM / ingest bị gate khi Cast. Fix+verify OFF-CAR trên emulator (bơm noti giả — đường ĐỌC device-agnostic). Chi tiết: diagnostics doc FINDING D.
 - **E · [FEATURE MỚI] điều khiển cửa sổ / cốp:** RE xong device+method (`BYDAutoBodyworkDevice.setBodyWindowCtrlState(window 1-4, state 0/1)` + `setHetchDoorStatus`). "Mở 50%" chưa rõ cơ chế % (state HAL nhị phân) — RE/test thêm. Chi tiết: `docs/diagnostics/bodywork-window-trunk-RE-2026-09-06.md`. Implement off-car + gate an toàn (tốc độ/số P).
 
+### 🚀 SHIP 2026-09-06 v1.34 (versionCode 35) — sửa 3 lỗi on-car v1.33, push OTA, CHỜ TEST XE
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| A1 | Ghế mức OFF → `SeatComfortApplier.applySeat` gửi `state=1` (không bỏ qua), wire `onSeatLevelChanged` sơ đồ ghế | ✅ | 🚗 |
+| A2 | Text về gốc v1.32 + chỉ giảm ~70% CHIỀU CAO (2 layout); narrow seal re-pin **lần 25** (`046d23b0…`), parity 87 | ✅ | 🚗 |
+| A3 | VietMap: `hasActivityRecord(dumpsys)` — nhánh bóng chỉ launch khi VietMap CHƯA có activity (đã mở→skip); giữ cooldown 30s+inFlight | ✅ | 🚗 |
+
+Full test **1940/0** (5 module), release không debuggable/không probe. `apk/ClusterNav-1.34-release.apk` (sha256 `4bfd4705…`, bỏ 1.33 giữ 1.0).
+
+### 📋 BACKLOG — LAUNCHER (note để sau, owner cài Dudu chơi thử 1 tuần trước)
+RE launcher tham chiếu **Dudu桌面PRO** (`com.dudu.autoui`) xong — bản đồ feature-id đầy đủ ở `docs/diagnostics/dudu-launcher-hal-RE-2026-09-06.md`: cơ chế `AbsBYDAutoDevice.set(featureId,i2,i3)` + shellManage; kính-%/gạt-mưa-overhaul/đèn/cửa-cốp/sunroof-%/AC/sạc-SOC/regen/ghế + đọc dashboard. **Còn RE**: giá trị SỐ feature-id (pull framework jar), arg semantics, tầng shellManage. Chưa implement (chờ owner chốt scope sau tuần thử Dudu).
+
 ### 🚀 SHIP 2026-09-06 v1.33 (versionCode 34) — sửa 4 lỗi on-car v1.32 + 2 hạ tầng, commit + push OTA, CHỜ TEST XE
 | ID | Việc | Làm | Xe |
 |----|------|-----|-----|

@@ -28,6 +28,19 @@ class SeatComfortTest {
         assertEquals(3, SeatComfort.STATE_L2)
     }
 
+    @Test fun `OFF level is a sendable HAL turn-off command, never a skip sentinel`() {
+        // Bug on-car v1.33: tapping a seat to OFF never reached the HAL — the bulk apply path skips OFF
+        // (correct for apply-on-start: don't force every seat off on boot), so the INTERACTIVE tap must use a
+        // per-seat write that sends OFF. The contract that makes that possible: OFF (level 0) maps to a REAL,
+        // sendable HAL state (STATE_OFF = 1), NOT a sentinel meaning "do not write".
+        assertEquals(SeatComfort.STATE_OFF, SeatComfort.stateForLevel(SeatComfort.LEVEL_OFF))
+        assertEquals(1, SeatComfort.stateForLevel(SeatComfort.LEVEL_OFF))
+        // Every user level 0/1/2 maps to a distinct, sendable 1..3 state (none is skipped / out of range).
+        val states = (0..2).map { SeatComfort.stateForLevel(it) }
+        assertEquals(listOf(1, 2, 3), states)
+        states.forEach { assertTrue(it in SeatComfort.STATE_OFF..SeatComfort.STATE_L2, "state $it must be sendable 1..3") }
+    }
+
     @Test fun `seatId maps 0-based app index to 1-based HAL seatID`() {
         assertEquals(1, SeatComfort.seatId(0))   // driver
         assertEquals(2, SeatComfort.seatId(1))   // passenger

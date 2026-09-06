@@ -1235,8 +1235,9 @@ class MainActivity : Activity() {
             for (i in 0..3) setLevel(i, Prefs.seatComfortLevel(this@MainActivity, i))
             onSeatLevelChanged = { seat, level ->
                 Prefs.setSeatComfortLevel(this@MainActivity, seat, level)
-                // Auto-apply (nút "Áp dụng ngay" đã bỏ): đổi mức ⇒ ghi HAL ngay. applyNow tự no-op nếu tắt.
-                SeatComfortApplier.applyNow(this@MainActivity)
+                // Auto-apply đổi mức 1 ghế ⇒ ghi HAL NGAY cho CHÍNH ghế đó, kể cả Tắt (state=1). applySeat tự
+                // no-op nếu công tắc tắt. (Trước v1.34 gọi applyNow → đường bulk bỏ qua mức Tắt ⇒ không tắt được.)
+                SeatComfortApplier.applySeat(this@MainActivity, seat, level)
             }
         }
 

@@ -19,7 +19,9 @@ import com.byd.clusternav.modules.hal.BydHal
  *  • [applyOnStart] — gọi lúc mở app (MainActivity.onCreate) và lúc boot nền (BootSetupService). Nếu công
  *    tắc ghế TẮT → no-op. Nếu BẬT → chạy NỀN, ngủ ~5 s (chờ HAL/cabin sẵn sàng sau khởi động) rồi ghi từng
  *    ghế có mức ≠ Tắt. Chỉ ghi method của mode đang chọn (mát ↔ sưởi loại trừ nhau ở MCU).
- *  • [applyNow] — cho nút "Áp dụng ngay" trong app (không delay).
+ *  • [applyNow] — áp lại MỌI ghế có mức ≠ Tắt cho mode hiện tại (dùng khi ĐỔI CHẾ ĐỘ mát↔sưởi).
+ *  • [applySeat] — chạm 1 ghế: ghi NGAY mức mới cho CHÍNH ghế đó, **kể cả Tắt** (state=1). Sửa bug on-car v1.33
+ *    (chỉnh ghế về Tắt không tắt được vì đường bulk bỏ qua mức Tắt).
  *
  * ── An toàn (degrade-safe) ───────────────────────────────────────────────────────────────────────
  * Toàn bộ bọc `runCatching`; [BydHal.callNamedInt] cũng KHÔNG BAO GIỜ ném (ROM thiếu method / HAL từ chối →
@@ -37,8 +39,38 @@ object SeatComfortApplier {
     /** Gọi lúc mở app / boot nền. Công tắc TẮT ⇒ no-op. BẬT ⇒ ghi ghế sau ~5 s trên thread nền. */
     fun applyOnStart(ctx: Context) = launch(ctx, START_DELAY_MS, "seat-comfort-start")
 
-    /** Nút "Áp dụng ngay" — ghi ngay (không delay). Công tắc TẮT ⇒ no-op. */
+    /** Áp lại TẤT CẢ ghế có mức ≠ Tắt cho mode hiện tại (dùng khi ĐỔI CHẾ ĐỘ mát↔sưởi). Công tắc TẮT ⇒ no-op. */
     fun applyNow(ctx: Context) = launch(ctx, 0L, "seat-comfort-now")
+
+    /**
+     * Chạm 1 ghế trên sơ đồ (đổi mức) ⇒ ghi NGAY mức mới cho CHÍNH ghế đó, **kể cả Tắt** (state=1), trên thread
+     * nền, degrade-safe. Công tắc TẮT ⇒ no-op.
+     *
+     * ⚠ SỬA on-car v1.33→v1.34: trước đây chạm ghế gọi [applyNow] → [apply] (đường BULK) mà đường bulk `continue`
+     * qua mọi ghế mức Tắt (đúng cho apply-on-start: KHÔNG cưỡng bức tắt mọi ghế lúc khởi động) ⇒ chỉnh 1 ghế về
+     * **Tắt KHÔNG BAO GIỜ ghi HAL** ⇒ ghế không tắt được (mức 1/2 chạy rc=0 nhưng Tắt vô tác dụng). Đường chạm nay
+     * ghi ĐÚNG 1 ghế với `state = stateForLevel(level)` (0→1 Tắt · 1→2 · 2→3), KHÔNG bỏ qua Tắt.
+     */
+    fun applySeat(ctx: Context, seatIndex: Int, level: Int) {
+        if (!Prefs.seatComfortEnabled(ctx)) return
+        val app = ctx.applicationContext
+        Thread({
+            runCatching {
+                if (!Prefs.seatComfortEnabled(app)) return@runCatching      // owner tắt ngay sau khi chạm
+                val mode = currentMode(app)
+                val method = SeatComfort.methodFor(mode)
+                val dev = BydHal.device(BydHal.SETTING, BydHal.systemBypassContext(), BydHal.bypass(app))
+                if (dev == null) {
+                    Log.i(TAG, "SettingDevice null (off-car / no HAL) — bỏ ghi ghế $seatIndex, mode=$mode")
+                    return@runCatching
+                }
+                val seatId = SeatComfort.seatId(seatIndex)               // 0-based UI → 1-based HAL
+                val state = SeatComfort.stateForLevel(level)             // 0→1(Tắt) · 1→2 · 2→3 — KHÔNG bỏ Tắt
+                val rc = BydHal.callNamedInt(dev, method, seatId, state)
+                Log.i(TAG, "ghi ghế (chạm): $method(seatId=$seatId, state=$state) [seatIndex=$seatIndex level=$level mode=$mode] $rc")
+            }.onFailure { Log.w(TAG, "ghi 1 ghế thất bại (degrade-safe, bỏ qua)", it) }
+        }, "seat-comfort-one").start()
+    }
 
     private fun launch(ctx: Context, delayMs: Long, threadName: String) {
         if (!Prefs.seatComfortEnabled(ctx)) return
@@ -49,15 +81,20 @@ object SeatComfortApplier {
         }, threadName).start()
     }
 
-    /** Ghi thật lên HAL. Chỉ gọi từ thread nền của [launch]. Toàn bộ degrade-safe. */
+    /** Chế độ ghế hiện tại (mát ↔ sưởi) đọc từ pref; giá trị lạ ⇒ mặc định COOL (an toàn). */
+    private fun currentMode(app: Context): SeatComfort.SeatMode =
+        if (Prefs.seatComfortMode(app) == SeatComfort.SeatMode.HEAT.ordinal) SeatComfort.SeatMode.HEAT
+        else SeatComfort.SeatMode.COOL
+
+    /**
+     * Ghi thật lên HAL — đường BULK cho [applyOnStart]/[applyNow]. Chỉ gọi từ thread nền của [launch]. Toàn bộ
+     * degrade-safe. **CỐ Ý bỏ qua ghế mức Tắt** (không cưỡng bức tắt mọi ghế lúc khởi động / đổi mode); việc ghi
+     * mức Tắt cho MỘT ghế do người dùng chạm là của [applySeat].
+     */
     private fun apply(app: Context) {
         runCatching {
             if (!Prefs.seatComfortEnabled(app)) return   // owner tắt trong lúc chờ delay
-            val mode = if (Prefs.seatComfortMode(app) == SeatComfort.SeatMode.HEAT.ordinal) {
-                SeatComfort.SeatMode.HEAT
-            } else {
-                SeatComfort.SeatMode.COOL
-            }
+            val mode = currentMode(app)
             val method = SeatComfort.methodFor(mode)
             val seats = SeatComfort.seatsForModel(isHanModel(app))
             val dev = BydHal.device(BydHal.SETTING, BydHal.systemBypassContext(), BydHal.bypass(app))

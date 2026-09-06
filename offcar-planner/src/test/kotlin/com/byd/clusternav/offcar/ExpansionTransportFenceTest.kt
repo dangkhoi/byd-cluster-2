@@ -821,13 +821,28 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ lần-23 (giữ trace): activity_main.xml = dfd93e64…b37230.
          *
+         * ⚠ CẬP NHẬT 2026-09-06 (lần 25 · text về gốc, chỉ giảm chiều cao) — owner duyệt (task v134-fixes · FIX 2), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **khôi phục CỠ CHỮ về bản gốc v1.32** (owner: v1.33 thu 70% làm chữ quá nhỏ,
+         * khó đọc trên màn xe), **CHỈ giữ giảm ~70% ở chiều DỌC**. Cách làm: tái sinh layout từ nền v1.32 rồi
+         * scale ×0.7 CHỈ thuộc tính DỌC (paddingTop/Bottom · marginTop/Bottom · minHeight-dp · layout_height-dp
+         * của phần tử KHÔNG vuông); cỡ chữ (sp), dp NGANG (rộng · paddingStart/End · marginStart/End ·
+         * drawablePadding), padding tất-cả-cạnh, và cỡ icon/dot VUÔNG giữ nguyên v1.32; bốn custom view
+         * gauge/dial/sơ-đồ/preview (SpeedDial/Pm25Gauge/SeatDiagram/ClusterPreview) scale CẢ rộng+cao (giữ vuông
+         * — thuộc "chiều cao custom view → giữ 70%"). Kết quả: chữ về cỡ gốc, layout ngắn hơn rõ. GIỮ fix viền
+         * 2 nét của v1.33 (ở drawable — KHÔNG đụng). KHÔNG thêm/gỡ/đổi @+id nào ⇒ bộ id vẫn 87, parity giữ ở CẢ
+         * hai biến thể (LayoutVariantIdParityTest). `styles.xml`/`dimens.xml`/custom view sửa theo cùng nguyên
+         * tắc. `strings.xml` KHÔNG đổi. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc.
+         *
+         * Hằng cũ lần-24 (giữ trace): activity_main.xml = 1a7c90f7…d636f921.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "1a7c90f7e499909a7e8b3ad577c024eeec3421bafa37c19b574758abd636f921",
+            "app/src/main/res/layout/activity_main.xml" to "046d23b05bbbcc702990b3220bbc95aa0eb0b21a92d7d9f960f3c02b03fd8d98",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

@@ -36,6 +36,29 @@ object VietMapAutostart {
         lastRunAtMs == 0L || nowMs - lastRunAtMs >= cooldownMs
 
     /**
+     * PURE (device-free, unit-tested) — từ output của `dumpsys activity activities | grep <pkg>`, VietMap có
+     * **BẢN GHI ACTIVITY** (activity record / task / recent) trong hệ thống window chưa.
+     *
+     * ⚠ SỬA on-car v1.33→v1.34 (bóng): guard cũ chỉ bỏ launch khi VietMap đang **RESUMED** (foreground). Nhưng
+     * khi mở ClusterNav, ClusterNav mới là foreground nên VietMap KHÔNG resumed ⇒ nhánh bóng LUÔN relaunch dù
+     * VietMap đã mở sẵn (activity đã dựng) ⇒ owner thấy VietMap giật/relaunch, bóng không lên. Bóng của bản mod
+     * chỉ cần activity ĐÃ TỪNG DỰNG (đang chạy nền) — không cần resumed. Nên nếu ĐÃ có bản ghi activity ⇒ bóng đã
+     * init ⇒ KHÔNG cần launch lại.
+     *
+     * `dumpsys activity activities` liệt kê stack/task/recents của ACTIVITY (KHÔNG liệt kê service/widget), nên
+     * grep theo gói: có dòng tham chiếu component `pkg/…` (ActivityRecord{…pkg/.X}, realActivity=pkg/…,
+     * baseActivity=…pkg/…) HOẶC dòng `ActivityRecord`/`Task{`/`Hist ` kèm pkg ⇒ CÓ activity record. Output rỗng
+     * (chỉ process service/widget, không activity) ⇒ chưa init bóng ⇒ vẫn nên launch.
+     */
+    internal fun hasActivityRecord(dumpsysActivitiesGrep: String, pkg: String = PKG): Boolean {
+        if (dumpsysActivitiesGrep.isBlank()) return false
+        return dumpsysActivitiesGrep.lineSequence().any { line ->
+            line.contains("$pkg/") ||
+                (line.contains(pkg) && (line.contains("ActivityRecord") || line.contains("Task{") || line.contains("Hist ")))
+        }
+    }
+
+    /**
      * Giành 1 suất chạy: trả `true` nếu được phép tiếp tục (đánh dấu in-flight + đóng dấu thời gian). Trả
      * `false` nếu ĐANG có phiên chạy (in-flight) HOẶC còn trong [COOLDOWN_MS]. Thành công ⇒ caller PHẢI gọi
      * [finishRun] khi xong (dùng `try/finally`). `internal` để test off-car lái được trọn vòng gate.
@@ -124,19 +147,29 @@ object VietMapAutostart {
                     Log.i(TAG, "autostart CAST-default → launch VietMap ACTIVE (process đã chạy=$running)")
                 } else {
                     // SILENT background (badge tốc độ / bóng VietMap).
-                    // ⚠ BÓNG VietMap: bản mod chỉ hiện bóng lên CỤM khi VietMap Ở BACKGROUND, và cần ACTIVITY/nav đã
-                    //   mở — `pidof` chỉ biết PROCESS (service/widget) chứ KHÔNG biết activity đã mở chưa; process
-                    //   sống mà activity chưa mở ⇒ bóng KHÔNG init/không hiện (bug on-car 2026-09-05). Vì vậy khi
-                    //   BẬT BÓNG: LUÔN launch activity rồi ĐƯA VỀ NỀN (returnToSelfPkg=app-open ClusterNav / HOME=boot)
-                    //   — bất kể pidof — để bóng chắc chắn init rồi hiện khi VietMap ở nền.
+                    // ⚠ BÓNG VietMap: bản mod chỉ hiện bóng lên CỤM khi VietMap Ở BACKGROUND, và cần ACTIVITY đã
+                    //   dựng — `pidof` chỉ biết PROCESS (service/widget), KHÔNG biết activity đã mở chưa.
                     // BADGE-only: chỉ cần PROCESS sống (widget speed-limit); đã sống ⇒ GIỮ NGUYÊN (tránh churn).
                     val bubbleOn = Prefs.vmBubbleEnabled(app)
-                    if (bubbleOn || !running) {
+                    // (c) SỬA on-car v1.33→v1.34: bóng bật + VietMap ĐÃ có bản ghi activity (đã init, đang chạy nền)
+                    //   ⇒ KHÔNG relaunch. Guard `foreground` phía trên vô dụng cho ca này vì mở ClusterNav thì
+                    //   ClusterNav mới là foreground, VietMap không resumed ⇒ nhánh bóng cũ LUÔN relaunch (flash,
+                    //   bóng không lên — bug owner báo on-car). Chỉ đọc khi process đang sống; degrade-safe: đọc
+                    //   dumpsys lỗi/không nối được ⇒ hasActivity=false ⇒ rơi về hành vi cũ (vẫn launch).
+                    val hasActivity = running && runCatching {
+                        hasActivityRecord(sh("dumpsys activity activities | grep -E '$PKG'").output)
+                    }.getOrDefault(false)
+                    if (bubbleOn && hasActivity) {
+                        Log.i(TAG, "autostart silent-bg (bóng): VietMap đã có bản ghi activity trong stack (running=$running) — bỏ launch, bóng đã init (chống relaunch/flash on-car v1.33)")
+                    } else if (bubbleOn || !running) {
+                        // BẬT BÓNG (chưa có activity record) HOẶC process chưa sống: LUÔN launch activity rồi ĐƯA VỀ
+                        // NỀN (returnToSelfPkg=app-open ClusterNav / HOME=boot) — bất kể pidof — để bóng chắc chắn
+                        // init rồi hiện khi VietMap ở nền.
                         sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
                         Thread.sleep(1500)
                         if (returnToSelfPkg != null) sh("monkey -p $returnToSelfPkg -c android.intent.category.LAUNCHER 1")
                         else sh("am start -a android.intent.action.MAIN -c android.intent.category.HOME")
-                        Log.i(TAG, "autostart silent-bg → launch activity VietMap + trả nền (${returnToSelfPkg ?: "HOME"}) [bubbleOn=$bubbleOn running=$running] ⇒ VietMap ở nền để bóng hiện")
+                        Log.i(TAG, "autostart silent-bg → launch activity VietMap + trả nền (${returnToSelfPkg ?: "HOME"}) [bubbleOn=$bubbleOn running=$running hasActivity=$hasActivity] ⇒ VietMap ở nền để bóng hiện")
                     } else {
                         Log.i(TAG, "autostart silent-bg (badge-only) → VietMap process đã sống, giữ nguyên")
                     }

@@ -58,4 +58,35 @@ class VietMapAutostartGateTest {
         assertTrue(VietMapAutostart.tryBeginRun(nowMs = 1_000L + cd * 10), "far outside cooldown + not in-flight")
         VietMapAutostart.finishRun()
     }
+
+    // ── hasActivityRecord (FIX v1.33→v1.34, bubble): skip relaunch when VietMap already has an activity ──
+    // record in the stack (bubble already initialised) instead of always relaunching (flash loop on-car).
+
+    @Test fun `hasActivityRecord is false on blank dumpsys grep (process-only, no activity)`() {
+        assertFalse(VietMapAutostart.hasActivityRecord("", VietMapAutostart.PKG))
+        assertFalse(VietMapAutostart.hasActivityRecord("   \n  \n", VietMapAutostart.PKG))
+    }
+
+    @Test fun `hasActivityRecord is true for an ActivityRecord component reference`() {
+        val dump = "    * Hist  #0: ActivityRecord{9a1b u0 vn.vietmap.live/.MainActivity t42}"
+        assertTrue(VietMapAutostart.hasActivityRecord(dump, VietMapAutostart.PKG))
+    }
+
+    @Test fun `hasActivityRecord is true for realActivity and Task lines`() {
+        assertTrue(VietMapAutostart.hasActivityRecord("      realActivity=vn.vietmap.live/.ui.MapActivity", VietMapAutostart.PKG))
+        // A recents Task line references the package via A=uid:pkg (no slash) — still an activity record/task.
+        assertTrue(
+            VietMapAutostart.hasActivityRecord("  * Task{1f2e #123 type=standard A=10123:vn.vietmap.live U=0}", VietMapAutostart.PKG),
+        )
+    }
+
+    @Test fun `hasActivityRecord ignores a bare unrelated mention with no record marker`() {
+        // A stray line mentioning the package name but not an activity/task record must NOT count.
+        assertFalse(VietMapAutostart.hasActivityRecord("note: vn.vietmap.live installed", VietMapAutostart.PKG))
+    }
+
+    @Test fun `hasActivityRecord uses PKG by default`() {
+        assertTrue(VietMapAutostart.hasActivityRecord("ActivityRecord{x u0 ${VietMapAutostart.PKG}/.Main t1}"))
+        assertFalse(VietMapAutostart.hasActivityRecord(""))
+    }
 }

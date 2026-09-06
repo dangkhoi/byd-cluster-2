@@ -66,8 +66,11 @@ class SegmentedControlView @JvmOverloads constructor(
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         background = context.getDrawable(R.drawable.segment_track_bg)
-        val p = dp(2f)                                                 // mockup `.seg{padding:3px}` ×0.7
-        setPadding(p, p, p, p)
+        // v1.34 (FIX 2): restore the horizontal track inset (3dp) so segment text fits; keep the vertical inset
+        // reduced (2dp) so the control stays short — mockup `.seg{padding:3px}`.
+        val ph = dp(3f)
+        val pv = dp(2f)
+        setPadding(ph, pv, ph, pv)
     }
 
     /** Replace the segment labels. Rebuilds the child TextViews; keeps [selectedIndex] in range. */
@@ -79,9 +82,9 @@ class SegmentedControlView @JvmOverloads constructor(
             val tv = TextView(context).apply {
                 text = label
                 gravity = Gravity.CENTER
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)        // v1.34 (FIX 2): text restored (was 9f)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setPadding(dp(9f), dp(4f), dp(9f), dp(4f))            // mockup `.seg span{padding:6px 13px}` ×0.7
+                setPadding(dp(13f), dp(4f), dp(13f), dp(4f))          // v1.34: horiz 13dp restored, vert 4dp kept — mockup `.seg span{padding:6px 13px}`
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { select(index, fromUser = true) }
