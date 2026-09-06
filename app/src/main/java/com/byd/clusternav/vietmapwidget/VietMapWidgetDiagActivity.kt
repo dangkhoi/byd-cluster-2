@@ -1,6 +1,7 @@
 package com.byd.clusternav.vietmapwidget
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.widget.Toast
 import com.byd.clusternav.AdbKeys
 import com.byd.clusternav.Lang
 import com.byd.clusternav.R
+import com.byd.clusternav.ThemeMode
 import com.byd.clusternav.carexec.LocalDeviceShell
 
 class VietMapWidgetDiagActivity : Activity() {
@@ -25,6 +27,10 @@ class VietMapWidgetDiagActivity : Activity() {
 
     private val snapshotListener: (VietMapWidgetSnapshot) -> Unit = { snapshot ->
         runOnUiThread { render(snapshot) }
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(ThemeMode.wrap(newBase))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

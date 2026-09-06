@@ -13,6 +13,9 @@
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
 
+### 🚀 SHIP 2026-09-06 v1.32 (versionCode 33) — commit + merge main + push OTA, CHỜ TEST XE
+**Phiên UI lớn (trên nền 1.31):** 3 tính năng (ghế mát/sưởi tự động HAL AC · tự lọc bụi PM2.5 · chỉ báo trạng thái phím-thoại) + đại tu **Level-2 "cockpit"** (design system `Cockpit.*` khớp mockup `ui-visual-upgrade-l2.html`) + **song ngữ VI/EN** (selector Theo-xe/VI/EN) + **light mode** (selector Giao diện Theo-xe/Sáng/Tối) + hero km/h thật (SpeedProvider HAL) + fix autostart bóng VietMap. Seal narrow **lần 23**, parity **87**, full test **1894/0**, senior review APPROVED, security scan CLEAN, release APK không debuggable. `apk/ClusterNav-1.32-release.apk` (sha256 `613798b6…`). **Xe cần test:** HAL ghế (values 2/3 + Han rear ids) · PM2.5 reflection · bóng autostart · phím-thoại sau reboot · UI mới (light/dark + song ngữ) trên cụm thật.
+
 ### 🏁 CLOSING 2026-08-28 (owner chốt sản phẩm gọn) — UNCOMMITTED, CHỜ TEST XE
 **Scope chốt = 4 đường:** GMaps noti→cụm+HUD (proven) · VietMap widget→badge tốc-độ · **VietMap-mod bong-bóng→cụm (chỉnh vị trí)** · phím-thoại→trợ lý. **Gỡ HẾT** nav screen-capture/a11y VietMap+Waze + chẩn đoán.
 

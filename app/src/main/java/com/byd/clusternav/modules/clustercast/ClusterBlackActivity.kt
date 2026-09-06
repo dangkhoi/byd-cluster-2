@@ -1,11 +1,13 @@
 package com.byd.clusternav.modules.clustercast
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import com.byd.clusternav.ThemeMode
 
 /**
  * Black full-screen placeholder activity for the cluster display.
@@ -18,6 +20,10 @@ import android.view.WindowManager
  * When cast stops, this activity remains to keep projection alive (cluster stays black/ready).
  */
 class ClusterBlackActivity : Activity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(ThemeMode.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)

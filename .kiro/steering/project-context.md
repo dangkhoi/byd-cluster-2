@@ -43,7 +43,11 @@
 - `core/.../navigation/screencapture/NavWindowPump.kt` — **nhịp định kỳ** cho vòng enum cửa sổ a11y (B3.13r): một throttle 800 ms dùng chung cho CẢ đường event LẪN đường nhịp (**trần đỉnh** enum/giây không đổi; **trung bình thì tăng** — xem B3.13r-cost) · tự tắt sau 4 nhịp không thấy cửa sổ nav · mồi lại bằng `arm()` từ event a11y **và** `onServiceConnected` (hai đường độc lập vòng enum). Bệnh nó chữa KHÔNG phải "hết tươi 3 s ⇒ cụm trống" (nhịp chụp tự nuôi qua `SourceArbiter.shouldFeed(…, IMAGE)`) mà là **VÒNG TRÒN**: kênh ảnh im > `STALE_MS` ⇒ cổng `ScreenCaptureNavSource.tick` đóng, mà thứ duy nhất mở lại cổng nằm SAU chính nó.
 - `app/.../NavOutputOwner.kt` — owner đường ẢNH: quyết định push + tự assert op-39 dựng bề mặt cụm (B3.45).
 
-## 5. Trạng thái (2026-08-24)
+## 5. Trạng thái (2026-09-06)
+
+- **2026-09-06 · SHIP v1.32 OTA (versionCode 33)** — phiên UI lớn: 3 tính năng (ghế mát/sưởi tự động qua HAL AC · tự lọc bụi PM2.5 · chỉ báo trạng thái phím-thoại) + đại tu giao diện **Level-2 "cockpit"** (design system `Cockpit.*` khớp mockup `docs/specs/ui-visual-upgrade-l2.html`: hero 3 thẻ + board 2 cột grouped-row + custom view SeatDiagram/SpeedDial/Pm25Gauge/SegmentedControl/ClusterPreview) + **song ngữ VI/EN** (`Lang.t` + `BilingualLabels.localizeTree` id-free tree-walk + selector `seg_language` Theo-xe/VI/EN) + **light mode** (`values/` sáng + `values-night/` tối cùng bộ tên màu, `ThemeMode` ép uiMode qua `attachBaseContext` 5 activity, selector `seg_theme` Theo-xe/Sáng/Tối, 5 custom view đọc `@color`) + hero km/h THẬT (`SpeedProvider` HAL) + fix autostart bóng VietMap. Seal T11 narrow **lần 23** (`dfd93e64…`), parity **87** id cả 2 layout, `strings.xml` không đổi. Full test **1894/0** (5 module), senior review APPROVED (0 finding), release APK không debuggable/không bề mặt test. `apk/ClusterNav-1.32-release.apk` (sha256 `613798b6…`, bỏ 1.31 giữ 1.0). Commit author KhoiPD → merge `main` → OTA. **CHỜ TEST XE**: HAL ghế (values 2/3 + Han rear ids) · PM2.5 reflection · bóng autostart · phím-thoại sau reboot · UI mới (light/dark + song ngữ) trên cụm thật.
+
+## 5.old. Trạng thái (2026-08-24)
 - **Branch** `feat/speed-limit-badge-hal-hud` · **checkpoint `28d6843` (2026-08-26) đã COMMIT LOCAL** toàn bộ v1.16→v1.27 (57 file, scan CLEAN) — **chưa push** (chờ owner OK). Trước đó push xa nhất `40474af` (v1.13). **main = `f7843c0`** — không đụng khi chưa PASS on-car. Từ mốc này: **commit per-version** để bisect được.
 - **APK đã giao owner**: v1.13 (mốc) → v1.14 (badge+phím thoại+gán nhiều phím) → **v1.15 code 16** `ClusterNav2.0-v1.15-hud-vietmap-waze-20260824.apk` ← **chờ owner test trên xe**.
 - **Test [ĐO]**: `./gradlew test --rerun-tasks --continue` ⇒ **2126 bài, 0 lỗi** cả 5 module. `org.gradle.parallel=true` bật 08-24 ⇒ 127 s (trước 200 s). Bẫy E6 (test tự phá seal) ĐÃ VÁ — không cần `git checkout` seal nữa.
@@ -67,6 +71,7 @@
   - **APK giao owner** ở `~/Desktop/ClusterNav-oncar-test/`: **ClusterNav2.0-v1.29-release** (code 30, bump từ 1.28/29) + **VietMap-3.4.0-mod-cluster** (universal-mod3, receiver posrx + fix mapping, ký `mod2.keystore`). **CHỜ test trên xe** rồi mới commit (chưa commit, chưa scan).
 
 ## 6. Cách làm việc — owner chốt 2026-08-24
+- **Danh tính commit (dự án CÁ NHÂN — owner chốt 2026-09-06):** commit/push để NGUYÊN git config repo = **`Đăng Khôi <dangkhoi@users.noreply.github.com>`** (repo cá nhân GitHub `dangkhoi`). **KHÔNG** override bằng danh tính công việc `KhoiPD <KhoiPD@fpt.com>`; KHÔNG thêm `-c user.name`/`-c user.email`/`--author` KhoiPD. Rule global `workflow.md §0` (KhoiPD) CHỈ cho repo công việc — repo này override. (Commit `28d6843…20b77dc` lỡ mang KhoiPD; `20b77dc` đã amend về dangkhoi 2026-09-06.)
 - **Báo cáo bằng ngôn ngữ người dùng**, KHÔNG trộn thuật ngữ/tên file/mã việc vào câu văn (owner: *"viết kiểu 50/50 thế này dọc không hiểu gì cả"*).
 - **Tài liệu CHỈ lưu local** — cấm publish claude.ai artifact / dịch vụ ngoài, kể cả private.
 - Nhiều agent ⇒ chạy **TUẦN TỰ**, không song song trên cùng thư mục dự án (tranh khoá gradle).

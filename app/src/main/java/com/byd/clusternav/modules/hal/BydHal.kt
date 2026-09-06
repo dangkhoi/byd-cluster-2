@@ -29,6 +29,14 @@ object BydHal {
     const val CHARGING = "android.hardware.bydauto.charging.BYDAutoChargingDevice"
     const val ENERGY = "android.hardware.bydauto.energy.BYDAutoEnergyDevice"
     const val STATISTIC = "android.hardware.bydauto.statistic.BYDAutoStatisticDevice"
+    // Điều hoà / tiện-nghi ghế (device 1023 = ghế làm-mát/sưởi). Dùng CHUNG hạ tầng device()/setInt() —
+    // KHÔNG chế reflection mới; feature-id ghế + value ở :core `com.byd.clusternav.comfort.SeatComfort`.
+    const val AC = "android.hardware.bydauto.ac.BYDAutoAcDevice"
+    // Cảm biến bụi mịn PM2.5 (device 1008) — ĐỌC mức bụi (getPM2p5Level()[0]). Dùng CHUNG hạ tầng device()
+    // + reflection getter; các method GHI "tự lọc" (enablePurificationFunctionPrompt/setAutoCleanAirState/
+    // setQuickCleanAirState) nằm trên AC device, CHỈ có trên ROM xe (KHÔNG trong SDK jar) ⇒ gọi qua reflection
+    // ở com.byd.clusternav.comfort.Pm25FilterApplier — KHÔNG thêm lời gọi biên dịch cho method ROM-only ở đây.
+    const val PM2P5 = "android.hardware.bydauto.pm2p5.BYDAutoPM2p5Device"
     // Nguồn HƯỚNG cho dead-reckoning (recon: getInstance được không trên ROM này?): góc lái + tốc độ 4 bánh.
     const val BODYWORK = "android.hardware.bydauto.bodywork.BYDAutoBodyworkDevice"   // getSteeringWheelValue (±780°)
     const val SPECIAL = "android.hardware.bydauto.special.BYDAutoSpecialDevice"      // getWheelSpeed(area) 4 bánh → yaw

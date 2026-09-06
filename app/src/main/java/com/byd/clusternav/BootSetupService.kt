@@ -72,6 +72,12 @@ class BootSetupService : Service() {
                 // sau khi start thì VỀ HOME (không đè launcher — app mình vốn không foreground trên boot). Đồng bộ
                 // để FGS giữ tiến trình sống tới khi xong. Gate badgeEnabled nằm trong runNow.
                 VietMapAutostart.runNow(applicationContext, returnToSelfPkg = null)
+                // Ghế: áp mức làm-mát/sưởi lên HAL ~5s sau boot nếu công tắc BẬT (headless boot cũng tự áp,
+                // giống app tham chiếu). Gate seatComfortEnabled + degrade-safe nằm trong applyOnStart.
+                com.byd.clusternav.comfort.SeatComfortApplier.applyOnStart(applicationContext)
+                // Lọc bụi mịn PM2.5: bật lọc-liên-tục (không popup) ~5s sau boot nếu công tắc BẬT. Gate
+                // pm25FilterEnabled + degrade-safe nằm trong applyOnStart.
+                com.byd.clusternav.comfort.Pm25FilterApplier.applyOnStart(applicationContext)
                 // F4e boot (owner 08-25): boot headless KHÔNG mở MainActivity ⇒ onCreate không chạy ⇒ trợ lý
                 // hệ thống chưa được đặt = Gemini ⇒ hold-mic → keyevent 231 route sai. Đặt luôn ở đây NẾU có
                 // binding Gemini, để hold-mic → Gemini ready NGAY sau nổ máy mà KHÔNG cần mở app (owner

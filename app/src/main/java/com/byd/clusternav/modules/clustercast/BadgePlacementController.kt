@@ -1,7 +1,6 @@
 package com.byd.clusternav.modules.clustercast
 
 import android.app.Activity
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.Switch
@@ -18,7 +17,7 @@ import com.byd.clusternav.vietmapwidget.VietMapWidgetBridge
 
 /**
  * Wires the Cluster-Cast card's "speed badge on the cluster" block: the visual [BadgePlacementView],
- * the size slider, the preview/reset buttons, and the VietMap bind-status line. Extracted from
+ * the size slider, and the VietMap bind-status line. Extracted from
  * [MainActivityCastController] so both files stay thin (< 500 LOC) — this owns ONLY the badge-placement +
  * bind-status UI; the speed-source spinner and the VietMap-diag button keep their existing MainActivity
  * listeners (same ids, just relocated into this card).
@@ -111,25 +110,8 @@ internal class BadgePlacementController(private val activity: Activity) {
             })
         }
 
-        // Preview on the cluster (force-show 50 on the shared overlay); Reset to defaults.
-        activity.findViewById<Button>(R.id.btn_badge_preview)?.setOnClickListener {
-            NavigationSpeedSignOwner.get(activity.applicationContext).debugForceBadge(50)
-        }
-        activity.findViewById<Button>(R.id.btn_badge_reset)?.setOnClickListener { resetBadge() }
-
         bindStatus = activity.findViewById(R.id.txt_speed_source_bind)
         refreshBindStatus()
-    }
-
-    private fun resetBadge() {
-        Prefs.setBadgeCenterX(activity, Prefs.BADGE_DEFAULT_CENTER_X)
-        Prefs.setBadgeCenterY(activity, Prefs.BADGE_DEFAULT_CENTER_Y)
-        Prefs.setBadgeSizeDp(activity, BadgeLayout.SIZE_DEFAULT_DP)
-        view?.setBadgeSizeCluster(badgeSizePx())
-        view?.setBadgeCenterCluster(Prefs.badgeCenterX(activity), Prefs.badgeCenterY(activity))
-        activity.findViewById<SeekBar>(R.id.seek_badge_size)?.progress =
-            BadgeLayout.SIZE_DEFAULT_DP - BadgeLayout.SIZE_MIN_DP
-        NavigationSpeedSignOwner.get(activity.applicationContext).debugRefreshBadgeLayout()
     }
 
     /**

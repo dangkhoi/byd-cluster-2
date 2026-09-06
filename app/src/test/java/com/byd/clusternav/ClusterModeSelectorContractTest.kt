@@ -10,8 +10,9 @@ import org.junit.jupiter.api.Test
  * TASK 4 (R3 · docs/specs/clusternav-closeout-1.28.html) — the cluster nav-display selector is reduced from
  * four options (Đơn giản / Toàn màn hình / Màn hình nhỏ / OFF) to ON/OFF, because on-car only OFF ever changed
  * anything (the 3 layout modes hit the no-root wall and all render the same centre). This is a source-inspection
- * contract (the spinner needs Android to run), mirroring [AccessibilityForceBindTest] and
- * [HeadlessAutostartContractTest]: it locks the MainActivity spinner shape, the Prefs default +
+ * contract (the control needs Android to run), mirroring [AccessibilityForceBindTest] and
+ * [HeadlessAutostartContractTest]: it locks the MainActivity cluster-mode control shape (Level-2:
+ * SegmentedControlView `seg_cluster_mode`, replacing the old Spinner), the Prefs default +
  * FULL/SMALL→SIMPLE read-migration, the retained back-compat constants, and the layout labels.
  */
 class ClusterModeSelectorContractTest {
@@ -31,8 +32,8 @@ class ClusterModeSelectorContractTest {
     @Test
     fun `spinner offers exactly two options mapped to SIMPLE and OFF`() {
         assertTrue(
-            mainActivity.contains("val clusterModes = arrayOf(\"Bật (Giữa + ETA)\", \"Tắt\")"),
-            "the selector offers exactly ON/OFF (no dead 3-mode layout buttons)",
+            mainActivity.contains("val clusterModes = arrayOf(Lang.t(\"Giữa + ETA\", \"Centre + ETA\"), Lang.t(\"Tắt\", \"Off\"))"),
+            "the selector offers exactly ON/OFF (no dead 3-mode layout buttons), now bilingual via Lang.t",
         )
         assertTrue(
             mainActivity.contains("val clusterModeValues = intArrayOf(Prefs.NAV_SCREEN_FULL, Prefs.NAV_SCREEN_OFF)"),
@@ -47,7 +48,7 @@ class ClusterModeSelectorContractTest {
     @Test
     fun `selection migrates any non-OFF stored pref to the ON index`() {
         assertTrue(
-            mainActivity.contains("setSelection(if (Prefs.navClusterScreenMode(this) == Prefs.NAV_SCREEN_OFF) 1 else 0)"),
+            mainActivity.contains("selectedIndex = if (Prefs.navClusterScreenMode(this@MainActivity) == Prefs.NAV_SCREEN_OFF) 1 else 0"),
             "OFF → index 1 (Tắt); any non-OFF value (incl. legacy FULL/SMALL) → index 0 (Bật)",
         )
     }

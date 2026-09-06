@@ -20,22 +20,46 @@ object Lang {
         EN("en", "English"),
     }
 
+    /**
+     * Lựa chọn ngôn ngữ 3-cách của người dùng, LƯU THÔ (không giải nghĩa):
+     *  • [AUTO] — theo locale máy/xe (máy tiếng Việt → VI, còn lại → EN). Mặc định lần đầu.
+     *  • [VI] / [EN] — người dùng chốt cứng một thứ tiếng.
+     * `code` là chuỗi lưu vào SharedPreferences (cùng khoá [K] như trước). Giá trị `vi`/`en` cũ vẫn hợp lệ →
+     * ánh xạ về [VI]/[EN]; mọi giá trị khác / null → [AUTO] (tương thích ngược).
+     */
+    enum class Choice(val code: String) {
+        AUTO("auto"),
+        VI("vi"),
+        EN("en"),
+    }
+
     private const val PREF = "clusternav_lang"
     private const val K = "lang"
 
     @Volatile private var cache: L? = null
 
-    /** Nạp lựa chọn ngôn ngữ vào cache. Gọi ở đầu `onCreate` của mỗi Activity, TRƯỚC khi dựng UI. */
+    /** Nạp ngôn ngữ ĐÃ GIẢI NGHĨA vào cache. Gọi ở đầu `onCreate` của mỗi Activity, TRƯỚC khi dựng UI. */
     fun load(ctx: Context): L {
         cache?.let { return it }
-        val sp = ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-        val saved = sp.getString(K, null)
-        val l = L.entries.firstOrNull { it.code == saved } ?: defaultFor(ctx)
+        val l = resolve(ctx, choice(ctx))
         cache = l
         return l
     }
 
-    /** Lần đầu chạy: đoán theo locale máy — máy tiếng Việt → VI, còn lại → EN. */
+    /** Lựa chọn THÔ đã lưu (mặc định [Choice.AUTO]). Đọc trực tiếp pref — dùng để seed selector. */
+    fun choice(ctx: Context): Choice {
+        val saved = ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString(K, null)
+        return Choice.entries.firstOrNull { it.code == saved } ?: Choice.AUTO
+    }
+
+    /** Giải nghĩa một [Choice] thành ngôn ngữ cụ thể ([Choice.AUTO] → theo locale máy). */
+    private fun resolve(ctx: Context, choice: Choice): L = when (choice) {
+        Choice.VI -> L.VI
+        Choice.EN -> L.EN
+        Choice.AUTO -> defaultFor(ctx)
+    }
+
+    /** Lần đầu chạy / AUTO: đoán theo locale máy — máy tiếng Việt → VI, còn lại → EN. */
     private fun defaultFor(ctx: Context): L =
         if (runCatching {
                 ctx.resources.configuration.locales[0].language
@@ -43,11 +67,15 @@ object Lang {
 
     fun cur(ctx: Context): L = load(ctx)
 
-    fun set(ctx: Context, l: L) {
+    /** Lưu lựa chọn 3-cách THÔ + cập nhật cache sang ngôn ngữ đã giải nghĩa. Activity gọi `recreate()` sau đó. */
+    fun setChoice(ctx: Context, choice: Choice) {
         ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-            .edit().putString(K, l.code).apply()
-        cache = l
+            .edit().putString(K, choice.code).apply()
+        cache = resolve(ctx, choice)
     }
+
+    /** Tương thích ngược: đặt cứng một thứ tiếng = một [Choice] không-AUTO. */
+    fun set(ctx: Context, l: L) = setChoice(ctx, if (l == L.EN) Choice.EN else Choice.VI)
 
     fun toggle(ctx: Context): L {
         val next = if (cur(ctx) == L.VI) L.EN else L.VI

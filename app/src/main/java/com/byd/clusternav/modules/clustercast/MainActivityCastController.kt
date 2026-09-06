@@ -258,43 +258,43 @@ internal class MainActivityCastController(private val activity: Activity) {
         val btnRight = activity.findViewById<Button>(R.id.cast_zone_right)
         when (state) {
             is SimpleCastState.CastingFull -> {
-                btnFull.text = Lang.t("▣ Đang chiếu: ${state.targetPkg.substringAfterLast('.')}", "▣ Casting: ${state.targetPkg.substringAfterLast('.')}")
+                btnFull.text = Lang.t("Đang chiếu: ${state.targetPkg.substringAfterLast('.')}", "Casting: ${state.targetPkg.substringAfterLast('.')}")
                 btnFull.setBackgroundResource(R.drawable.btn_warning_outline)
                 btnLeft.isEnabled = false
                 btnRight.isEnabled = false
             }
             is SimpleCastState.CastingSplit -> {
-                btnFull.text = Lang.t("▣ Chiếu full cụm", "▣ Cast full")
+                btnFull.text = Lang.t("Chiếu full cụm", "Cast full")
                 btnFull.setBackgroundResource(R.drawable.btn_primary)
                 btnFull.isEnabled = false
                 val leftSlot = state.left
                 btnLeft.text = if (leftSlot != null)
-                    Lang.t("◧ ${leftSlot.pkg.substringAfterLast('.')}", "◧ ${leftSlot.pkg.substringAfterLast('.')}")
-                else Lang.t("◧ Trái", "◧ Left")
+                    Lang.t("${leftSlot.pkg.substringAfterLast('.')}", "${leftSlot.pkg.substringAfterLast('.')}")
+                else Lang.t("Trái", "Left")
                 val rightSlot = state.right
                 btnRight.text = if (rightSlot != null)
-                    Lang.t("◨ ${rightSlot.pkg.substringAfterLast('.')}", "◨ ${rightSlot.pkg.substringAfterLast('.')}")
-                else Lang.t("◨ Phải", "◨ Right")
+                    Lang.t("${rightSlot.pkg.substringAfterLast('.')}", "${rightSlot.pkg.substringAfterLast('.')}")
+                else Lang.t("Phải", "Right")
                 btnLeft.isEnabled = true
                 btnRight.isEnabled = true
             }
             is SimpleCastState.Idle -> {
-                btnFull.text = Lang.t("▣ Chiếu full cụm", "▣ Cast full")
+                btnFull.text = Lang.t("Chiếu full cụm", "Cast full")
                 btnFull.setBackgroundResource(R.drawable.btn_primary)
                 btnFull.isEnabled = true
-                btnLeft.text = Lang.t("◧ Trái", "◧ Left")
+                btnLeft.text = Lang.t("Trái", "Left")
                 btnLeft.isEnabled = true
                 btnLeft.setBackgroundResource(R.drawable.btn_outline)
-                btnRight.text = Lang.t("◨ Phải", "◨ Right")
+                btnRight.text = Lang.t("Phải", "Right")
                 btnRight.isEnabled = true
                 btnRight.setBackgroundResource(R.drawable.btn_outline)
             }
             else -> {
-                btnFull.text = Lang.t("▣ Chiếu full cụm", "▣ Cast full")
+                btnFull.text = Lang.t("Chiếu full cụm", "Cast full")
                 btnFull.isEnabled = false
-                btnLeft.text = Lang.t("◧ Trái", "◧ Left")
+                btnLeft.text = Lang.t("Trái", "Left")
                 btnLeft.isEnabled = false
-                btnRight.text = Lang.t("◨ Phải", "◨ Right")
+                btnRight.text = Lang.t("Phải", "Right")
                 btnRight.isEnabled = false
             }
         }

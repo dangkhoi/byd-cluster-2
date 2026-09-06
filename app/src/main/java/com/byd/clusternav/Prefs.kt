@@ -361,6 +361,29 @@ object Prefs {
         p.edit().putInt(K_BADGE_CENTER_X, ccx).putInt(K_BADGE_CENTER_Y, ccy).apply()
     }
 
+    // ─── Ghế: làm mát / sưởi tự động (spec seat-comfort-auto) ────────────────────────────────────
+    // MẶC ĐỊNH TẮT — cài mới KHÔNG làm gì (không đụng HAL) tới khi owner tự bật. `mode` int: 0=COOL (làm
+    // mát, mặc định), 1=HEAT (sưởi) — khớp SeatComfort.SeatMode.ordinal. `level` mỗi ghế: 0=Tắt/1=Mức1/2=Mức2.
+    // Áp bằng SeatComfortApplier (~5s sau khi mở app / boot). Làm mát ↔ sưởi loại trừ nhau (xe reset cái kia).
+    private const val K_SEAT_ENABLED = "seat_comfort_enabled"
+    private const val K_SEAT_MODE = "seat_comfort_mode"
+    fun seatComfortEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_SEAT_ENABLED, false)
+    fun setSeatComfortEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_SEAT_ENABLED, v).apply()
+    fun seatComfortMode(ctx: Context): Int = sp(ctx).getInt(K_SEAT_MODE, 0)               // 0=COOL default
+    fun setSeatComfortMode(ctx: Context, v: Int) = sp(ctx).edit().putInt(K_SEAT_MODE, v).apply()
+    fun seatComfortLevel(ctx: Context, seatIndex: Int): Int = sp(ctx).getInt("seat_level_$seatIndex", 0)
+    fun setSeatComfortLevel(ctx: Context, seatIndex: Int, v: Int) =
+        sp(ctx).edit().putInt("seat_level_$seatIndex", v).apply()
+
+    // ─── Lọc bụi mịn PM2.5 tự động (spec pm25-auto-filter) ───────────────────────────────────────
+    // MẶC ĐỊNH TẮT — cài mới KHÔNG đụng HAL tới khi owner tự bật. BẬT ⇒ Pm25FilterApplier gọi
+    // enablePurificationFunctionPrompt(0)+setAutoCleanAirState(1) (~5s sau mở app / boot) để xe tự lọc
+    // LIÊN TỤC, KHÔNG hiện popup; TẮT ⇒ setAutoCleanAirState(0)+enablePurificationFunctionPrompt(1) (khôi
+    // phục). KHÔNG có ngưỡng chỉnh trong UI (dùng Pm25Filter.DEFAULT_THRESHOLD=HEAVY cho lọc-ngay lúc bật).
+    private const val K_PM25_ENABLED = "pm25_filter_enabled"
+    fun pm25FilterEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_PM25_ENABLED, false)
+    fun setPm25FilterEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_PM25_ENABLED, v).apply()
+
     // Toggle theo module (key namespaced "mod_" — không thể đụng các key lõi ở trên). Mặc định TẮT
     // (experiment phải bật tay). Key mồ côi sau khi xoá module = dead data vô hại, không cần dọn.
     fun moduleEnabled(ctx: Context, title: String): Boolean =

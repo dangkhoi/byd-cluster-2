@@ -65,17 +65,22 @@ object VietMapAutostart {
                     sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
                     Log.i(TAG, "autostart CAST-default → launch VietMap ACTIVE (process đã chạy=$running)")
                 } else {
-                    // SILENT background (badge/bóng): chỉ cần PROCESS VietMap sống (widget/bong bóng). Đã sống ⇒ GIỮ
-                    // NGUYÊN (không đưa ra trước). Chưa sống ⇒ start rồi TRẢ VỀ NỀN (returnToSelfPkg = app-open đang
-                    // xem ClusterNav; null = boot ⇒ HOME) — KHÔNG để VietMap đè foreground. ClusterNav vốn chạy nền.
-                    if (running) {
-                        Log.i(TAG, "autostart silent-bg → VietMap process đã sống, giữ nguyên (không đưa ra trước)")
-                    } else {
+                    // SILENT background (badge tốc độ / bóng VietMap).
+                    // ⚠ BÓNG VietMap: bản mod chỉ hiện bóng lên CỤM khi VietMap Ở BACKGROUND, và cần ACTIVITY/nav đã
+                    //   mở — `pidof` chỉ biết PROCESS (service/widget) chứ KHÔNG biết activity đã mở chưa; process
+                    //   sống mà activity chưa mở ⇒ bóng KHÔNG init/không hiện (bug on-car 2026-09-05). Vì vậy khi
+                    //   BẬT BÓNG: LUÔN launch activity rồi ĐƯA VỀ NỀN (returnToSelfPkg=app-open ClusterNav / HOME=boot)
+                    //   — bất kể pidof — để bóng chắc chắn init rồi hiện khi VietMap ở nền.
+                    // BADGE-only: chỉ cần PROCESS sống (widget speed-limit); đã sống ⇒ GIỮ NGUYÊN (tránh churn).
+                    val bubbleOn = Prefs.vmBubbleEnabled(app)
+                    if (bubbleOn || !running) {
                         sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
                         Thread.sleep(1500)
                         if (returnToSelfPkg != null) sh("monkey -p $returnToSelfPkg -c android.intent.category.LAUNCHER 1")
                         else sh("am start -a android.intent.action.MAIN -c android.intent.category.HOME")
-                        Log.i(TAG, "autostart silent-bg → VietMap chưa chạy, started + trả nền (${returnToSelfPkg ?: "HOME"})")
+                        Log.i(TAG, "autostart silent-bg → launch activity VietMap + trả nền (${returnToSelfPkg ?: "HOME"}) [bubbleOn=$bubbleOn running=$running] ⇒ VietMap ở nền để bóng hiện")
+                    } else {
+                        Log.i(TAG, "autostart silent-bg (badge-only) → VietMap process đã sống, giữ nguyên")
                     }
                 }
                 Unit

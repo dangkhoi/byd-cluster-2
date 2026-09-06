@@ -1,6 +1,7 @@
 package com.byd.clusternav
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -27,6 +28,10 @@ class ClusterNavActivity : Activity() {
     private var demo = false
     private val demoHandler = Handler(Looper.getMainLooper())
     private var demoDist = 800
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(ThemeMode.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

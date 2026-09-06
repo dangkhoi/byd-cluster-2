@@ -3,6 +3,7 @@ package com.byd.clusternav.modules.clustercast
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.Button
@@ -11,6 +12,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.byd.clusternav.Lang
 import com.byd.clusternav.Prefs
+import com.byd.clusternav.ThemeMode
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastState
 import com.byd.clusternav.speedbadge.BadgeLayout
@@ -25,6 +27,10 @@ class DiagActivity : Activity() {
     private lateinit var report: TextView
     private lateinit var status: TextView
     private lateinit var badgeInfo: TextView
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(ThemeMode.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

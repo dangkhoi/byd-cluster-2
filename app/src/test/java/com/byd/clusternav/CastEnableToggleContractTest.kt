@@ -167,12 +167,42 @@ class CastEnableToggleContractTest {
             assertTrue(xml.contains("@+id/cast_body"), "$name: collapsible cast_body present")
             assertTrue(xml.contains("@+id/txt_cast_disabled_hint"), "$name: disabled hint present")
             assertTrue(xml.contains("@+id/btn_check_update"), "$name: update button still present")
-            // Update button sits AFTER the recovery block (i.e. after the body content) so it stays
-            // visible when cast_body is hidden.
+            // Option B (docs/specs/ui-redesign-options.html): the update button moved OUT of the Cast card
+            // into its own top-level "Hệ thống" card. The ORIGINAL INTENT — it stays reachable when Cast is
+            // OFF — is preserved (strengthened) by asserting it is NOT inside the collapsible cast_body (the
+            // block the master switch hides). The old "after cast_recovery_toggle" positional check no longer
+            // holds now that recovery lives in the separate "Nâng cao" card.
+            val bodyRange = castBodyRange(xml)
+            val updateIdx = xml.indexOf("@+id/btn_check_update")
             assertTrue(
-                xml.indexOf("@+id/btn_check_update") > xml.indexOf("@+id/cast_recovery_toggle"),
-                "$name: update button is placed after the Cast body (stays reachable when Cast is OFF)",
+                updateIdx !in bodyRange,
+                "$name: update button must sit OUTSIDE cast_body so it stays reachable when Cast is OFF",
             )
         }
+    }
+
+    /** Range of the `cast_body` `<LinearLayout>` element (matches nested LinearLayouts by depth). */
+    private fun castBodyRange(xml: String): IntRange {
+        val idIdx = xml.indexOf("@+id/cast_body\"")
+        require(idIdx >= 0) { "missing cast_body" }
+        val open = xml.lastIndexOf("<LinearLayout", idIdx)
+        require(open >= 0) { "cast_body open tag not found" }
+        var i = open
+        var depth = 0
+        while (i < xml.length) {
+            val lt = xml.indexOf('<', i)
+            if (lt < 0) break
+            when {
+                xml.startsWith("</LinearLayout", lt) -> {
+                    depth--
+                    val gt = xml.indexOf('>', lt)
+                    if (depth == 0) return open until (gt + 1)
+                    i = gt + 1
+                }
+                xml.startsWith("<LinearLayout", lt) -> { depth++; i = lt + "<LinearLayout".length }
+                else -> i = lt + 1
+            }
+        }
+        error("cast_body close tag not found")
     }
 }

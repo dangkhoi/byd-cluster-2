@@ -591,13 +591,230 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ (giữ lại để trace): activity_main.xml = 7d283550…b5ae15.
          *
+         * ⚠ CẬP NHẬT 2026-09-03 (lần 10) — owner duyệt (task seat-comfort-auto), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm mục "Ghế: làm mát / sưởi tự động"** (spec `seat-comfort-auto`) NGAY
+         * SAU khối voice-key ở cột trái, ở CẢ hai biến thể layout (portrait + `layout-w960dp`; xe render bản
+         * rộng — bài học F3 P0). Thêm 29 id (parity giữ bởi LayoutVariantIdParityTest): `txt_seat_comfort_title`
+         * · `txt_seat_comfort_hint` · `switch_seat_comfort_enabled` · `seat_comfort_mode`+`seat_mode_cool`/
+         * `seat_mode_heat` · `seat_comfort_grid` · `seat_rear_row` · `seatN_label`/`seatN_group`/`seatN_off`/
+         * `seatN_l1`/`seatN_l2` (N=0..3) · `btn_seat_comfort_apply`. Chế độ TOÀN CỤC làm mát ↔ sưởi (loại trừ) +
+         * mức từng ghế (Tắt/Mức 1/Mức 2); hiện 2 ghế (Seal) hay 4 ghế (Han). `strings.xml` KHÔNG đổi (nhãn đặt
+         * lúc chạy qua `Lang.t`), nên hằng strings.xml giữ nguyên. Chỉ bản dọc bị pin hash ở đây nên chỉ cập
+         * nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 6369e497…b2dfb2.
+         *
+         * ⚠ CẬP NHẬT 2026-09-04 (lần 11) — owner duyệt (task pm25-auto-filter), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm mục "Tự lọc bụi mịn (PM2.5)"** (spec `pm25-auto-filter`) NGAY SAU
+         * card ghế ở cột trái, ở CẢ hai biến thể layout (portrait card riêng · `layout-w960dp` inline sau
+         * divider; xe render bản rộng). Thêm 3 id (parity giữ bởi LayoutVariantIdParityTest):
+         * `txt_pm25_title` · `switch_pm25_filter` · `txt_pm25_level`. Một công tắc bật/tắt (mặc định TẮT) +
+         * nhãn mức bụi hiện tại (đọc `getPM2p5Level` device 1008 → nhãn VI; off-car "—"). Bật → xe tự lọc
+         * LIÊN TỤC không popup qua `BYDAutoAcDevice` (reflection: enablePurificationFunctionPrompt(0) +
+         * setAutoCleanAirState(1)). `strings.xml` KHÔNG đổi (nhãn đặt lúc chạy qua `Lang.t`), nên hằng
+         * strings.xml giữ nguyên. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng
+         * (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = c53e73c2…5c4c.
+         *
+         * ⚠ CẬP NHẬT 2026-09-04 (lần 12) — owner duyệt (task impl-vk-status), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm CHỈ BÁO TRẠNG THÁI phím-thoại + nút "Kiểm tra / Sửa ngay"** trong
+         * khối voice-key ở cột trái, NGAY SAU `switch_voicekey_enabled`, ở CẢ hai biến thể layout (portrait +
+         * `layout-w960dp`; xe render bản rộng). Thêm 2 id (parity giữ bởi LayoutVariantIdParityTest):
+         * `txt_voicekey_status` (dòng trạng thái đọc `NavAccessibilitySource.connected` — service Hỗ trợ đã
+         * BOUND chưa; sau reboot thường ENABLED-nhưng-CHƯA-bound ⇒ phím rơi về chức năng gốc) · `btn_voicekey_recheck`
+         * (nút REUSE `NavConnect.grantAccessibility(reset=true)` — đúng đường heal của toggle OFF→ON, KHÔNG đổi
+         * grant logic). Nhãn + màu (xám/xanh/đỏ) đặt lúc chạy qua `Lang.t` + `setTextColor`. `strings.xml` KHÔNG
+         * đổi (đang byte-seal) nên hằng strings.xml giữ nguyên. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật
+         * hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 27730837…b6ff.
+         *
+         * ⚠ CẬP NHẬT 2026-09-04 (lần 13) — owner duyệt (task impl-ui-redesign-b), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **tái tổ chức UI sang "Option B"** (docs/specs/ui-redesign-options.html):
+         * gom mọi tính năng thành 9 card có HÀNG TIÊU ĐỀ luôn hiện + THÂN GẬP được trên MỘT màn ngang. Chỉ đổi
+         * TRÌNH BÀY + auto-apply, KHÔNG đụng pipeline/grant/runtime: (1) BỎ hai nút "Áp dụng"
+         * `btn_seat_comfort_apply` + `btn_vm_pos_apply` (owner: "chỉnh xong là lưu, nút Áp dụng vô nghĩa") — ghế
+         * auto-apply trong listener đổi mức/chế độ, bóng VietMap gửi ngay khi thả kéo-thả ⇒ bộ id 97→95, parity
+         * giữ ở CẢ hai biến thể (LayoutVariantIdParityTest); (2) DỜI card: Biển báo tốc độ + Bóng VietMap ra khỏi
+         * `cast_body` thành card riêng, `cb_headless_autostart` + `btn_check_update` sang card "Hệ thống", recovery
+         * (cast_recovery_*) + `btn_nav_stop` sang card "Nâng cao"; (3) cơ chế gập tái dùng mẫu
+         * `cast_recovery_toggle` nhưng dùng `android:tag` (findViewWithTag) để KHÔNG thêm @+id nào. `strings.xml`
+         * KHÔNG đổi (mọi chữ mới đặt lúc chạy qua `Lang.t`), nên hằng strings.xml giữ nguyên. Chỉ bản dọc bị pin
+         * hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = f0124377…856c.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 14) — owner duyệt (task ui-visual-upgrade-l2 · Stage 2a), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **Level-2 UI Stage 2a — ô icon gradient cho mỗi thẻ tính năng**: thêm 9
+         * `ImageView` "tile" (34dp, nền gradient bo góc 10dp `tile_*` + icon vector trắng `ic_*_g`, `scaleType`
+         * center, padding 6dp) làm CON ĐẦU TIÊN của hàng tiêu đề mỗi thẻ — `ic_nav` · `ic_cast` · `ic_mic` ·
+         * `ic_badge` · `ic_bubble` · `ic_seat` · `ic_dust` · `ic_sys` · `ic_adv`; hai thẻ "Hệ thống"/"Nâng cao"
+         * (tiêu đề trần, không có hàng ngang) được bọc thêm một `LinearLayout` ngang để chứa tile. Đồng thời sửa
+         * STYLE hai nút phím-thoại: `btn_voicekey_learn` (thêm nền `btn_outline` + chữ `@color/brand` +
+         * `textAllCaps=false`) và `btn_voicekey_add` (chữ `@color/brand` — đã có sẵn). CHỈ THÊM id mới (thuần
+         * cộng), KHÔNG gỡ/đổi id nào ⇒ bộ id 95→104, parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest).
+         * Không đụng `.kt`/pipeline (tile thuần hiển thị, MainActivity không findViewById các id này).
+         * `strings.xml` KHÔNG đổi. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng
+         * (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 1623d16d…485a.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 15) — owner duyệt (task ui-visual-upgrade-l2 · Stage 2b — gỡ emoji thừa), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **Level-2 UI Stage 2b — gỡ tiền tố EMOJI thừa ở tiêu đề thẻ**: sau khi
+         * Stage 2a (lần 14) thêm ô icon gradient cho mỗi thẻ, emoji dẫn đầu trong `android:text` bị TRÙNG với
+         * icon tile ⇒ gỡ emoji + khoảng trắng đứng đầu 7 tiêu đề thẻ (🧭 Navigation + HUD · 📺 Cluster Cast ·
+         * 🎙 Nút vật lý → Trợ lý giọng nói · 🚦 Biển báo tốc độ · 🫧 Bóng VietMap trên cụm · ⚙ Hệ thống ·
+         * 🛠 Nâng cao), chỉ còn phần chữ. Làm ở CẢ hai biến thể layout (portrait + `layout-w960dp`). CHỈ sửa
+         * GIÁ TRỊ `android:text`; comment XML giữ nguyên (không render). KHÔNG thêm/gỡ/đổi id nào ⇒ bộ id vẫn
+         * 104, parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest). Không đụng `.kt`/pipeline. `strings.xml`
+         * KHÔNG đổi. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 0dedd38e…8fcb97.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 16) — owner duyệt (task ui-visual-upgrade-l2 · hero + seat diagram + pm25 gauge), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **Level-2 UI — hoàn thiện cockpit** (3 phần):
+         *   (b) THÊM dải HERO trạng-thái-sống ở ĐẦU nội dung (trên thẻ tính năng đầu) — thẻ CHỈ-ĐỌC gồm
+         *       `hero_nav_icon` · `hero_dist` · `hero_road` · `hero_speed` · `hero_cast` · `hero_vk` (nối read-only
+         *       trong `MainActivity.refresh`/`updateHeroStrip` từ state sẵn có; giá trị không có accessor sạch → "—").
+         *   (c) THAY khối radio ghế bằng SƠ ĐỒ GHẾ vẽ Canvas: GỠ 22 id radio (`seat0_group`/`seat0_off`/`seat0_l1`/
+         *       `seat0_l2` … `seat3_*` · `seatN_label` · `seat_comfort_grid` · `seat_rear_row`) và THÊM
+         *       `com.byd.clusternav.comfort.SeatDiagramView` id `seat_diagram`; GIỮ nhóm chế độ `seat_comfort_mode`/
+         *       `seat_mode_cool`/`seat_mode_heat` + `switch_seat_comfort_enabled` + `txt_seat_comfort_title`/
+         *       `txt_seat_comfort_hint` (feature ghế NGUYÊN VẸN: mức mỗi ghế vẫn persist `Prefs.seatComfortLevel` +
+         *       `SeatComfortApplier.applyNow`; 2/4 ghế theo mẫu qua `setSeatCount`).
+         *   (d) THÊM `com.byd.clusternav.comfort.Pm25GaugeView` id `pm25_gauge` vào thẻ PM2.5 (giữ `txt_pm25_level`
+         *       làm chữ phụ; `refreshPm25Level` cập nhật cả hai).
+         * Bộ id 104→90 (−22 radio ghế, +8: `seat_diagram` + `pm25_gauge` + 6 `hero_*`), parity giữ ở CẢ hai biến
+         * thể (LayoutVariantIdParityTest). `strings.xml` KHÔNG đổi (nhãn đặt lúc chạy qua `Lang.t`). Chỉ bản dọc bị
+         * pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = ad570d4d…e0f2.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 17) — owner duyệt (task steer-batch · 4 tinh chỉnh UI cockpit), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **4 tinh chỉnh UI owner yêu cầu** (thuần trình bày, KHÔNG đụng pipeline):
+         *   (A) GỠ 2 nút vị trí bong bóng VietMap `btn_vm_pos_right_half` + `btn_vm_pos_reset` — bong bóng nay
+         *       CHỈ kéo-thả (giữ `vm_bubble_placement_container` + `switch_vm_bubble_enabled` + `txt_vm_pos_hint`;
+         *       thả kéo-thả vẫn tự lưu + gửi như cũ).
+         *   (B) GỠ 2 nút biển báo `btn_badge_preview` + `btn_badge_reset` — badge nay chỉ kéo-thả
+         *       (`badge_placement_container`) + cỡ (`seek_badge_size`); persistence không đổi.
+         *   (D) ĐỔI 4 `<CheckBox>` → `<Switch>` GIỮ NGUYÊN @+id + android:text (`cb_marquee`,
+         *       `cb_headless_autostart`, `cb_autostart`, `cb_autostart_split`) cho khớp hàng công tắc cockpit
+         *       (nhãn trái text_secondary, công tắc phải — như `switch_upcoming_badge`); glow xanh do theme
+         *       colorControlActivated. (C) HERO km/h nối tốc-độ thật + hero_dist là THUẦN `.kt`, KHÔNG đụng layout.
+         * Bộ id 90→86 (−4 nút; KHÔNG thêm id nào), parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest).
+         * `strings.xml` KHÔNG đổi (nhãn/emoji đặt lúc chạy hoặc hardcode trong layout). Chỉ bản dọc bị pin hash
+         * ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 7b05ba46…093b.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 18) — owner duyệt (task ui-visual-upgrade-l2 · Stage 2 — dựng lại layout theo cockpit), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **tái dựng TOÀN BỘ layout theo Level-2 "cockpit"** (docs/specs/ui-visual-upgrade-l2.html):
+         * compose hệ @style Cockpit (Group · Row · RowDivider · HeroCard · HeroLead · HeroDist · HeroStreet ·
+         * Button · StatusPill · Text) + custom view (SegmentedControlView · SpeedDialView · ClusterPreviewView ·
+         * SeatDiagramView · Pm25GaugeView).
+         * HERO trạng-thái-sống 3 thẻ (NAV · CAST · QUICK) + BẢNG các Group. ĐỔI CÓ CHỦ Ý bộ id (86→85): GỠ
+         * `spinner_cluster_mode` → `seg_cluster_mode` (SegmentedControlView); GỠ `seat_comfort_mode`/`seat_mode_cool`/
+         * `seat_mode_heat` → `seg_seat_mode` (SegmentedControlView, warm); THÊM `hero_cast_preview` (ClusterPreviewView);
+         * `hero_speed` đổi TextView→SpeedDialView (id giữ). Parity id + tag gập (15 tag toggle_/body_/sum_) giữ ở CẢ
+         * hai biến thể (LayoutVariantIdParityTest + CollapseTagParityContractTest). MainActivity rewire tương ứng
+         * (seg_cluster_mode/seg_seat_mode/hero_speed.setSpeed/hero_cast_preview.setSplit-setFull read-only);
+         * ClusterModeSelectorContractTest + L2CockpitUiWiringContractTest cập nhật GIỮ NGUYÊN intent. `strings.xml`
+         * KHÔNG đổi. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 70b57ce9…0700d.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 19) — owner duyệt (task ui-visual-upgrade-l2 · compare-pass-1 khép chênh lệch thị giác), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **khép các chênh lệch thị giác so với mockup L2** (docs/specs/ui-visual-upgrade-l2.html):
+         *   (1) CHIỀU SÂU — root LinearLayout thêm `clipChildren=false` + `clipToPadding=false` để bóng đổ của thẻ
+         *       (elevation) không bị cắt. Nền cửa sổ 2 vầng sáng (window_bg) + bump elevation Group/HeroCard là
+         *       THUẦN resource (không đụng layout).
+         *   (2) Nút chính `cast_zone_full` — set THẲNG `android:background=@drawable/btn_primary` +
+         *       `android:textColor=@android:color/white` trên phần tử (không chỉ qua style) để chắc chắn hiện
+         *       gradient xanh→chàm khi bật (framework Button có thể bỏ qua nền chỉ-khai-trong-style).
+         *   (4) Nút nhanh — thay glyph TOFU (▣/◧/◨, font không có) bằng icon vector trắng `drawableStart`
+         *       (`ic_cast_g` cho full, `ic_left_g`/`ic_right_g` mới cho trái/phải) + `drawablePadding`; bỏ glyph
+         *       khỏi `android:text`, chỉ giữ chữ ("Chiếu full cụm"/"Trái"/"Phải"). MainActivityCastController bỏ
+         *       glyph trong các chuỗi text runtime tương ứng (thuần trình bày — KHÔNG đổi logic/enabled/dispatch).
+         *   (5) Thêm 2 tiêu đề mục TĨNH `Cockpit.Text.SectionHeader` ("Trạng thái sống" trên HERO · "Bảng tính năng"
+         *       trên bảng) — KHÔNG @+id, KHÔNG tag.
+         * CHỈ THÊM thuộc tính + text tĩnh, KHÔNG thêm/gỡ/đổi @+id nào ⇒ bộ id vẫn 85, parity giữ ở CẢ hai biến
+         * thể (LayoutVariantIdParityTest + CollapseTagParityContractTest). `strings.xml` KHÔNG đổi. Đổi ở CẢ hai
+         * biến thể; chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 75c8616b…0973.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 20) — owner duyệt (task ui-visual-upgrade-l2 · polish Stage A), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **3 tinh chỉnh UI thuần TRÌNH BÀY (KHÔNG đụng @+id/pipeline)** — trong đó
+         * CHỈ FIX 2 chạm bản dọc này:
+         *   FIX 2 — DESIGN SYSTEM nút GỌN: 10 nút hành động đổi sang `@style/Cockpit.Button.Compact.*`
+         *   (Secondary/Warning/Text mới thêm trong `styles.xml`: minHeight 38dp · padding ngang 14dp/dọc 7dp ·
+         *   textSize `@dimen/text_label` = 13sp) + đổi `android:layout_width` match_parent→wrap_content + thêm
+         *   `android:layout_gravity="start"` để nút ÔM chữ thay vì lấp cả hàng: `btn_reconnect_nav` ·
+         *   `btn_voicekey_recheck` · `btn_voicekey_learn` · `btn_voicekey_add` · `btn_check_update`
+         *   (Compact.Secondary) · `btn_nav_stop` · `cast_stop` · `cast_clear_cluster` · `cast_deep_rescue`
+         *   (Compact.Warning) · `cast_diagnostics` (Compact.Text). Nút hero `cast_zone_full/left/right` GIỮ NGUYÊN.
+         *   (FIX 1 — chiều cao HERO bằng nhau — CHỈ ở bản rộng `layout-w960dp`, KHÔNG đụng file này; FIX 3 — hình
+         *   ghế SVG — CHỈ ở `SeatDiagramView.kt`.) KHÔNG thêm/gỡ/đổi @+id nào ⇒ bộ id vẫn 85, parity giữ ở CẢ hai
+         *   biến thể (LayoutVariantIdParityTest). `strings.xml` KHÔNG đổi (nhãn nút đặt lúc chạy qua `Lang.t`).
+         *   Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = 79729842…2f9e.
+         *
+         * ⚠ CẬP NHẬT 2026-09-05 (lần 21) — owner duyệt (task polish-stageB-i18n · language selector), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm hàng chọn NGÔN NGỮ "Ngôn ngữ / Language"** vào nhóm "Hệ thống"
+         * (ngay dưới `cb_headless_autostart`), ở CẢ hai biến thể layout (portrait + `layout-w960dp`; xe render
+         * bản rộng). Thêm 1 id `seg_language` (SegmentedControlView 3 đoạn: Theo xe / VI / EN) ⇒ bộ id 85→86,
+         * parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest). MainActivity `setupLanguageSelector` seed
+         * `selectedIndex` từ `Lang.choice()` (không bắn onSelected) rồi cài onSelected → `Lang.setChoice` +
+         * `recreate()`; kèm bản dịch song ngữ đầy đủ nhãn TĨNH qua `BilingualLabels.localizeTree` (id-free
+         * tree-walk, KHÔNG sửa layout ngoài hàng mới này). Icon hàng dùng glyph mới `ic_lang_g` + nền `tile_sys`.
+         * `strings.xml` KHÔNG đổi (mọi chữ đặt lúc chạy qua `Lang.t` / `BilingualLabels`), nên hằng strings.xml
+         * giữ nguyên. Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ (giữ lại để trace): activity_main.xml = fc5424d5…eefd39.
+         *
+         * ⚠ CẬP NHẬT 2026-09-06 (lần 22) — owner duyệt (task polish · gọn sơ đồ ghế + bỏ câu hint header), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **bỏ dòng hint "Mỗi tính năng là một thẻ — chạm tiêu đề để mở/gập"** ở đầu
+         * trang (owner: câu này khó hiểu, vô nghĩa) + thêm `layout_marginBottom` cho `txt_app_title` giữ khoảng
+         * cách trước section header, ở CẢ hai biến thể. KHÔNG thêm/bớt id (parity giữ 86); chỉ text + spacing.
+         * (Sơ đồ ghế `SeatDiagramView` đẩy ghế lên + gọn chiều cao là sửa .kt, không đụng layout.) Bản rộng không pin.
+         * Hằng cũ lần-21 (giữ trace): activity_main.xml = 9c864be5…237eff.
+         *
+         * ⚠ CẬP NHẬT 2026-09-06 (lần 23) — owner duyệt (task light-mode · Stage 2 — theme selector), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm hàng chọn GIAO DIỆN "Giao diện / Theme"** vào nhóm "Hệ thống"
+         * (ngay dưới hàng `seg_language`), ở CẢ hai biến thể layout (portrait + `layout-w960dp`; xe render bản
+         * rộng — bài học F3 P0). Thêm 1 id `seg_theme` (SegmentedControlView 3 đoạn: Theo xe / Sáng / Tối) ⇒
+         * bộ id 86→87, parity giữ ở CẢ hai biến thể (LayoutVariantIdParityTest). MainActivity `setupThemeSelector`
+         * seed `selectedIndex` từ `ThemeMode.choice` (SYSTEM=0/LIGHT=1/DARK=2, KHÔNG bắn onSelected) rồi cài
+         * onSelected → `ThemeMode.setChoice` + `recreate()` để cả Activity resolve lại values/ (LIGHT) hoặc
+         * values-night/ (DARK). Nhãn hàng "Giao diện" localize qua `BilingualLabels`; nhãn đoạn qua `Lang.t`.
+         * `strings.xml` KHÔNG đổi (mọi chữ đặt lúc chạy), nên hằng strings.xml giữ nguyên. Chỉ bản dọc bị pin
+         * hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ lần-22 (giữ trace): activity_main.xml = d4118a4b…bfc724.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "6369e4970769ed21971577295dda1b19a565cd0f4ef71d68b6be7d3456b2dfb2",
+            "app/src/main/res/layout/activity_main.xml" to "dfd93e6405d14702b9b9f9300511551660ef2a40363b5728f18c7afbc2b37230",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

@@ -1,11 +1,16 @@
 package com.byd.clusternav
 
 import com.byd.clusternav.modules.clustercast.MainActivityCastController
+import com.byd.clusternav.comfort.SeatComfort
+import com.byd.clusternav.comfort.SeatComfortApplier
+import com.byd.clusternav.comfort.Pm25Filter
+import com.byd.clusternav.comfort.Pm25FilterApplier
 import com.byd.clusternav.vietmapwidget.VietMapWidgetDiagActivity
 import com.byd.clusternav.navigation.NavigationOutputFailureReason
 import com.byd.clusternav.navigation.NavigationSourceReason
 import android.app.Activity
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
@@ -51,9 +56,20 @@ class MainActivity : Activity() {
         override fun run() { refresh(); cast.tick(); ui.postDelayed(this, 1_000) }
     }
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(ThemeMode.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Ngôn ngữ (i18n): nạp lựa chọn ĐÃ giải nghĩa vào cache TRƯỚC khi dựng UI, rồi dịch MỘT lần các nhãn
+        // TĨNH hardcode trong layout (id-free tree-walk) khi đang ở English. localizeTree chạy TRƯỚC các setter
+        // Lang.t động bên dưới, nên view nào có setter riêng sẽ được chính setter đó ghi đè (không xung đột);
+        // recreate() lúc đổi ngôn ngữ dựng lại layout (VI) rồi localize lại theo cache mới. VI mode = no-op.
+        Lang.load(this)
+        BilingualLabels.localizeTree(findViewById<View>(android.R.id.content))
 
         // D1 (closeout 1.28): mirror the persisted verbose-log flag into the in-memory NavLog gate so per-frame
         // hot paths read a @Volatile field (no SharedPreferences per frame). Entry point that always runs.
@@ -157,28 +173,28 @@ class MainActivity : Activity() {
 
         // Chế độ hiển thị nav trên CỤM — ghi SET_NAVI_SCREEN_STATUS_SET (0x4C10E015) qua NavigationHudOwner
         // (đọc pref mỗi frame → áp dụng LIVE khi đang dẫn). ⚠️ value↔menu OEM chưa map chắc: dò trên xe rồi chốt.
-        val clusterModeSpinner = findViewById<android.widget.Spinner>(R.id.spinner_cluster_mode)
         // TASK 4 (R3 · docs/specs/clusternav-closeout-1.28.html): on-car only OFF ever changed anything — the 3
         // layout modes (Đơn giản/Toàn/Nhỏ) hit the no-root wall and all render the same centre. Reduce to ON/OFF
         // so there are no dead buttons. ON = NAV_SCREEN_SIMPLE (centre "Giữa + ETA"); OFF = NAV_SCREEN_OFF. The
         // FULL/SMALL constants stay in Prefs (BydHal.NAV_SCREEN_MODE_ON back-compat) but are no longer selectable.
-        val clusterModes = arrayOf("Bật (Giữa + ETA)", "Tắt")
+        // Level-2 (ui-visual-upgrade-l2): SegmentedControlView (seg_cluster_mode) thay Spinner — hành vi ON/OFF
+        // giữ nguyên (persist NavClusterScreenMode + reapplyClusterMode). onSelected chỉ nổ khi USER chạm.
+        val clusterModes = arrayOf(Lang.t("Giữa + ETA", "Centre + ETA"), Lang.t("Tắt", "Off"))
         val clusterModeValues = intArrayOf(Prefs.NAV_SCREEN_FULL, Prefs.NAV_SCREEN_OFF)
-        clusterModeSpinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, clusterModes)
-        // Migrate old prefs gracefully: any non-OFF stored value (incl. legacy FULL/SMALL) → index 0 (Bật);
-        // OFF → index 1 (Tắt). Prefs.navClusterScreenMode already collapses FULL/SMALL→SIMPLE on read.
-        clusterModeSpinner.setSelection(if (Prefs.navClusterScreenMode(this) == Prefs.NAV_SCREEN_OFF) 1 else 0)
-        clusterModeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+        findViewById<com.byd.clusternav.ui.SegmentedControlView>(R.id.seg_cluster_mode).apply {
+            setOptions(clusterModes.toList())
+            // Migrate old prefs gracefully: any non-OFF stored value (incl. legacy FULL/SMALL) → index 0 (Bật);
+            // OFF → index 1 (Tắt). Prefs.navClusterScreenMode already collapses FULL/SMALL→SIMPLE on read.
+            selectedIndex = if (Prefs.navClusterScreenMode(this@MainActivity) == Prefs.NAV_SCREEN_OFF) 1 else 0
+            onSelected = { pos ->
                 Prefs.setNavClusterScreenMode(this@MainActivity, clusterModeValues[pos])
                 // I4 (1.14): áp NGAY (re-assert) thay vì chờ reboot / frame kế bị dedup nuốt.
                 NavRepository.reapplyClusterMode(applicationContext)
             }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
 
         // I2 (1.14): toggle marquee (chạy chữ tên đường dài). Mặc định BẬT (Prefs.marquee=true).
-        findViewById<android.widget.CheckBox>(R.id.cb_marquee).also { cb ->
+        findViewById<android.widget.Switch>(R.id.cb_marquee).also { cb ->
             cb.isChecked = Prefs.marquee(this)
             cb.setOnCheckedChangeListener { _, on -> Prefs.setMarquee(this, on) }
         }
@@ -186,7 +202,17 @@ class MainActivity : Activity() {
         // 1.21 Item 1 (owner): "Tự khởi động nền" — nổ máy chỉ chạy setup nền (BootSetupService qua
         // RebindReceiver), KHÔNG bung MainActivity trên màn chính (né size-compat dudu). Mặc định BẬT; tắt →
         // giữ hành vi cũ (tự mở Home lúc nổ máy). Chỉ đổi hành vi lúc boot/OTA — mở app bằng icon vẫn như thường.
-        findViewById<android.widget.CheckBox>(R.id.cb_headless_autostart).also { cb ->
+        findViewById<android.widget.Switch>(R.id.cb_headless_autostart).also { cb ->
+            // Option B: dời sang card "Hệ thống"; nhãn đặt lúc chạy để nói rõ đây là cài đặt TOÀN CỤC (áp mọi
+            // tính năng nền: phím-thoại, ghế, lọc bụi, dẫn đường), không riêng Nav+HUD.
+            // Switch = toggle TRẦN (không nhãn) — hàng đã có TextView title "Tự khởi động nền" (dịch qua
+            // BilingualLabels). Trước đây gán câu dài vào cb.text làm Switch wrap NHIỀU DÒNG → row cao vọt
+            // (owner: "scale chiều cao quá lớn"). Ngữ cảnh "áp mọi tính năng nền" chuyển vào contentDescription.
+            cb.text = ""
+            cb.contentDescription = Lang.t(
+                "Tự khởi động nền — áp mọi tính năng nền (phím-thoại, ghế, lọc bụi, dẫn đường)",
+                "Background auto-start — applies all background features (voice key, seats, dust filter, nav)",
+            )
             cb.isChecked = Prefs.headlessAutostart(this)
             cb.setOnCheckedChangeListener { _, on -> Prefs.setHeadlessAutostart(this, on) }
         }
@@ -196,14 +222,34 @@ class MainActivity : Activity() {
         // KHÔNG đổi chức năng gốc của nút. Service Hỗ trợ tự bật qua dadb khi bật công tắc. ──
         setupVoiceKeyControls()
 
+        // Ghế: làm mát / sưởi tự động (spec seat-comfort-auto) — ĐẶT NGAY SAU khối voice-key ở cột trái.
+        // Chọn chế độ toàn cục (làm mát ↔ sưởi) + mức từng ghế; hiện 2 hay 4 ghế theo mẫu xe. Mặc định TẮT.
+        setupSeatComfortControls()
+
+        // Tự lọc bụi mịn PM2.5 (spec pm25-auto-filter) — NGAY SAU mục ghế ở cột trái. Một công tắc + nhãn
+        // mức bụi hiện tại. Bật → xe tự lọc liên tục không popup. Mặc định TẮT.
+        setupPm25FilterControls()
+
         // Nav trên cụm chỉ còn op 39 "Giữa + ETA" (owner chốt 2026-08-12) — bỏ nút chọn mode + nút test.
         // Chỉ còn dòng trạng thái op39 (ASSERTED / Cast đang bật / chưa gửi được) để chẩn đoán.
         navClusterStatus.bind()
 
         // Item 4 (spec vietmap-overlay-position-ui): panel chỉnh VỊ TRÍ bong bóng VietMap-mod trên cụm
-        // (nhích ←→↑↓ + preset "Nửa phải" + "Áp dụng"). Gate: chỉ chỉnh được khi Cluster Cast ON.
+        // (kéo-thả trong khung; thả ra tự lưu + gửi). Gate: chỉ chỉnh được khi Cluster Cast ON.
         setupVmOverlayControls()
 
+        // Option B (docs/specs/ui-redesign-options.html): mỗi tính năng là một card có header luôn hiện +
+        // thân GẬP được. Nối các header/thân gập (đánh dấu bằng android:tag) — KHÔNG thêm @+id nào (bộ id
+        // khoá 95). Card hay dùng mở sẵn, card cài-một-lần đóng sẵn.
+        setupCollapsibleCards()
+
+        // Ngôn ngữ / Language selector (nhóm Hệ thống) — seed từ Lang.choice() rồi cài onSelected (setChoice +
+        // recreate). Đặt SAU setupCollapsibleCards để chắc chắn view seg_language đã có trong cây.
+        setupLanguageSelector()
+
+        // Giao diện / Theme selector (nhóm Hệ thống, ngay dưới Ngôn ngữ) — seed từ ThemeMode.choice rồi cài
+        // onSelected (setChoice + recreate để cả Activity resolve lại values/ (LIGHT) hoặc values-night/ (DARK)).
+        setupThemeSelector()
         findViewById<Button>(R.id.btn_reconnect_nav).setOnClickListener {
             if (notificationAccessGranted()) {
                 NavConnect.reconnect(applicationContext)
@@ -270,6 +316,12 @@ class MainActivity : Activity() {
         // B1 (owner 2026-08-19): "badge bật → VietMap tự chạy để widget có nguồn" — with the speed badge enabled,
         // start VietMap once so its home-widget (the badge's speed-limit source) has a live process. Degrade-safe.
         maybeAutoStartVietMap()
+
+        // Ghế: nếu công tắc BẬT → áp mức làm-mát/sưởi lên HAL ~5 s sau khi mở app (degrade-safe, no-op off-car).
+        SeatComfortApplier.applyOnStart(this)
+
+        // Lọc bụi mịn PM2.5: nếu công tắc BẬT → bật lọc-liên-tục (không popup) ~5 s sau khi mở app (degrade-safe).
+        Pm25FilterApplier.applyOnStart(this)
     }
 
     override fun onResume() {
@@ -296,6 +348,10 @@ class MainActivity : Activity() {
         if (Prefs.voiceKeyEnabled(this) && !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) {
             NavConnect.grantAccessibility(applicationContext, reset = false)
         }
+        // (4b/4c) Cập nhật DÒNG TRẠNG THÁI phím-thoại NGAY (theo cờ connected hiện tại) rồi đọc lại TRỄ +2s/+5s:
+        // onServiceConnected chạy bất đồng bộ vài giây sau grant/force-rebind ở trên, đọc tức thì có thể còn "mất kết nối".
+        refreshVoiceKeyStatus()
+        scheduleVoiceKeyStatusRecheck()
         cast.onResume()
         // Item 4: áp lại vị trí bong bóng VietMap-mod trên cụm (no-op nếu Cluster Cast OFF — cụm chưa live).
         // Gate + gửi broadcast VM_BUBBLE_POS nằm trong VmOverlayPosition; mod VietMap có receiver dời bong bóng.
@@ -348,7 +404,7 @@ class MainActivity : Activity() {
             }
             is NavigationFreshness.Stale -> Lang.t("Nguồn đã cũ", "Source stale") + " · ${freshness.reason.readable()}"
             is NavigationFreshness.Unknown -> when (permission) {
-                NavigationPermission.MISSING -> getString(R.string.status_need_perm)
+                NavigationPermission.MISSING -> Lang.t("Cần quyền truy cập thông báo để đọc dẫn đường", "Grant notification access to read navigation")
                 else -> freshness.reason.readable()
             }
         }
@@ -381,6 +437,83 @@ class MainActivity : Activity() {
         rebuildVoiceKeyBindingList()
         // Item 4: bật/tắt panel vị trí bong bóng VietMap theo Cluster Cast (cụm chỉ live khi Cast ON).
         refreshVmOverlayPanel()
+        // Option B: card Biển báo tốc độ mờ + nhắc "cần Cast" khi Cast OFF (không ẩn cứng).
+        refreshBadgeCastGate()
+        // HERO (Level-2 · ui-visual-upgrade-l2): tóm tắt trạng thái sống trên cùng — CHỈ ĐỌC từ state sẵn có.
+        updateHeroStrip(sourceText)
+    }
+
+    /**
+     * HERO live-status strip (Level-2 · `docs/specs/ui-visual-upgrade-l2.html`) — READ-ONLY + degrade-safe.
+     *
+     * Đọc từ CÙNG nguồn các dòng trạng thái hiện có, KHÔNG thêm coupling runtime:
+     *  • `hero_road` ← [navStatusText] (chính là chuỗi `navStatus` dựng trong [refresh] từ nguồn/kênh dẫn).
+     *  • `hero_cast` ← [com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime] prefs `castEnabled()`
+     *    + `coordinator.state` (đọc-only, y như [com.byd.clusternav.modules.clustercast.MainActivityCastController]).
+     *  • `hero_vk`   ← [Prefs.voiceKeyEnabled] + [com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected]
+     *    (đúng cặp cờ [refreshVoiceKeyStatus] dùng).
+     *
+     * `hero_nav_icon` giữ PLACEHOLDER tĩnh trong layout: hướng rẽ không có accessor đọc-only sạch trong tiến
+     * trình UI ⇒ không bịa, không mở thêm coupling. `hero_speed` ← [SpeedProvider.mpsOrNull] = TỐC ĐỘ THẬT CỦA
+     * XE (BYDAutoSpeedDevice.getCurrentSpeed — đồng hồ tốc độ), ĐỘC LẬP VietMap/badge (luôn có trên xe khi app
+     * có quyền HAL; null/off-car ⇒ "— km/h"). `hero_dist` ← [NavRepository.state]
+     * `distance` (trường `@Volatile` đã publish — cự ly-tới-rẽ notification/GMaps; không active/rỗng ⇒ "—"). Mọi
+     * lookup view đều null-safe (parity đảm bảo có mặt, nhưng vẫn thủ) và mọi đọc state bọc `runCatching`.
+     */
+    private fun updateHeroStrip(navStatusText: String) {
+        findViewById<TextView>(R.id.hero_road)?.text = navStatusText
+
+        // hero_dist ← cự ly-tới-rẽ từ [NavRepository.state] (trường @Volatile đã publish; đọc THUẦN, không
+        // polling/coupling). Không active hoặc rỗng ⇒ "—".
+        findViewById<TextView>(R.id.hero_dist)?.text = runCatching {
+            val nav = NavRepository.state
+            if (nav.active && nav.distance.isNotBlank()) nav.distance else "—"
+        }.getOrDefault("—")
+
+        // hero_speed ← SpeedDialView (Level-2 · ui-visual-upgrade-l2): TỐC ĐỘ THẬT CỦA XE từ HAL
+        // [SpeedProvider.mpsOrNull] đọc BYDAutoSpeedDevice.getCurrentSpeed() (đồng hồ tốc độ xe). ĐỘC LẬP
+        // VietMap/badge — LUÔN có trên xe khi app có quyền HAL, không cần bật speed badge hay chạy VietMap.
+        // Đọc THUẦN. null = off-car/không đọc được ⇒ dial vẽ "—". (speedometer đọc cao hơn thực ~5-8%.)
+        findViewById<com.byd.clusternav.ui.SpeedDialView>(R.id.hero_speed)?.setSpeed(
+            SpeedProvider.mpsOrNull()?.let { Math.round(it * 3.6).toInt() },
+        )
+
+        val coord = runCatching {
+            com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime.coordinator(applicationContext)
+        }.getOrNull()
+        val castEnabled = runCatching { coord?.prefs?.castEnabled() }.getOrNull() ?: false
+        findViewById<TextView>(R.id.hero_cast)?.text = when {
+            !castEnabled -> Lang.t("Chiếu cụm: tắt", "Cast: off")
+            else -> {
+                val st = runCatching { coord?.state }.getOrNull()
+                val casting = st is com.byd.clusternav.modules.clustercast.simplified.SimpleCastState.CastingFull ||
+                    st is com.byd.clusternav.modules.clustercast.simplified.SimpleCastState.CastingSplit
+                if (casting) Lang.t("Chiếu cụm: đang chiếu", "Cast: casting")
+                else Lang.t("Chiếu cụm: sẵn sàng", "Cast: ready")
+            }
+        }
+
+        // hero_cast_preview ← ClusterPreviewView (Level-2 · ui-visual-upgrade-l2): gương CHỈ-ĐỌC trạng thái
+        // chiếu cụm — LUÔN vẽ DẢI CHIA (như mockup `.mini-cl`), không bao giờ là ô trơn. Đang chia đôi → tỉ lệ
+        // trái đọc từ prefs splitRatioLeftPercent + nhãn "GMaps · VietMap (l:r)"; mọi trạng thái khác → preview
+        // chờ setSplit(0.4f, null) (không nhãn). KHÔNG ghi pref, KHÔNG dispatch. Đọc state bọc runCatching.
+        findViewById<com.byd.clusternav.ui.ClusterPreviewView>(R.id.hero_cast_preview)?.let { preview ->
+            val st = runCatching { coord?.state }.getOrNull()
+            if (st is com.byd.clusternav.modules.clustercast.simplified.SimpleCastState.CastingSplit) {
+                val leftPct = runCatching { coord?.prefs?.splitRatioLeftPercent() }.getOrNull() ?: 50
+                preview.setSplit(leftPct / 100f, "GMaps · VietMap ($leftPct:${100 - leftPct})")
+            } else {
+                preview.setSplit(0.4f, null)
+            }
+        }
+
+        val vkEnabled = Prefs.voiceKeyEnabled(this)
+        val vkConnected = com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected
+        findViewById<TextView>(R.id.hero_vk)?.text = when {
+            !vkEnabled -> Lang.t("Phím-thoại: tắt", "Voice key: off")
+            vkConnected -> Lang.t("Phím-thoại: ✓", "Voice key: ✓")
+            else -> Lang.t("Phím-thoại: mất kết nối", "Voice key: disconnected")
+        }
     }
 
     private fun View.tint(color: Int) {
@@ -537,19 +670,19 @@ class MainActivity : Activity() {
     // ứng viên đầu; nhấn ngắn phát mã KHÁC nên trợ lý gốc (小迪) giữ nguyên.
     // Preset keycode ứng viên (nút vô-lăng/táp-lô). Nút tự học thêm từ Prefs.voiceKeyCustomButtons.
     // Nút mic vô-lăng xe này giữ = 328 (đo on-car 2026-08-13); nhấn ngắn ra mã KHÁC nên native (小迪) giữ nguyên.
-    private val voiceKeyPresets: List<Pair<String, Int>> = listOf(
-        "Nút mic vô-lăng — giữ (328)" to 328,
-        "Trợ lý giọng nói (VOICE_ASSIST · 231)" to 231,
-        "Trợ lý (ASSIST · 219)" to 219,
+    private fun voiceKeyPresets(): List<Pair<String, Int>> = listOf(
+        Lang.t("Nút mic vô-lăng — giữ (328)", "Steering-wheel mic — hold (328)") to 328,
+        Lang.t("Trợ lý giọng nói (VOICE_ASSIST · 231)", "Voice assistant (VOICE_ASSIST · 231)") to 231,
+        Lang.t("Trợ lý (ASSIST · 219)", "Assistant (ASSIST · 219)") to 219,
         "Play/Pause (85)" to 85,
-        "Bài trước (PREVIOUS · 88)" to 88,
-        "Bài sau (NEXT · 87)" to 87,
+        Lang.t("Bài trước (PREVIOUS · 88)", "Previous track (PREVIOUS · 88)") to 88,
+        Lang.t("Bài sau (NEXT · 87)", "Next track (NEXT · 87)") to 87,
         "Headset hook (79)" to 79,
-        "Gọi (CALL · 5)" to 5,
-        "Tìm kiếm (SEARCH · 84)" to 84,
+        Lang.t("Gọi (CALL · 5)", "Call (CALL · 5)") to 5,
+        Lang.t("Tìm kiếm (SEARCH · 84)", "Search (SEARCH · 84)") to 84,
     )
     /** Dropdown nút = preset + nút tự học (persist). */
-    private fun voiceKeyButtonList(): List<Pair<String, Int>> = voiceKeyPresets + Prefs.voiceKeyCustomButtons(this)
+    private fun voiceKeyButtonList(): List<Pair<String, Int>> = voiceKeyPresets() + Prefs.voiceKeyCustomButtons(this)
 
     /**
      * Đích chọn được = 3 mục đặc biệt (ghim đầu) + mọi app có launcher. Dựng MỘT lần rồi dùng lại cho cả
@@ -597,7 +730,8 @@ class MainActivity : Activity() {
         // "giữ nguyên lựa chọn" luôn ra mục đầu — owner vừa xoá một nút tự học là nút đang chọn nhảy mất.
         val keep = selectCode ?: selectedVoiceKeyCode()
         val list = voiceKeyButtonList()
-        spinner.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, list.map { it.first })
+        spinner.adapter = android.widget.ArrayAdapter(this, R.layout.cockpit_spinner_item, list.map { it.first })
+            .apply { setDropDownViewResource(R.layout.cockpit_spinner_dropdown_item) }
         spinner.setSelection(list.indexOfFirst { it.second == keep }.coerceAtLeast(0))
         updateVoiceKeyLabel()
     }
@@ -664,6 +798,7 @@ class MainActivity : Activity() {
         vkSwitch.isChecked = Prefs.voiceKeyEnabled(this)
         vkSwitch.setOnCheckedChangeListener { _, on ->
             Prefs.setVoiceKeyEnabled(this, on)
+            refreshVoiceKeyStatus()   // (4d) phản ánh NGAY bật/tắt vừa lưu; BOUND đọc lại ở onResume + nút "Kiểm tra".
             // TASK 3 (R2 · docs/specs/clusternav-closeout-1.28.html): toggle OFF→ON RESETS the grant state +
             // re-requests the key bind (fresh grant + force-rebind) so the voice-key recovers after a reboot
             // WITHOUT an app restart. Do NOT gate on accessibilityBoosterGranted(): after a reboot the service
@@ -681,6 +816,30 @@ class MainActivity : Activity() {
                         Toast.LENGTH_LONG,
                     ).show()
                 }
+            }
+        }
+
+        // Voice-key BINDING STATUS + nút "Kiểm tra / Sửa ngay" (READ-ONLY status + heal thủ công theo yêu cầu).
+        // Trạng thái đọc NavAccessibilitySource.connected (service Hỗ trợ đã BOUND chưa). Nút REUSE
+        // NavConnect.grantAccessibility(reset=true) — CÙNG đường heal của toggle OFF→ON, KHÔNG đổi grant logic.
+        // onServiceConnected chạy bất đồng bộ vài giây sau force-rebind ⇒ đọc lại TRỄ +2s/+5s cho khỏi kẹt "mất kết nối".
+        findViewById<Button>(R.id.btn_voicekey_recheck).apply {
+            text = Lang.t("Kiểm tra / Sửa ngay", "Check / Fix now")
+            setOnClickListener {
+                Toast.makeText(this@MainActivity, Lang.t("Đang kiểm tra…", "Checking…"), Toast.LENGTH_SHORT).show()
+                NavConnect.grantAccessibility(applicationContext, reset = true) { ok ->
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        refreshVoiceKeyStatus()
+                        Toast.makeText(
+                            this@MainActivity,
+                            if (ok) Lang.t("Phím-thoại đã sẵn sàng.", "Voice key ready.")
+                            else Lang.t("Chưa bật được Hỗ trợ — bấm Allow USB debugging trên xe rồi thử lại, hoặc bật tay ở Cài đặt > Hỗ trợ.", "Couldn't enable accessibility — tap Allow USB debugging on the car and retry, or enable it in Settings > Accessibility."),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+                scheduleVoiceKeyStatusRecheck()   // (4c) onServiceConnected bất đồng bộ → đọc lại +2s/+5s sau khi bấm.
             }
         }
 
@@ -729,7 +888,8 @@ class MainActivity : Activity() {
         // Đích = 3 mục đặc biệt (ghim đầu) + toàn bộ app có launcher (reuse ClusterCast.listInstalledApps).
         // F3: chọn app cũng KHÔNG ghi cấu hình — chỉ là bước 2. Không listener nào ở đây nữa.
         targetSpinner.adapter =
-            android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, voiceKeyTargetSpecs.map { it.first })
+            android.widget.ArrayAdapter(this, R.layout.cockpit_spinner_item, voiceKeyTargetSpecs.map { it.first })
+                .apply { setDropDownViewResource(R.layout.cockpit_spinner_dropdown_item) }
 
         // F3 — "3 · Thêm gán": ghi cặp (nút đang chọn → app đang chọn) vào danh sách. Đây là NƠI DUY NHẤT
         // ghi cấu hình gán, nên cũng là nơi chạy công thức "đặt trợ lý hệ thống = Google/Gemini" (trước F3
@@ -786,6 +946,47 @@ class MainActivity : Activity() {
 
         // Cầu học-phím: service bắt keycode → hiện dialog đặt tên (Activity foreground).
         com.byd.clusternav.modules.voicekey.VoiceKeyLearnBus.setListener { code -> runOnUiThread { showLearnNameDialog(code) } }
+
+        // (4a) Hiện DÒNG TRẠNG THÁI phím-thoại NGAY khi dựng xong control (đọc pref + cờ connected hiện tại).
+        refreshVoiceKeyStatus()
+    }
+
+    /**
+     * Cập nhật DÒNG TRẠNG THÁI phím-thoại (<code>txt_voicekey_status</code>) + màu theo ground-truth
+     * [com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected] (service Hỗ trợ đã
+     * onServiceConnected/BOUND chưa). THUẦN ĐỌC — KHÔNG đụng grant logic. Ba trạng thái:
+     * tắt (xám) · bật + bound (xanh ✓) · bật + chưa bound (đỏ, gợi ý bấm "Sửa ngay"). Nhãn song ngữ đặt lúc
+     * chạy qua [Lang.t] (KHÔNG strings.xml — đang byte-seal). An toàn khi view chưa có (`?: return`).
+     */
+    private fun refreshVoiceKeyStatus() {
+        val tv = findViewById<TextView>(R.id.txt_voicekey_status) ?: return
+        val enabled = Prefs.voiceKeyEnabled(this)
+        val connected = com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected
+        when {
+            !enabled -> {
+                tv.text = Lang.t("Phím-thoại: đang tắt", "Voice key: off")
+                tv.setTextColor(0xFF9E9E9E.toInt())
+            }
+            connected -> {
+                tv.text = Lang.t("Phím-thoại: ĐANG HOẠT ĐỘNG ✓", "Voice key: ACTIVE ✓")
+                tv.setTextColor(0xFF2E7D32.toInt())
+            }
+            else -> {
+                tv.text = Lang.t("Phím-thoại: MẤT KẾT NỐI — bấm Sửa ngay", "Voice key: DISCONNECTED — tap Fix now")
+                tv.setTextColor(0xFFC62828.toInt())
+            }
+        }
+    }
+
+    /**
+     * Đọc lại trạng thái phím-thoại TRỄ +2s và +5s: NavAccessibilityService.onServiceConnected chạy BẤT ĐỒNG
+     * BỘ vài giây sau khi force-rebind, nên một lần đọc tức thì sẽ còn thấy "mất kết nối" cũ. Dùng cho onResume
+     * và sau khi bấm "Kiểm tra / Sửa ngay". Guard [isFinishing]/[isDestroyed] vì Activity có thể đã đóng khi callback nổ.
+     */
+    private fun scheduleVoiceKeyStatusRecheck() {
+        longArrayOf(2_000L, 5_000L).forEach { delayMs ->
+            ui.postDelayed({ if (!isFinishing && !isDestroyed) refreshVoiceKeyStatus() }, delayMs)
+        }
     }
 
     /**
@@ -835,10 +1036,10 @@ class MainActivity : Activity() {
      */
     // ── Item 4: chỉnh VỊ TRÍ bong bóng VietMap-mod trên cụm (spec vietmap-overlay-position-ui) ──────
     // [VmOverlayPosition] lưu x/y (Prefs) + bắn broadcast VM_BUBBLE_POS tới mod VietMap để dời bong bóng.
-    // Chỉ có nghĩa khi Cluster Cast ON (cụm mới "live" cho bong bóng lên) → gate: bật nút khi castOn(),
-    // ngược lại disable + nhắc bật Cast. nudge()/presetRightHalf() TỰ gửi ngay; nút "Áp dụng" gửi lại vị
-    // trí đang lưu (dùng khi bong bóng vừa dựng lại). Nhãn song ngữ đặt lúc chạy qua [Lang.t] (đúng lối
-    // đang dùng — không thêm vào strings.xml đang bị seal).
+    // Chỉ có nghĩa khi Cluster Cast ON (cụm mới "live" cho bong bóng lên) → gate: bật khung kéo-thả khi
+    // castOn(), ngược lại mờ + nhắc bật Cast. Bong bóng nay CHỈ kéo-thả — thả ra là tự lưu + gửi ngay
+    // (onMoved → setAbsoluteTopLeft → send). Không còn nút "Nửa phải"/"Đặt lại"/"Áp dụng". Nhãn song ngữ
+    // đặt lúc chạy qua [Lang.t] (đúng lối đang dùng — không thêm vào strings.xml đang bị seal).
     private var vmPlacementView: VmBubblePlacementView? = null
 
     private fun setupVmOverlayControls() {
@@ -876,22 +1077,10 @@ class MainActivity : Activity() {
             )
             vmPlacementView = view
         }
-        findViewById<Button>(R.id.btn_vm_pos_right_half)?.setOnClickListener {
-            VmOverlayPosition.presetRightHalf(this); syncVmMarker(); refreshVmOverlayPanel()
-        }
-        findViewById<Button>(R.id.btn_vm_pos_reset)?.setOnClickListener {
-            VmOverlayPosition.presetRightHalf(this); syncVmMarker(); refreshVmOverlayPanel()
-        }
-        findViewById<Button>(R.id.btn_vm_pos_apply)?.setOnClickListener {
-            VmOverlayPosition.send(this)
-            Toast.makeText(this, Lang.t("Đã áp dụng vị trí bong bóng VietMap", "VietMap bubble position applied"), Toast.LENGTH_SHORT).show()
-        }
+        // Nút "Nửa phải" / "Đặt lại" / "Áp dụng" ĐÃ BỎ (owner: bong bóng nay CHỈ kéo-thả). Vị trí được GỬI
+        // NGAY khi thả kéo-thả (onMoved → VmOverlayPosition.setAbsoluteTopLeft → set(sendNow=true) → send,
+        // gate castOn). Không còn nút nào ở panel này.
         refreshVmOverlayPanel()
-    }
-
-    /** Đồng bộ marker kéo-thả về vị trí đã lưu (sau khi bấm "Nửa phải" / "Đặt lại"). */
-    private fun syncVmMarker() {
-        vmPlacementView?.setBubbleTopLeftCluster(VmOverlayPosition.absLeftX(this), VmOverlayPosition.absTopY(this))
     }
 
     /**
@@ -906,15 +1095,234 @@ class MainActivity : Activity() {
         val on = enabled && castOn
         vmPlacementView?.isEnabled = on
         vmPlacementView?.alpha = if (on) 1f else 0.4f
-        intArrayOf(R.id.btn_vm_pos_right_half, R.id.btn_vm_pos_reset, R.id.btn_vm_pos_apply)
-            .forEach { id -> findViewById<Button>(id)?.isEnabled = on }
         findViewById<TextView>(R.id.txt_vm_pos_hint)?.text = when {
             !enabled -> Lang.t("Bật toggle để chỉnh", "Turn on the toggle to adjust")
             !castOn -> Lang.t("Bật Cluster Cast để chỉnh vị trí", "Turn on Cluster Cast to adjust position")
             else -> Lang.t(
-                "Kéo bong bóng trong khung để đặt vị trí, rồi bấm Áp dụng",
-                "Drag the bubble in the frame to position it, then tap Apply",
+                "Kéo bong bóng trong khung để đặt vị trí — thả ra là tự lưu và gửi",
+                "Drag the bubble in the frame to position it — releasing saves and sends",
             )
+        }
+    }
+
+    // ── Option B: card gập (mỗi tính năng = header luôn hiện + thân gập được) ─────────────────────
+    // Tái dùng mẫu cast_recovery_toggle nhưng KHÔNG thêm @+id nào (bộ id khoá 95): header/thân gập đánh dấu
+    // bằng android:tag, tra bằng findViewWithTag. Card hay dùng mở sẵn; card cài-một-lần đóng sẵn.
+    private fun setupCollapsibleCards() {
+        setSummary("sum_nav", Lang.t("Dẫn đường trên cụm + HUD", "Guidance on cluster + HUD"))
+        setSummary("sum_vk", Lang.t("Nút vật lý → mở app / trợ lý", "Hardware button → app / assistant"))
+        setSummary("sum_bubble", Lang.t("Vị trí bóng VietMap trên cụm (cần Cast)", "VietMap bubble position (needs Cast)"))
+        setSummary("sum_seat", Lang.t("Làm mát / sưởi ghế tự động", "Auto seat cooling / heating"))
+        // (sum_badge đặt ĐỘNG theo trạng thái Cast trong refreshBadgeCastGate.)
+        wireCollapse("toggle_nav", "body_nav", startExpanded = true)
+        wireCollapse("toggle_vk", "body_vk", startExpanded = true)
+        wireCollapse("toggle_badge", "body_badge", startExpanded = false)
+        wireCollapse("toggle_bubble", "body_bubble", startExpanded = false)
+        wireCollapse("toggle_seat", "body_seat", startExpanded = true)
+    }
+
+    /** Đặt chữ tóm tắt (tag) trong header card — no-op nếu biến thể layout không có tag đó. */
+    private fun setSummary(tag: String, text: String) {
+        (window.decorView.findViewWithTag<View>(tag) as? TextView)?.text = text
+    }
+
+    /**
+     * Nối một header gập (tag [headerTag]) với thân gập (tag [bodyTag]): chạm header đảo hiện/ẩn thân; đặt
+     * trạng thái ban đầu theo [startExpanded]. Tra bằng findViewWithTag từ decorView nên chạy trên CẢ hai
+     * biến thể layout. Degrade-safe: thiếu tag (biến thể không có card đó) ⇒ no-op.
+     */
+    private fun wireCollapse(headerTag: String, bodyTag: String, startExpanded: Boolean) {
+        val root = window.decorView
+        val header = root.findViewWithTag<View>(headerTag) ?: return
+        val body = root.findViewWithTag<View>(bodyTag) ?: return
+        body.visibility = if (startExpanded) View.VISIBLE else View.GONE
+        header.setOnClickListener {
+            body.visibility = if (body.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+    }
+
+    /**
+     * Option B: card "Biển báo tốc độ" là chức năng ĐỘC LẬP nhưng cần Cluster Cast ON để biển hiện trên cụm.
+     * Cast OFF ⇒ mờ thân card + khoá control con + nhắc "cần Cast" ở dòng tóm tắt (sum_badge, đặt lúc chạy) —
+     * KHÔNG ẩn cứng (owner: do NOT hard-hide). KHÔNG đụng runtime overlay badge. Dùng cùng castOn()-gating như
+     * panel bóng VietMap. Gọi mỗi nhịp refresh().
+     */
+    private fun refreshBadgeCastGate() {
+        val castOn = VmOverlayPosition.castOn(this)
+        val root = window.decorView
+        root.findViewWithTag<View>("body_badge")?.let { body ->
+            body.alpha = if (castOn) 1f else 0.5f
+            intArrayOf(
+                R.id.switch_upcoming_badge, R.id.switch_alert_chip, R.id.btn_vietmap_widget_diag,
+                R.id.seek_badge_size,
+            ).forEach { id -> findViewById<View>(id)?.isEnabled = castOn }
+        }
+        (root.findViewWithTag<View>("sum_badge") as? TextView)?.text = if (castOn) {
+            Lang.t("Biển báo tốc độ + cảnh báo trên cụm", "Speed sign + alerts on cluster")
+        } else {
+            Lang.t("⚠ Bật Cluster Cast để hiện trên cụm", "⚠ Turn on Cluster Cast to show on cluster")
+        }
+    }
+
+    // ── Ghế: làm mát / sưởi tự động (spec seat-comfort-auto) ─────────────────────────────────────
+    // Chế độ TOÀN CỤC (làm mát ↔ sưởi, loại trừ) + mỗi ghế 3 mức (Tắt / Mức 1 / Mức 2). Hiện 2 ghế (Seal)
+    // hay 4 ghế (Han) theo mẫu xe. Mặc định TẮT. Nhãn song ngữ đặt lúc CHẠY qua Lang.t (KHÔNG thêm
+    // strings.xml — file đó đang byte-seal). Detach listener trước khi khôi phục (như setupVmOverlayControls /
+    // voice-key) để không bắn sự kiện giả. Áp HAL qua SeatComfortApplier (~5s sau start + nút "Áp dụng ngay").
+    private fun setupSeatComfortControls() {
+        findViewById<TextView>(R.id.txt_seat_comfort_title)?.text = Lang.t("Ghế: làm mát / sưởi", "Seats: cooling / heating")
+        findViewById<TextView>(R.id.txt_seat_comfort_hint)?.text = Lang.t(
+            "Tự áp dụng ~5 giây sau khi mở app / nổ máy. Làm mát và sưởi loại trừ nhau. Chạm ghế để chọn mức.",
+            "Auto-applies ~5s after app open / boot. Cooling and heating are mutually exclusive. Tap a seat to set its level.",
+        )
+
+        // Master switch — detach trước khi khôi phục isChecked để không bắn sự kiện giả.
+        findViewById<Switch>(R.id.switch_seat_comfort_enabled)?.apply {
+            setOnCheckedChangeListener(null)
+            text = Lang.t("Bật", "On")
+            isChecked = Prefs.seatComfortEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                Prefs.setSeatComfortEnabled(this@MainActivity, on)
+                refreshSeatComfortPanel()
+            }
+        }
+
+        // Sơ đồ ghế (chữ-ký, thay các hàng radio cũ) — seed số ghế theo mẫu xe + chế độ + mức từng ghế; chạm
+        // ghế cycle 0→1→2. GIỮ NGUYÊN hợp đồng cũ: mỗi lần đổi mức ⇒ persist Prefs.seatComfortLevel + applyNow
+        // (no-op nếu công tắc tắt). Off-car detectSeatCount → 2 ghế; getLevel/setLevel là thuần UI.
+        val diagram = findViewById<com.byd.clusternav.comfort.SeatDiagramView>(R.id.seat_diagram)
+        diagram?.apply {
+            onSeatLevelChanged = null   // detach trước khi seed để không bắn callback giả
+            setSeatCount(SeatComfortApplier.detectSeatCount(this@MainActivity))
+            setMode(Prefs.seatComfortMode(this@MainActivity) != SeatComfort.SeatMode.HEAT.ordinal)   // true=Làm mát
+            for (i in 0..3) setLevel(i, Prefs.seatComfortLevel(this@MainActivity, i))
+            onSeatLevelChanged = { seat, level ->
+                Prefs.setSeatComfortLevel(this@MainActivity, seat, level)
+                // Auto-apply (nút "Áp dụng ngay" đã bỏ): đổi mức ⇒ ghi HAL ngay. applyNow tự no-op nếu tắt.
+                SeatComfortApplier.applyNow(this@MainActivity)
+            }
+        }
+
+        // Chế độ toàn cục (làm mát ↔ sưởi) — Level-2 (ui-visual-upgrade-l2): SegmentedControlView 2 đoạn loại
+        // trừ (warm=true ⇒ đoạn chọn dùng gradient hồng→hổ phách) THAY RadioGroup; đổi chế độ → tô lại diagram +
+        // persist + apply. selectedIndex seed từ pref KHÔNG nổ onSelected (chỉ USER chạm mới nổ) — không echo giả.
+        findViewById<com.byd.clusternav.ui.SegmentedControlView>(R.id.seg_seat_mode)?.apply {
+            warm = true
+            setOptions(listOf(Lang.t("Làm mát", "Cool"), Lang.t("Sưởi", "Heat")))
+            selectedIndex = if (Prefs.seatComfortMode(this@MainActivity) == SeatComfort.SeatMode.HEAT.ordinal) 1 else 0
+            onSelected = { idx ->
+                val mode = if (idx == 1) SeatComfort.SeatMode.HEAT.ordinal else SeatComfort.SeatMode.COOL.ordinal
+                Prefs.setSeatComfortMode(this@MainActivity, mode)
+                diagram?.setMode(mode != SeatComfort.SeatMode.HEAT.ordinal)   // tô lại mát(cyan)/sưởi(amber) tức thì
+                // Auto-apply (nút "Áp dụng ngay" đã bỏ): đổi chế độ ⇒ ghi HAL ngay. applyNow tự no-op nếu tắt.
+                SeatComfortApplier.applyNow(this@MainActivity)
+            }
+        }
+
+        // Nút "Áp dụng ngay" ĐÃ BỎ (Option B · owner: "chỉnh xong là lưu, nút Áp dụng vô nghĩa") — thay bằng
+        // auto-apply ngay trong callback đổi mức / đổi chế độ ở trên (SeatComfortApplier.applyNow, no-op nếu tắt).
+        // Số ghế 2 (Seal) / 4 (Han) do seat_diagram.setSeatCount lo (detectSeatCount ở trên) — không còn seat_rear_row.
+
+        refreshSeatComfortPanel()
+    }
+
+    /** Mờ + khoá diagram + chế độ khi công tắc chính TẮT (SeatDiagramView tự vẽ mờ + chặn chạm khi !isEnabled). */
+    private fun refreshSeatComfortPanel() {
+        val on = Prefs.seatComfortEnabled(this)
+        intArrayOf(R.id.seat_diagram, R.id.seg_seat_mode)
+            .forEach { id -> findViewById<View>(id)?.isEnabled = on }
+    }
+
+    // ── Tự lọc bụi mịn PM2.5 (spec pm25-auto-filter) ─────────────────────────────────────────────
+    // MỘT công tắc + nhãn mức bụi hiện tại (đơn giản — KHÔNG chọn ngưỡng, KHÔNG option thừa). BẬT →
+    // Pm25FilterApplier bật lọc-liên-tục KHÔNG popup (nền); TẮT → khôi phục. Nhãn song ngữ đặt lúc CHẠY qua
+    // Lang.t. Detach listener TRƯỚC khi khôi phục isChecked (như voice-key / ghế) để không bắn sự kiện giả.
+    private fun setupPm25FilterControls() {
+        findViewById<TextView>(R.id.txt_pm25_title)?.text = Lang.t("Tự lọc bụi mịn", "Auto fine-dust filter")
+
+        findViewById<Switch>(R.id.switch_pm25_filter)?.apply {
+            setOnCheckedChangeListener(null)
+            text = Lang.t("Bật", "On")
+            isChecked = Prefs.pm25FilterEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                Prefs.setPm25FilterEnabled(this@MainActivity, on)
+                if (on) Pm25FilterApplier.enable(this@MainActivity) else Pm25FilterApplier.disable(this@MainActivity)
+                refreshPm25Level()
+            }
+        }
+
+        refreshPm25Level()
+    }
+
+    /**
+     * Đọc mức PM2.5 trên thread NỀN (HAL reflection — không dùng ở main) rồi post nhãn song ngữ về
+     * <code>txt_pm25_level</code>. INVALID / off-car → nhãn "—" (levelLabel tự trả "—" cho mức không rõ).
+     */
+    private fun refreshPm25Level() {
+        val tv = findViewById<TextView>(R.id.txt_pm25_level)
+        val gauge = findViewById<com.byd.clusternav.comfort.Pm25GaugeView>(R.id.pm25_gauge)
+        if (tv == null && gauge == null) return
+        Thread({
+            val level = Pm25FilterApplier.readLevel(this)
+            val label = Lang.t(Pm25Filter.levelLabelVi(level), Pm25Filter.levelLabelEn(level))
+            ui.post {
+                tv?.text = Lang.t("Mức bụi hiện tại: ", "Current dust level: ") + label
+                gauge?.setLevel(level)   // INVALID / off-car → cung rỗng + "—" (degrade-safe)
+            }
+        }, "pm25-read-level").start()
+    }
+
+    /**
+     * Ngôn ngữ / Language selector (nhóm Hệ thống). Lựa chọn 3-cách [Lang.Choice]: Theo xe (AUTO — theo locale
+     * máy/xe) · VI · EN. Seed [com.byd.clusternav.ui.SegmentedControlView.selectedIndex] từ lựa chọn đã lưu MÀ
+     * KHÔNG bắn onSelected (setter không echo — chỉ chạm tay mới bắn), rồi cài onSelected: lưu qua
+     * [Lang.setChoice] + gọi [recreate] để dựng lại toàn UI + localize lại theo ngôn ngữ mới. Cùng khuôn
+     * seg_cluster_mode / seg_seat_mode. Degrade-safe: no-op nếu view vắng (parity đảm bảo có ở cả hai biến thể).
+     */
+    private fun setupLanguageSelector() {
+        findViewById<com.byd.clusternav.ui.SegmentedControlView>(R.id.seg_language)?.apply {
+            setOptions(listOf(Lang.t("Theo xe", "System"), "VI", "EN"))
+            selectedIndex = when (Lang.choice(this@MainActivity)) {
+                Lang.Choice.AUTO -> 0
+                Lang.Choice.VI -> 1
+                Lang.Choice.EN -> 2
+            }
+            onSelected = { idx ->
+                val choice = when (idx) {
+                    1 -> Lang.Choice.VI
+                    2 -> Lang.Choice.EN
+                    else -> Lang.Choice.AUTO
+                }
+                Lang.setChoice(this@MainActivity, choice)
+                recreate()
+            }
+        }
+    }
+
+    /**
+     * Giao diện / Theme selector (nhóm Hệ thống, ngay dưới Ngôn ngữ). Seed [SegmentedControlView.selectedIndex]
+     * từ [ThemeMode.choice] (SYSTEM=0 / LIGHT=1 / DARK=2) — setter KHÔNG bắn onSelected nên seed không tạo
+     * sự kiện giả — RỒI mới cài [SegmentedControlView.onSelected] → [ThemeMode.setChoice] + [recreate] để cả
+     * Activity attachBaseContext lại và resolve values/ (LIGHT) hoặc values-night/ (DARK). Nhãn đoạn đặt qua
+     * [Lang.t] nên tự theo ngôn ngữ; các custom View đọc @color trong init nên bản dựng lại lấy đúng mode mới.
+     */
+    private fun setupThemeSelector() {
+        findViewById<com.byd.clusternav.ui.SegmentedControlView>(R.id.seg_theme)?.apply {
+            setOptions(listOf(Lang.t("Theo xe", "System"), Lang.t("Sáng", "Light"), Lang.t("Tối", "Dark")))
+            selectedIndex = when (ThemeMode.choice(this@MainActivity)) {
+                ThemeMode.Choice.SYSTEM -> 0
+                ThemeMode.Choice.LIGHT -> 1
+                ThemeMode.Choice.DARK -> 2
+            }
+            onSelected = { idx ->
+                val choice = when (idx) {
+                    1 -> ThemeMode.Choice.LIGHT
+                    2 -> ThemeMode.Choice.DARK
+                    else -> ThemeMode.Choice.SYSTEM
+                }
+                ThemeMode.setChoice(this@MainActivity, choice)
+                recreate()
+            }
         }
     }
 

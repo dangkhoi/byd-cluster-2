@@ -3,8 +3,8 @@ package com.byd.clusternav.modules.clustercast
 import android.app.Activity
 import android.content.Intent
 import android.view.View
-import android.widget.CheckBox
 import android.widget.Spinner
+import android.widget.Switch
 import com.byd.clusternav.Lang
 import com.byd.clusternav.R
 import com.byd.clusternav.modules.clustercast.simplified.AppMover
@@ -12,10 +12,10 @@ import com.byd.clusternav.modules.clustercast.simplified.SimpleCastCoordinator
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastPrefs
 
 /**
- * Encapsulates the autostart checkbox/spinner SETUP UI only.
+ * Encapsulates the autostart switch/spinner SETUP UI only.
  *
  * Extracted from MainActivityCastController to keep each file ≤ 400 LOC.
- * Owns: the autostart full/split checkboxes + app spinners (which persist the user's choices to
+ * Owns: the autostart full/split switches + app spinners (which persist the user's choices to
  * prefs) and the split-ratio spinner.
  *
  * It does NOT dispatch autostart. The sole autostart driver is [FloatingBubbleService], which runs
@@ -29,14 +29,14 @@ internal class CastAutostart(
     private val castPrefs: SimpleCastPrefs = coordinator.prefs
 
     fun setup() {
-        val autoStartCheckbox = activity.findViewById<CheckBox>(R.id.cb_autostart)
+        val autoStartCheckbox = activity.findViewById<Switch>(R.id.cb_autostart)
         autoStartCheckbox.isEnabled = true
         autoStartCheckbox.isChecked = castPrefs.autoStartEnabled()
         autoStartCheckbox.setOnCheckedChangeListener { _, isChecked ->
             castPrefs.setAutoStartEnabled(isChecked)
             if (isChecked) {
                 castPrefs.setAutoStartSplitEnabled(false)
-                activity.findViewById<CheckBox>(R.id.cb_autostart_split).isChecked = false
+                activity.findViewById<Switch>(R.id.cb_autostart_split).isChecked = false
             }
         }
 
@@ -45,7 +45,7 @@ internal class CastAutostart(
         populateAutoStartSpinner(spinnerAutoApp, "full")
 
         // Split autostart
-        val autoStartSplitCheckbox = activity.findViewById<CheckBox>(R.id.cb_autostart_split)
+        val autoStartSplitCheckbox = activity.findViewById<Switch>(R.id.cb_autostart_split)
         autoStartSplitCheckbox.isChecked = castPrefs.autoStartSplitEnabled()
         autoStartSplitCheckbox.setOnCheckedChangeListener { _, isChecked ->
             castPrefs.setAutoStartSplitEnabled(isChecked)
@@ -93,8 +93,8 @@ internal class CastAutostart(
         val labels = mutableListOf(Lang.t("— Chọn app —", "— Select app —"))
         labels.addAll(apps.map { it.first })
 
-        val adapter = android.widget.ArrayAdapter(activity, android.R.layout.simple_spinner_item, labels)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val adapter = android.widget.ArrayAdapter(activity, com.byd.clusternav.R.layout.cockpit_spinner_item, labels)
+        adapter.setDropDownViewResource(com.byd.clusternav.R.layout.cockpit_spinner_dropdown_item)
         spinner.adapter = adapter
 
         val savedPkg = when (slot) {
