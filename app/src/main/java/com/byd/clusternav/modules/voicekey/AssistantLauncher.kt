@@ -14,6 +14,7 @@ import com.byd.clusternav.carexec.LocalDeviceShell
 import com.byd.clusternav.carexec.LocalShellFailure
 import com.byd.clusternav.carexec.LocalShellResult
 import com.byd.clusternav.carexec.LocalShellRetry
+import com.byd.clusternav.core.FloatAppList
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -257,8 +258,7 @@ object AssistantLauncher {
                 sh("settings put secure voice_recognition_service $GSA_RECOG")
                 // byd_float_app_list: APPEND (không clobber app khác) googlequicksearchbox + bard + chính mình.
                 val cur = sh("settings get global byd_float_app_list").output.trim()
-                val merged = (cur.split(',').map { it.trim() }.filter { it.isNotEmpty() && it != "null" } +
-                    listOf(PKG_GSA, PKG_BARD, app.packageName)).distinct().joinToString(",")
+                val merged = FloatAppList.merge(cur, listOf(PKG_GSA, PKG_BARD, app.packageName))
                 sh("settings put global byd_float_app_list $merged")
                 sh("appops set $PKG_GSA SYSTEM_ALERT_WINDOW allow")
                 sh("appops set $PKG_BARD SYSTEM_ALERT_WINDOW allow")

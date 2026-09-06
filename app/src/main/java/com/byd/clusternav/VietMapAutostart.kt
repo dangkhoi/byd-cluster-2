@@ -5,6 +5,7 @@ import android.util.Log
 import com.byd.clusternav.carexec.LocalDeviceShell
 import com.byd.clusternav.carexec.LocalShellResult
 import com.byd.clusternav.carexec.LocalShellRetry
+import com.byd.clusternav.core.FloatAppList
 import com.byd.clusternav.navigation.NavApps
 
 /**
@@ -129,6 +130,27 @@ object VietMapAutostart {
             // IO_ERROR…). KHÔNG đổi hành vi thực thi: session() vốn gọi cùng sessionResult() rồi vứt Failed.
             val result = LocalDeviceShell.sessionResult(keys, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                 val running = sh("pidof $PKG").output.trim().isNotEmpty()
+                // FLOAT/OVERLAY WHITELIST (một lần): bản mod VietMap vẽ BÓNG lên cụm, nhưng BYD IVI TỪ CHỐI
+                // overlay của gói KHÔNG có trong CSV toàn cục `byd_float_app_list` (toast "Hệ thống IVI không hỗ
+                // trợ hoạt động này"). Thêm VietMap vào list đó + cấp SYSTEM_ALERT_WINDOW — CÙNG công thức đã
+                // proven mà AssistantLauncher dùng cho Google/Gemini (merge dùng chung com.byd.clusternav.core.
+                // FloatAppList, KHÔNG clobber gói khác). Cổng: bóng BẬT + cờ một-lần chưa set. Degrade-safe: bọc
+                // runCatching để hỏng (vd dadb rớt giữa chừng) KHÔNG chặn launch phía dưới; và cờ chỉ set khi
+                // THÀNH CÔNG (nằm cuối runCatching) ⇒ hỏng thì lần autostart sau thử lại. Chạy trên dadb uid-shell
+                // (cùng phiên) nên có quyền ghi Settings.Global + appops.
+                if (Prefs.vmBubbleEnabled(app) && !Prefs.vmFloatWhitelistApplied(app)) {
+                    runCatching {
+                        val curFloat = sh("settings get global byd_float_app_list").output.trim()
+                        val mergedFloat = FloatAppList.merge(curFloat, listOf(PKG))
+                        sh("settings put global byd_float_app_list $mergedFloat")
+                        sh("appops set $PKG SYSTEM_ALERT_WINDOW allow")
+                        Prefs.setVmFloatWhitelistApplied(app, true)   // CHỈ set khi cả 2 lệnh trên không ném
+                        Log.i(TAG, "float-whitelist: thêm VietMap vào byd_float_app_list + SYSTEM_ALERT_WINDOW allow (list=$mergedFloat)")
+                    }.onFailure {
+                        // KHÔNG set cờ ⇒ lần autostart kế thử lại; KHÔNG rethrow ⇒ launch phía dưới vẫn chạy.
+                        Log.w(TAG, "float-whitelist: áp dụng thất bại, sẽ thử lại lần sau: ${it.message}")
+                    }
+                }
                 // (b) VietMap ĐÃ ở foreground rồi → launch lại chỉ gây "giật" (flash), không cần. Đọc activity
                 // đang resumed/focus; degrade-safe (đọc lỗi / grep vắng ⇒ coi như KHÔNG-foreground ⇒ giữ hành vi
                 // cũ = vẫn launch). Chỉ có ý nghĩa khi process đang sống (running).
