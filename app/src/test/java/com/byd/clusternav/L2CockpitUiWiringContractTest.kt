@@ -20,9 +20,10 @@ import org.junit.jupiter.api.Test
  *  • SEAT — the radio ids (`seat0_group`…`seat3_l2`, `seatN_label`, `seat_comfort_grid`, `seat_rear_row`) are
  *    GONE from both layout variants and `seat_diagram` is present in both; `setupSeatComfortControls` seeds the
  *    diagram from [SeatComfortApplier.detectSeatCount] + [Prefs.seatComfortMode] + [Prefs.seatComfortLevel] and,
- *    on `onSeatLevelChanged`, persists [Prefs.setSeatComfortLevel] + calls [SeatComfortApplier.applyNow] (SAME
- *    persistence + apply the radios had); the mode control (seg_seat_mode SegmentedControlView, replacing the
- *    cool/heat RadioGroup) persists [Prefs.setSeatComfortMode] + applyNow.
+ *    on `onSeatLevelChanged`, persists [Prefs.setSeatComfortLevel] + calls [SeatComfortApplier.applySeat] (v1.34:
+ *    a per-seat write that sends OFF too — the bulk applyNow skips OFF; SAME persistence the radios had); the mode
+ *    control (seg_seat_mode SegmentedControlView, replacing the cool/heat RadioGroup) persists
+ *    [Prefs.setSeatComfortMode] + [SeatComfortApplier.applyNow] (bulk re-apply of all non-OFF seats).
  *  • PM2.5 — `pm25_gauge` present in both variants; `refreshPm25Level` reads via [Pm25FilterApplier.readLevel]
  *    on a background thread and updates BOTH `txt_pm25_level` and `pm25_gauge.setLevel`.
  *  • HERO — the six `hero_*` ids present in both variants; `updateHeroStrip` is called from `refresh()` and is
@@ -30,8 +31,9 @@ import org.junit.jupiter.api.Test
  *    [NavAccessibilitySource.connected] + [Prefs.voiceKeyEnabled]) — it writes NO prefs / dispatches nothing.
  *  • KEEP — the retained seat ids (mode group + switch + title + hint) survive in both variants.
  *
- * ── LÀM-ĐỎ (P5.3): xoá `SeatComfortApplier.applyNow` khỏi callback ghế, hoặc bỏ `Prefs.setSeatComfortLevel`,
- * hoặc trả lại `seat0_group`, hoặc bỏ `pm25_gauge.setLevel`, hoặc thêm ghi-pref vào `updateHeroStrip` ⇒ test ĐỎ.
+ * ── LÀM-ĐỎ (P5.3): xoá `SeatComfortApplier.applySeat` khỏi callback ghế (hoặc `applyNow` khỏi callback đổi chế
+ * độ), hoặc bỏ `Prefs.setSeatComfortLevel`, hoặc trả lại `seat0_group`, hoặc bỏ `pm25_gauge.setLevel`, hoặc
+ * thêm ghi-pref vào `updateHeroStrip` ⇒ test ĐỎ.
  */
 class L2CockpitUiWiringContractTest {
 
@@ -106,8 +108,9 @@ class L2CockpitUiWiringContractTest {
             "on tap: persists the per-seat level to Prefs.seatComfortLevel (SAME persistence as the old radios)",
         )
         assertTrue(
-            b.contains("SeatComfortApplier.applyNow(this@MainActivity)"),
-            "on tap: applies to HAL now (no-op when the master switch is off) — feature intact",
+            b.contains("SeatComfortApplier.applySeat(this@MainActivity, seat, level)"),
+            "on tap: applies the TAPPED seat to HAL now via applySeat — v1.34 sends OFF too (the bulk applyNow " +
+                "skips OFF); no-op when the master switch is off — feature + off-fix intact",
         )
     }
 
@@ -118,6 +121,11 @@ class L2CockpitUiWiringContractTest {
         assertTrue(b.contains("Prefs.setSeatComfortMode(this@MainActivity, mode)"), "mode persists to Prefs")
         // The mode change also re-tints the diagram and applies now.
         assertTrue(b.contains("diagram?.setMode("), "mode change recolours the diagram")
+        // Mode change (cool↔heat) re-applies ALL non-OFF seats via the bulk applyNow (the seat TAP uses applySeat).
+        assertTrue(
+            b.contains("SeatComfortApplier.applyNow(this@MainActivity)"),
+            "on mode change: re-applies all non-OFF seats to HAL via the bulk applyNow",
+        )
     }
 
     @Test
