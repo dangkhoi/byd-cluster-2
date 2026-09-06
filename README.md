@@ -12,6 +12,56 @@
 
 **(EN)** ClusterNav is a personal hobby experiment by **Đăng Khôi · `dangkhoi`** for exploring navigation and cluster projection on BYD DiLink hardware. It is not affiliated with BYD and makes no driving-safety, compatibility, reversibility, or production-readiness claim.
 
+## Tính năng · Features
+
+**(VI)** Mục lục tính năng — chi tiết từng mục ở phần **Chi tiết tính năng** bên dưới.
+
+*Dẫn đường & chiếu cụm*
+- **Navigation + HUD** — dẫn đường trên cụm (làn zin + "Giữa + ETA") và HUD kính lái; hướng rẽ vòng xuyến + số lối ra; chọn chế độ cụm ON/OFF; chạy chữ tên đường dài
+- **Cluster Cast** — chiếu app đang mở lên cụm: full hoặc chia đôi chỉnh tỉ lệ (1:9–9:1); CarPlay & Android Auto full-screen; tự chiếu app khi khởi động; watchdog giữ cụm
+- **Biển báo tốc độ trên cụm** — hiện tốc độ/giới hạn + giới hạn sắp tới + chip cảnh báo/camera VietMap; chỉnh cỡ và vị trí
+- **Bóng VietMap trên cụm** — hiện bóng VietMap trên cụm, kéo-thả chỉnh vị trí
+
+*Tiện nghi cabin (mới ở 1.32)*
+- **Ghế mát / sưởi tự động** — tự áp mức mát/sưởi từng ghế qua HAL điều hoà; sơ đồ ghế chạm để chọn mức
+- **Tự lọc bụi mịn PM2.5** — tự bật lọc khí khi bụi vượt ngưỡng; đồng hồ hiển thị mức
+
+*Trợ lý & hệ thống*
+- **Nút vật lý → trợ lý giọng nói** — gán nút cứng (học phím, gán nhiều nút) mở Google/Gemini · BYD 小迪 · Kiki · speech; chỉ báo trạng thái phím-thoại + "Kiểm tra / Sửa ngay"; khôi phục OFF→ON
+- **Cấp quyền notification trong app** — tự cấp qua dadb, không cần laptop/ADB
+- **Tự khởi động nền** — tự bật mọi tính năng nền (phím-thoại, ghế, lọc bụi, dẫn đường) khi nổ máy
+- **Tự cập nhật OTA** — tự tải bản `apk/` mới hơn từ repo xuống xe
+- **Nâng cao · khắc phục sự cố** — kiểm tra cập nhật, dọn cụm, cứu hộ chiếu, chẩn đoán, xuất log ra sdcard
+
+*Giao diện (mới ở 1.32)*
+- **Giao diện "cockpit" Level-2** — design system `Cockpit.*`: hero trạng thái + bảng tính năng 2 cột
+- **Song ngữ Việt / English** — chuyển ngôn ngữ ngay trong app (Theo xe / VI / EN)
+- **Light mode** — chọn giao diện Sáng / Tối / Theo xe
+
+**(EN)** Feature index — each item is detailed under **Feature details** below.
+
+*Navigation & cluster casting*
+- **Navigation + HUD** — navigation on the cluster (stock lane + centre "Giữa + ETA") and the windshield HUD; roundabout exit direction + number; cluster display ON/OFF; long road-name marquee
+- **Cluster Cast** — cast the foreground app to the cluster: full or split with an adjustable ratio (1:9–9:1); CarPlay & Android Auto full-screen; auto-cast an app on start; a re-pin watchdog
+- **Speed badge on the cluster** — show speed/limit + the upcoming limit + a VietMap alert/camera chip; adjustable size and position
+- **VietMap bubble on the cluster** — show the VietMap bubble, drag to reposition
+
+*Cabin comfort (new in 1.32)*
+- **Auto seat cooling / heating** — applies a saved per-seat cool/heat level over the AC HAL; tap the seat diagram to cycle
+- **PM2.5 auto-filter** — auto-enables purification when cabin PM2.5 crosses the heavy threshold; a ring gauge shows the level
+
+*Assistant & system*
+- **Physical button → voice assistant** — map a hardware button (learn a key, map many buttons) to Google/Gemini · BYD 小迪 · Kiki · speech; a binding-status indicator + "Check / Fix now"; OFF→ON recovery
+- **In-app notification-access grant** — self-granted over dadb, no laptop/ADB
+- **Background auto-start** — auto-starts every background feature (voice key, seats, dust filter, navigation) on engine start
+- **OTA self-update** — pulls a newer `apk/` build from the repo onto the car
+- **Advanced · troubleshooting** — check for updates, clear the cluster, cast rescue, diagnostics, export logs to sdcard
+
+*Interface (new in 1.32)*
+- **Level-2 "cockpit" UI** — a reusable `Cockpit.*` design system: hero status cards + a two-column feature board
+- **Bilingual Vietnamese / English** — switch language in-app (By-car / VI / EN)
+- **Light mode** — Interface selector: Light / Dark / By-car
+
 ## Target product baseline — exactly two tracks · Mục tiêu sản phẩm — đúng hai nhánh
 
 **(VI)** Sản phẩm chốt ở đúng hai nhánh:
@@ -102,23 +152,55 @@ See the [project closeout (1.30)](docs/CLOSEOUT-2026-08-16.md) for the final eva
 >
 > ⚠️ **(EN)** The `1.04` vehicle-test candidate (`ClusterNav-1.04-v104-527589f2d16a-release.apk`) predates the WARN-1 hardening and exported the T10 `TEST_ADAS_*` / `TEST_SPEED_LIMIT` ADAS/instrument-write surface — it is **blocklisted by SHA-256 in the on-car install guard** (which refuses it) and is **no longer kept in `apk/`** (older builds are shelved; git history remains the record). **Do not install it.** The current `1.30` release has no exported/reachable test surface (verified with `aapt2` on this build).
 
-## Features · Tính năng
+## Chi tiết tính năng · Feature details
 
 **(VI)**
-- **Navigation + HUD** — một nguồn dẫn đường với đầu ra cluster-lane và cluster-centre ("Giữa + ETA") độc lập. Master switch **mặc định TẮT**; bật lên sẽ cấp quyền notification access trong app (qua dadb) và kết nối.
+
+*Dẫn đường & chiếu cụm*
+- **Navigation + HUD** — một nguồn dẫn đường với đầu ra cluster-lane (làn zin) và cluster-centre ("Giữa + ETA") độc lập, cùng HUD kính lái; hướng rẽ **vòng xuyến + số lối ra**; chọn **chế độ cụm** ON/OFF; **chạy chữ** tên đường dài. Master switch **mặc định TẮT**; bật lên sẽ cấp quyền notification access trong app (qua dadb) và kết nối.
+- **Cluster Cast** — projection-first: mở app → cụm sẵn sàng ngay; chạm nút nổi để chiếu app đang mở lên cụm, chạm lại để trả về. Full hoặc **chia đôi chỉnh tỉ lệ (1:9–9:1)**; **CarPlay / Android Auto** luôn full-screen; **tự chiếu** một app khi khởi động; watchdog giữ cụm khi app bị kéo ra.
+- **Biển báo tốc độ trên cụm** — hiện tốc độ/giới hạn hiện tại + **giới hạn sắp tới** + **chip cảnh báo/camera VietMap**; chỉnh cỡ và kéo-thả vị trí.
+- **Bóng VietMap trên cụm** — hiện bóng VietMap trên cụm, kéo-thả chỉnh vị trí; auto-start VietMap khi bật (1.32 sửa: luôn mở activity rồi đưa về nền để bóng hiện được).
+
+*Tiện nghi cabin (mới ở 1.32)*
+- **Ghế mát / sưởi tự động** — tự áp mức mát/sưởi đã lưu cho từng ghế (Seal 2 ghế / Han 4 ghế) qua HAL điều hoà BYDAuto, ~5 giây sau khi mở app / nổ máy; sơ đồ ghế top-down chạm để đổi mức. Mát và sưởi loại trừ nhau (theo HAL).
+- **Tự lọc bụi mịn PM2.5** — khi mức PM2.5 trong cabin vượt ngưỡng nặng, tự bật lọc khí (reflection vào service điều hoà); đồng hồ vòng hiển thị mức hiện tại.
+
+*Trợ lý & hệ thống*
+- **Nút vật lý → trợ lý giọng nói** *(tuỳ chọn, mặc định TẮT)* — gán một nút cứng + cử chỉ (nhấn / nhấn-giữ) để mở Google/Gemini, BYD 小迪, Kiki hoặc speech recognizer, mà không đổi chức năng gốc của nút; **học phím mới** trên xe, **gán nhiều nút cho nhiều app**; **chỉ báo trạng thái phím-thoại** kèm nút "Kiểm tra / Sửa ngay"; khôi phục OFF→ON khi mất kết nối sau reboot.
 - **Cấp quyền notification access trong app** — không cần laptop/ADB, không cần màn hình system-settings: app tự cấp listener qua dadb uid-shell, màn hình cài đặt chỉ là phương án dự phòng.
-- **Nút vật lý → trợ lý giọng nói** *(tuỳ chọn, mặc định TẮT)* — gán một nút cứng + cử chỉ (nhấn / nhấn-giữ) để mở Google/Gemini, BYD 小迪, hoặc speech recognizer, mà không đổi chức năng gốc của nút.
-- **Cluster Cast** — projection-first: mở app → cụm sẵn sàng ngay; chạm nút nổi để chiếu app đang mở lên cụm; chạm lại để trả về.
-- **CarPlay / Android Auto** — luôn full-screen, không resize.
-- **App thường** — full hoặc split, chỉnh được kích thước.
+- **Tự khởi động nền** — tự bật mọi tính năng nền (phím-thoại, ghế, lọc bụi, dẫn đường) khi nổ máy, không cần mở app thủ công.
+- **Tự cập nhật OTA** — khi Nav+HUD bật, app tự dò thư mục `apk/` trên nhánh `main`, thấy `ClusterNav-<ver>-release.apk` mới hơn thì tự cài qua dadb loopback (cùng khoá ký).
+- **Nâng cao · khắc phục sự cố** — kiểm tra cập nhật thủ công, dọn sạch cụm, cứu hộ chiếu (deep rescue), chẩn đoán, và xuất log ra `/sdcard` để gỡ lỗi.
+
+*Giao diện (mới ở 1.32)*
+- **Giao diện "cockpit" Level-2** — design system `Cockpit.*` dùng lại được: hero 3 thẻ trạng thái (ô rẽ + đồng hồ km/h **thật** + xem trước chia đôi cụm) + bảng tính năng 2 cột grouped-row, kèm custom view sơ đồ ghế / đồng hồ PM2.5 / segmented.
+- **Song ngữ Việt / English** — chuyển ngôn ngữ ngay trong app (**Ngôn ngữ**: Theo xe / VI / EN); dịch lúc chạy nên không đụng `strings.xml`.
+- **Light mode** — bảng màu ngày/đêm đầy đủ, chọn qua **Giao diện** (Theo xe / Sáng / Tối); mọi custom view đổi màu theo.
 
 **(EN)**
-- **Navigation + HUD** — one navigation source with independent cluster-lane and cluster-centre ("Giữa + ETA") outputs. Master switch **defaults OFF**; turning it on grants notification access in-app (over dadb) and connects.
+
+*Navigation & cluster casting*
+- **Navigation + HUD** — one navigation source with independent cluster-lane (stock lane) and cluster-centre ("Giữa + ETA") outputs, plus the windshield HUD; roundabout **exit direction + exit number**; a **cluster display** ON/OFF selector; a long road-name **marquee**. Master switch **defaults OFF**; turning it on grants notification access in-app (over dadb) and connects.
+- **Cluster Cast** — projection-first: open app → cluster ready instantly; tap the floating button to cast the foreground app, tap again to return. Full or **split with an adjustable ratio (1:9–9:1)**; **CarPlay / Android Auto** always full-screen; **auto-cast** an app on start; a re-pin watchdog when an app is pulled off the cluster.
+- **Speed badge on the cluster** — show the current speed/limit + the **upcoming limit** + a **VietMap alert/camera chip**; adjustable size and drag-to-position.
+- **VietMap bubble on the cluster** — show the VietMap bubble on the cluster, drag to reposition; VietMap auto-starts when enabled (1.32 fix: always open the activity then return to background so the bubble appears).
+
+*Cabin comfort (new in 1.32)*
+- **Auto seat cooling / heating** — applies a saved per-seat cool/heat level (Seal 2 seats / Han 4 seats) over the BYDAuto AC HAL ~5 s after the app opens / engine start; a top-down seat diagram lets you tap a seat to cycle. Cool and heat are mutually exclusive (matches the HAL).
+- **PM2.5 auto-filter** — when cabin PM2.5 crosses the heavy threshold, purification is auto-enabled (reflection into the AC service); a ring gauge shows the current level.
+
+*Assistant & system*
+- **Physical button → voice assistant** *(optional, default OFF)* — map a hardware button + gesture (press / long-press) to launch Google/Gemini, BYD 小迪, Kiki or a speech recognizer, without changing the button's native function; **learn a new key** on the car, **map many buttons to many apps**; a **voice-key binding-status indicator** with a "Check / Fix now" action; OFF→ON recovery when the binding drops after a reboot.
 - **In-app notification-access grant** — no laptop/ADB, no system-settings screen: the app self-grants the listener over the dadb uid-shell, with the settings screen only as a fallback.
-- **Physical button → voice assistant** *(optional, default OFF)* — map a hardware button + gesture (press / long-press) to launch Google/Gemini, BYD 小迪, or a speech recognizer, without changing the button's native function.
-- **Cluster Cast** — projection-first: open app → cluster ready instantly; tap floating button to cast foreground app to cluster; tap again to return.
-- **CarPlay / Android Auto** — always full-screen, no resize.
-- **Regular apps** — full or split, adjustable size.
+- **Background auto-start** — auto-starts every background feature (voice key, seats, dust filter, navigation) on engine start, no need to open the app manually.
+- **OTA self-update** — with Nav+HUD on, the app polls the repo's `apk/` on `main` and installs a newer `ClusterNav-<ver>-release.apk` over the dadb loopback (same signing key).
+- **Advanced · troubleshooting** — manual update check, clear the cluster, cast deep-rescue, diagnostics, and export logs to `/sdcard` for debugging.
+
+*Interface (new in 1.32)*
+- **Level-2 "cockpit" UI** — a reusable `Cockpit.*` design system: three hero status cards (turn tile + a real km/h speed dial + a cast split-preview) + a two-column feature board of grouped rows, with custom seat-diagram / PM2.5-gauge / segmented views.
+- **Bilingual Vietnamese / English** — switch language in-app (**Language**: By-car / VI / EN); translated at runtime so `strings.xml` is untouched.
+- **Light mode** — a full day/night palette selected via **Interface** (By-car / Light / Dark); every custom view adapts.
 
 > ⚠️ **(VI)** Đây là một thử nghiệm sở thích. Không cam kết an toàn lái xe, tương thích, khả năng hoàn tác hay sẵn sàng sản xuất. Cài đặt tự chịu rủi ro. Không liên kết với BYD.
 >
