@@ -856,13 +856,26 @@ class ExpansionTransportFenceTest {
          *
          * Hằng cũ lần-25 (giữ trace): activity_main.xml = 046d23b0…03fd8d98.
          *
+         * ⚠ CẬP NHẬT 2026-09-08 (lần 27) — owner duyệt (task pm25-clean-now + auto-poll), KHÔNG sửa lén.
+         *
+         * `activity_main.xml` đổi vì **thêm nút "Lọc ngay" vào card PM2.5** (owner 2026-09-08: cần nút bấm lọc
+         * luôn + vá "popup hiện mà không auto-lọc"), NGAY SAU row PM2.5 trong Group, ở CẢ hai biến thể layout
+         * (portrait + `layout-w960dp`). Thêm 1 id (parity giữ bởi LayoutVariantIdParityTest): `btn_pm25_clean_now`
+         * ⇒ bộ id 87→88. Nút gọi `Pm25FilterApplier.cleanNow` (`setQuickCleanAirState(1)` NGAY, bất kể công tắc).
+         * Kèm sửa .kt (KHÔNG đụng seal): applier thêm vòng poll ~45s bắn lọc-ngay khi bụi ≥ ngưỡng — vì on-car
+         * `setAutoCleanAirState` một mình KHÔNG tự lọc. `strings.xml` KHÔNG đổi (nhãn "Lọc ngay" đặt lúc chạy qua
+         * `Lang.t`+`BilingualLabels`). Chỉ bản dọc bị pin hash ở đây nên chỉ cập nhật hằng bản dọc; bản rộng
+         * (`layout-w960dp`) không pin.
+         *
+         * Hằng cũ lần-26 (giữ trace): activity_main.xml = 0678a33d…650091.
+         *
          * ⚠ CHỈ được cập nhật hằng ở đây khi thay đổi là CHỦ Ý và có vết trong backlog. Cập nhật theo phản xạ
          * "cho test xanh" là **phá seal** — đúng thứ cơ chế này sinh ra để bắt.
          * ⚠ CẤM gỡ `activity_main.xml` khỏi `T11_PATHS` để né việc cập nhật hằng — nó có mặt trong danh sách
          * vì giao diện biển-báo-tốc-độ nằm trong file này (xem đính chính 08-24 ở `PROJECT-BACKLOG.md` E9).
          */
         private val T11_HASHES = mapOf(
-            "app/src/main/res/layout/activity_main.xml" to "0678a33d50cf0c5b2c4137617230e24861814b4ffa2666225371ee89bf650091",
+            "app/src/main/res/layout/activity_main.xml" to "556c78e4c46c34f5263d63a2e797df192c458f2ae28542e2bfa648793945785c",
             "app/src/main/res/values/strings.xml" to "8300437c9f186d4296100f36b6a3960e0c9b693828fccb9145ec8e84e8fe4cdd",
         )
         private val T10_PREFIXES = "app/src/vehicleTest/|app/src/testVehicleTest/|car-integration/|core/src/main/kotlin/com/byd/clusternav/carexec/|core/src/test/kotlin/com/byd/clusternav/carexec/|gradle/|scripts/evidence/|scripts/vehicle/|vehicle-contracts/src/main/kotlin/com/byd/clusternav/vehicle/t10/|vehicle-contracts/src/test/kotlin/com/byd/clusternav/vehicle/t10/".split('|')

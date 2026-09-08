@@ -466,6 +466,11 @@
                             android:layout_height="wrap_content"
                             android:contentDescription="Bật hoặc tắt tự lọc bụi mịn PM2.5" />
                     </LinearLayout>
+                    <Button android:id="@+id/btn_pm25_clean_now" style="@style/Cockpit.Button.Compact.Secondary"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_gravity="start"
+                        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginTop="7dp"
+                        android:text="Lọc ngay" android:contentDescription="Lọc bụi mịn ngay bây giờ" />
                 </LinearLayout>
 
                 <!-- GROUP · Hệ thống + Nâng cao -->

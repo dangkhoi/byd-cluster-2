@@ -143,7 +143,15 @@ class L2CockpitUiWiringContractTest {
             assertTrue(xml.contains("@+id/pm25_gauge\""), "$name: pm25_gauge id present")
             assertTrue(xml.contains("com.byd.clusternav.comfort.Pm25GaugeView"), "$name: gauge is the Pm25GaugeView")
             assertTrue(xml.contains("@+id/txt_pm25_level\""), "$name: txt_pm25_level kept")
+            assertTrue(xml.contains("@+id/btn_pm25_clean_now\""), "$name: 'Lọc ngay' button present in both variants")
         }
+    }
+
+    @Test
+    fun `setupPm25FilterControls wires the clean-now button to a manual quick-clean`() {
+        val b = body(mainActivity, "private fun setupPm25FilterControls()")
+        assertTrue(b.contains("R.id.btn_pm25_clean_now"), "looks up the 'Lọc ngay' button")
+        assertTrue(b.contains("Pm25FilterApplier.cleanNow(this@MainActivity)"), "button fires an on-demand quick-clean")
     }
 
     @Test

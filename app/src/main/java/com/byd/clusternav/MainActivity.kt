@@ -1289,6 +1289,17 @@ class MainActivity : Activity() {
             }
         }
 
+        // Nút "Lọc ngay" — lọc-ngay chủ động (setQuickCleanAirState) NGAY, bất kể công tắc auto (owner yêu cầu
+        // 2026-09-08: cần nhấn lọc luôn; đồng thời vá "popup hiện mà không auto-lọc" — quick-clean mới lọc thật).
+        findViewById<Button>(R.id.btn_pm25_clean_now)?.apply {
+            text = Lang.t("Lọc ngay", "Clean now")
+            setOnClickListener {
+                Pm25FilterApplier.cleanNow(this@MainActivity)
+                Toast.makeText(this@MainActivity, Lang.t("Đang lọc bụi mịn…", "Cleaning the air…"), Toast.LENGTH_SHORT).show()
+                refreshPm25Level()
+            }
+        }
+
         refreshPm25Level()
     }
 

@@ -42,6 +42,7 @@ ul{padding-left:22px}li{margin:3px 0}
 <h2>1. Changelog</h2>
 <ul>
 <li><b>Pass 0 — 2026-09-04</b>: Khởi tạo + implement đầy đủ (core + app + 2 layout + test). RE ở <code>docs/diagnostics/byd-pm25-airclean-RE-2026-09-04.md</code> (device 1008 đọc mức; AC device method GHI reflection). Owner: một công tắc "Tự lọc bụi mịn" mặc định TẮT, ngay dưới card ghế, bật → xe tự lọc liên tục KHÔNG popup, hiện mức bụi hiện tại; đơn giản — không chọn ngưỡng.</li>
+<li><b>Pass 1 — 2026-09-08 (v1.38)</b>: sửa on-car — owner báo bụi lên tới mức xe hiện popup nhắc lọc mà KHÔNG tự lọc ⇒ <code>setAutoCleanAirState(1)</code> một mình KHÔNG chủ động lọc trên trim này (chỉ đặt chế độ). Thêm nút <b>"Lọc ngay"</b> (<code>btn_pm25_clean_now</code>) → <code>setQuickCleanAirState(1)</code> thủ công (bất kể công tắc), và vòng poll TRONG-TIẾN-TRÌNH ~45 s bắn quick-clean khi bụi ≥ HEAVY. R-nf1 ("no polling", Pass 0) bị THAY THẾ (xem Nhật ký 2026-09-08).</li>
 </ul>
 
 <h2>2. Context</h2>
@@ -60,7 +61,7 @@ ul{padding-left:22px}li{margin:3px 0}
 </ul>
 <h3>Phi chức năng</h3>
 <ul>
-<li>R-nf1. KHÔNG service foreground polling — xe tự giám sát qua autoClean; app chỉ ĐỌC mức để hiển thị.</li>
+<li>R-nf1. <s>KHÔNG service foreground polling — xe tự giám sát qua autoClean; app chỉ ĐỌC mức để hiển thị.</s> <b>THAY THẾ 2026-09-08 (v1.38):</b> on-car <code>setAutoCleanAirState(1)</code> KHÔNG chủ động lọc (chỉ đặt chế độ, popup vẫn hiện) ⇒ thêm vòng poll TRONG-TIẾN-TRÌNH (ClusterNav luôn chạy nền, KHÔNG phải foreground service riêng) mỗi ~45 s, bụi ≥ HEAVY → <code>setQuickCleanAirState(1)</code>; + nút "Lọc ngay" thủ công. Xem Nhật ký 2026-09-08.</li>
 <li>R-nf2. Ghi/đọc HAL = reflection, <b>degrade-safe</b> (runCatching mỗi lời gọi; off-car = no-op, không crash). Applier không được ném trên thread của nó.</li>
 <li>R-nf3. Song ngữ đặt lúc chạy qua <code>Lang.t</code> (KHÔNG thêm <code>strings.xml</code> — đang byte-seal).</li>
 <li>R-nf4. Giữ parity <code>@+id</code> hai biến thể layout (LayoutVariantIdParityTest).</li>
@@ -161,6 +162,7 @@ ul{padding-left:22px}li{margin:3px 0}
 <ul>
 <li><b>2026-09-04 · Quyết định</b> — tách model thuần (<code>:core Pm25Filter</code>) khỏi phần chạm-Android (<code>:app Pm25FilterApplier</code>) để unit-test off-device.</li>
 <li><b>2026-09-04 · Quyết định</b> — KHÔNG service polling (R-nf1): dựa vào <code>setAutoCleanAirState(1)</code> để xe tự giám sát; app chỉ đọc mức lúc mở app + khi đổi công tắc (không đọc mỗi 1 s để khỏi spam HAL).</li>
+<li><b>2026-09-08 · Sửa on-car (v1.38) — THAY THẾ quyết định 2026-09-04</b>: owner báo bụi lên, xe hiện popup nhắc lọc mà KHÔNG tự lọc ⇒ trả lời OQ2: <code>setAutoCleanAirState(1)</code> trên trim này KHÔNG chủ động lọc (chỉ đặt chế độ). Đổi hướng: (1) nút "Lọc ngay" (<code>btn_pm25_clean_now</code>, seal lần 27) → <code>Pm25FilterApplier.cleanNow</code> = <code>setQuickCleanAirState(1)</code> NGAY, bất kể công tắc; (2) <code>startPollLoop</code> — công tắc BẬT thì poll mức mỗi <code>POLL_INTERVAL_MS</code>=45 s, bụi ≥ HEAVY(5) → <code>setQuickCleanAirState(1)</code>. Đây là poll TRONG-TIẾN-TRÌNH (ClusterNav luôn chạy nền — owner "lo gì"), KHÔNG phải foreground service riêng ⇒ chi phí HAL thấp (45 s/nhịp, không phải 1 s). Guard concurrency <code>polling</code>+<code>pollGeneration</code> (token thế hệ chống race enable↔disable tạo 2 vòng). GIỮ <code>setAutoCleanAirState</code>+<code>enablePurificationFunctionPrompt</code> best-effort (trim từ chối tắt popup, biết từ v1.33). Senior review APPROVED (patch [P2] race + [P3] a11y EN). CHỜ xác nhận trên xe: bấm "Lọc ngay" lọc thật? auto khi bụi cao tự lọc?</li>
 <li><b>2026-09-04 · Trade-off</b> — nhãn mức đọc trên thread nền rồi <code>ui.post</code>; INVALID/off-car → "—" (levelLabel tự trả "—" cho mức không rõ nên không cần nhánh riêng).</li>
 <li><b>2026-09-04 · Sai lệch spec (nhỏ)</b> — thêm <code>@+id/txt_pm25_title</code> (đầu bài đã yêu cầu) + prefix "Mức bụi hiện tại: " trước nhãn để rõ nghĩa; không đổi hợp đồng, không vào strings.xml.</li>
 <li><b>2026-09-04 · Seal</b> — sửa bản dọc <code>activity_main.xml</code> ⇒ hash đổi <code>c53e73c2…5c4c</code> → <code>27730837…b6ff</code> (lần 11), cập nhật <code>T11_HASHES</code> + KDoc trace.</li>

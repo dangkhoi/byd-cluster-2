@@ -105,6 +105,8 @@ object BilingualLabels {
 
         // ── PM2.5 auto filter group ─────────────────────────────────────────────────────────────
         "Tự lọc bụi mịn" to "Auto fine-dust filter",
+        "Lọc ngay" to "Clean now",
+        "Lọc bụi mịn ngay bây giờ" to "Clean the fine dust now",
 
         // ── System + Advanced group ─────────────────────────────────────────────────────────────
         "Tự khởi động nền" to "Background auto-start",
