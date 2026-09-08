@@ -68,10 +68,11 @@ class BootSetupService : Service() {
                         applicationContext, NavigationOutputTarget.CLUSTER_LANE, true,
                     )
                 }
-                // BOOT headless: auto-start VietMap (nền, chỉ khi CHƯA chạy) để badge speed-limit có nguồn;
-                // sau khi start thì VỀ HOME (không đè launcher — app mình vốn không foreground trên boot). Đồng bộ
-                // để FGS giữ tiến trình sống tới khi xong. Gate badgeEnabled nằm trong runNow.
-                VietMapAutostart.runNow(applicationContext, returnToSelfPkg = null)
+                // BOOT headless: auto-start VietMap chạy trong FGS RIÊNG ([VietMapAutostartService]) — KHÔNG
+                // block chuỗi setup này (ghế / lọc bụi / Gemini phía dưới chạy NGAY, không đợi VietMap). Nhánh
+                // bóng poll tới khi VietMap vào map (tuỳ network) nên tách ra service riêng; boot → về HOME sau.
+                // Gate (badge / bóng / cast) + chống-loop nằm trong runNow của service.
+                VietMapAutostartService.startForBoot(applicationContext)
                 // Ghế: áp mức làm-mát/sưởi lên HAL ~5s sau boot nếu công tắc BẬT (headless boot cũng tự áp,
                 // giống app tham chiếu). Gate seatComfortEnabled + degrade-safe nằm trong applyOnStart.
                 com.byd.clusternav.comfort.SeatComfortApplier.applyOnStart(applicationContext)

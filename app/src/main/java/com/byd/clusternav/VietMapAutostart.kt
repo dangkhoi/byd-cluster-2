@@ -5,6 +5,7 @@ import android.util.Log
 import com.byd.clusternav.carexec.LocalDeviceShell
 import com.byd.clusternav.carexec.LocalShellResult
 import com.byd.clusternav.carexec.LocalShellRetry
+import com.byd.clusternav.carexec.LocalShellText
 import com.byd.clusternav.core.FloatAppList
 import com.byd.clusternav.navigation.NavApps
 
@@ -23,7 +24,7 @@ object VietMapAutostart {
     const val PKG = NavApps.VIETMAP_LIVE
 
     // ── B2 (on-car 2026-09-06): CHỐNG LOOP autostart ────────────────────────────────────────────
-    // Bug: [ensureRunning]/[runNow] không có dedup/cooldown; bóng bật ⇒ mỗi onCreate (mở app · recreate khi
+    // Bug: [runNow] không có dedup/cooldown; bóng bật ⇒ mỗi onCreate (mở app · recreate khi
     // đổi ngôn ngữ/giao diện · auto-open lúc boot) chạy "launch VietMap → sleep 1500 → trả ClusterNav" ⇒
     // VietMap nhảy foreground rồi lùi = "loop flash" owner thấy. Vá bằng 3 lớp: (a) cooldown + in-flight ở đây;
     // (b) bỏ launch nếu VietMap ĐÃ foreground (trong [runNow]); (c) không gọi lúc recreate (MainActivity gate).
@@ -31,6 +32,22 @@ object VietMapAutostart {
     const val COOLDOWN_MS = 30_000L
     private val inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var lastRunAtMs = 0L
+
+    // ── B3 (on-car 2026-09-07): CHỜ-ĐỘNG thay sleep(1500) cứng ở nhánh bóng silent-bg ────────────
+    // Bug owner báo trên xe (v1.36): bật bóng nhưng chạy silent thì bóng KHÔNG lên — phải mở VietMap bằng
+    // tay, đợi nó boot VÀO MAP, rồi hạ xuống thì bóng mới lên. [SUY] gốc: cũ = `launch → Thread.sleep(1500)
+    // → hạ nền`. 1.5s là delay CỨNG, quá ngắn cho cold start Flutter + map SDK + `VMBluetoothService` (service
+    // dựng bóng, runbook §10) — nhất là khi mạng chậm (owner: "tuỳ network, có khi nhanh có khi lâu"). Hạ nền
+    // TRƯỚC khi VietMap vào map xong ⇒ service chưa dựng bóng ⇒ không có bóng để hiện. Sửa: POLL tới khi VietMap
+    // thật sự resumed (đã vào map) và GIỮ foreground liên tục ≥ [SETTLE_MS], RỒI mới hạ nền — mô phỏng đúng thao
+    // tác tay của owner. Thoát SỚM khi ready (mạng nhanh); [POLL_TIMEOUT_MS] chỉ là chặn trên khi VietMap không
+    // vào map (chưa login / lỗi) để không treo service vô hạn.
+    /** Nhịp poll trạng thái resumed giữa 2 lần đọc dumpsys. */
+    const val POLL_INTERVAL_MS = 500L
+    /** Chặn trên tổng thời gian chờ VietMap vào map (rộng vì tuỳ network); thoát sớm khi đã settle. */
+    const val POLL_TIMEOUT_MS = 25_000L
+    /** VietMap phải GIỮ foreground liên tục bấy nhiêu để chắc đã vào map ổn định (splash→map đã xong) + service bóng kịp dựng. */
+    const val SETTLE_MS = 2_500L
 
     /** PURE (device-free, unit-tested): [nowMs] đã ra ngoài cooldown so với [lastRunAtMs] chưa (0 = chưa từng chạy). */
     internal fun outsideCooldown(nowMs: Long, lastRunAtMs: Long, cooldownMs: Long = COOLDOWN_MS): Boolean =
@@ -56,6 +73,22 @@ object VietMapAutostart {
         return dumpsysActivitiesGrep.lineSequence().any { line ->
             line.contains("$pkg/") ||
                 (line.contains(pkg) && (line.contains("ActivityRecord") || line.contains("Task{") || line.contains("Hist ")))
+        }
+    }
+
+    /**
+     * PURE (device-free, unit-tested) — từ output của `dumpsys activity activities | grep -E
+     * 'mResumedActivity|topResumedActivity|ResumedActivity'`, activity ĐANG resumed (foreground) có thuộc
+     * [pkg] không. Dùng để (a) guard "đã foreground → bỏ launch" và (b) poll chờ VietMap vào map.
+     *
+     * Dòng resumed điển hình: `mResumedActivity: ActivityRecord{… u0 vn.vietmap.live/.MainActivity t123}` —
+     * nên match theo component `pkg/` (chắc chắn là activity của gói) VÀ dòng là loại *ResumedActivity (grep
+     * đã lọc, nhưng hàm tự lọc lại để test độc lập). Rỗng/không match ⇒ false (không foreground).
+     */
+    internal fun isResumedActivity(dumpsysResumedGrep: String, pkg: String = PKG): Boolean {
+        if (dumpsysResumedGrep.isBlank()) return false
+        return dumpsysResumedGrep.lineSequence().any { line ->
+            line.contains("ResumedActivity") && line.contains("$pkg/")
         }
     }
 
@@ -86,18 +119,12 @@ object VietMapAutostart {
     }
 
     /**
-     * @param returnToSelfPkg  package đưa lại foreground sau khi start VietMap; null = về HOME (boot headless).
-     * Non-blocking (spawn thread) — cho case MỞ APP. Boot headless nên dùng [runNow] (đồng bộ, giữ FGS sống).
-     */
-    fun ensureRunning(ctx: Context, returnToSelfPkg: String?) {
-        val app = ctx.applicationContext
-        Thread { runNow(app, returnToSelfPkg) }.start()
-    }
-
-    /**
-     * ĐỒNG BỘ (block thread gọi) — dùng cho [BootSetupService] để foreground-service giữ tiến trình sống tới khi
-     * xong (nếu spawn thread rời, process có thể bị kill sau finish()). No-op nếu CẢ badge tốc độ LẪN toggle bong
-     * bóng VietMap đều tắt / VietMap chưa cài / đã chạy.
+     * ĐỒNG BỘ (block thread gọi) — được [VietMapAutostartService] gọi trên thread nền của nó (FGS giữ tiến
+     * trình sống tới khi poll-vào-map xong; một thread rời có thể bị kill sau finish()). Không tự spawn thread
+     * ở đây — vòng đời do service quản. No-op nếu CẢ badge tốc độ LẪN toggle bong bóng VietMap đều tắt (và
+     * không phải cast-default) / VietMap chưa cài. Chống-loop (in-flight + cooldown) nằm ngay trong hàm.
+     *
+     * @param returnToSelfPkg  package đưa lại foreground sau khi VietMap vào map; null = về HOME (boot headless).
      */
     fun runNow(ctx: Context, returnToSelfPkg: String?) {
         val app = ctx.applicationContext
@@ -155,7 +182,7 @@ object VietMapAutostart {
                 // đang resumed/focus; degrade-safe (đọc lỗi / grep vắng ⇒ coi như KHÔNG-foreground ⇒ giữ hành vi
                 // cũ = vẫn launch). Chỉ có ý nghĩa khi process đang sống (running).
                 val foreground = running && runCatching {
-                    sh("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity'").output.contains(PKG)
+                    isResumedActivity(sh("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity'").output)
                 }.getOrDefault(false)
                 if (foreground) {
                     Log.i(TAG, "autostart: VietMap đã ở foreground (running=$running) — bỏ launch (khỏi giật)")
@@ -184,14 +211,15 @@ object VietMapAutostart {
                     if (bubbleOn && hasActivity) {
                         Log.i(TAG, "autostart silent-bg (bóng): VietMap đã có bản ghi activity trong stack (running=$running) — bỏ launch, bóng đã init (chống relaunch/flash on-car v1.33)")
                     } else if (bubbleOn || !running) {
-                        // BẬT BÓNG (chưa có activity record) HOẶC process chưa sống: LUÔN launch activity rồi ĐƯA VỀ
-                        // NỀN (returnToSelfPkg=app-open ClusterNav / HOME=boot) — bất kể pidof — để bóng chắc chắn
-                        // init rồi hiện khi VietMap ở nền.
+                        // BẬT BÓNG (chưa có activity record) HOẶC process chưa sống: launch activity, CHỜ VietMap
+                        // thật sự VÀO MAP (poll resumed + giữ liên tục ≥ SETTLE_MS — thay Thread.sleep(1500) cứng,
+                        // xem B3) rồi ĐƯA VỀ NỀN (returnToSelfPkg=app-open ClusterNav / HOME=boot) — để bóng đã
+                        // init chắc chắn hiện khi VietMap ở nền. Poll thoát sớm khi mạng nhanh.
                         sh("monkey -p $PKG -c android.intent.category.LAUNCHER 1")
-                        Thread.sleep(1500)
+                        val ready = pollUntilInMap(sh)
                         if (returnToSelfPkg != null) sh("monkey -p $returnToSelfPkg -c android.intent.category.LAUNCHER 1")
                         else sh("am start -a android.intent.action.MAIN -c android.intent.category.HOME")
-                        Log.i(TAG, "autostart silent-bg → launch activity VietMap + trả nền (${returnToSelfPkg ?: "HOME"}) [bubbleOn=$bubbleOn running=$running hasActivity=$hasActivity] ⇒ VietMap ở nền để bóng hiện")
+                        Log.i(TAG, "autostart silent-bg → launch VietMap + chờ-vào-map(ready=$ready) + trả nền (${returnToSelfPkg ?: "HOME"}) [bubbleOn=$bubbleOn running=$running hasActivity=$hasActivity] ⇒ VietMap ở nền để bóng hiện")
                     } else {
                         Log.i(TAG, "autostart silent-bg (badge-only) → VietMap process đã sống, giữ nguyên")
                     }
@@ -207,5 +235,33 @@ object VietMapAutostart {
         } finally {
             finishRun()   // (a) nhả suất chạy dù thành công hay ném — lần autostart kế mới vào được sau cooldown
         }
+    }
+
+    /**
+     * Poll tới khi VietMap resumed (đã VÀO MAP) và GIỮ foreground liên tục ≥ [SETTLE_MS] ⇒ `true`; hết
+     * [POLL_TIMEOUT_MS] mà chưa settle ⇒ `false` (caller vẫn hạ nền — chặn trên, tránh treo service khi VietMap
+     * không vào map: chưa login / lỗi). Đọc dumpsys mỗi [POLL_INTERVAL_MS]; lỗi đọc / không nối được ⇒ coi như
+     * chưa resumed (degrade-safe). `resumedSinceMs` reset khi rớt foreground (splash→map chuyển màn) nên chỉ
+     * `true` khi VietMap đã Ở YÊN trong map đủ lâu. Chạy TRONG phiên dadb (dùng lại [sh]); mỗi lệnh ngắn nên
+     * KHÔNG chạm hạn đọc per-read 30s của [LocalShellRetry.BACKGROUND_READ_CAP] (sleep giữa 2 lệnh không phải
+     * lần read()).
+     */
+    private fun pollUntilInMap(sh: (String) -> LocalShellText): Boolean {
+        val deadline = System.currentTimeMillis() + POLL_TIMEOUT_MS
+        var resumedSinceMs = 0L
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(POLL_INTERVAL_MS)
+            val resumed = runCatching {
+                isResumedActivity(sh("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity'").output)
+            }.getOrDefault(false)
+            val nowMs = System.currentTimeMillis()
+            if (resumed) {
+                if (resumedSinceMs == 0L) resumedSinceMs = nowMs
+                if (nowMs - resumedSinceMs >= SETTLE_MS) return true
+            } else {
+                resumedSinceMs = 0L   // rớt foreground (splash→map) ⇒ chờ ổn định lại
+            }
+        }
+        return false
     }
 }

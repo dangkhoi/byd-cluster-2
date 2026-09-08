@@ -117,6 +117,19 @@
                 android:value="boot_headless_setup" />
         </service>
 
+        <!-- B3 (2026-09-07): auto-start VietMap chạy ĐỘC LẬP (foreground service riêng) — KHÔNG block chuỗi
+             boot-setup (ghế / lọc bụi / nav / voice-key) vì nhánh bóng nay POLL tới khi VietMap vào map (tuỳ
+             network). Short-lived; started by BootSetupService (boot) / MainActivity (mở app · bật toggle bóng).
+             Never exported. -->
+        <service
+            android:name=".VietMapAutostartService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vietmap_autostart" />
+        </service>
+
         <!-- VietMap HUD BLE bridge: removed — same-device BLE self-loopback not viable (2026-08-04) -->
 
         <!-- Lắng nghe notification dẫn đường -->

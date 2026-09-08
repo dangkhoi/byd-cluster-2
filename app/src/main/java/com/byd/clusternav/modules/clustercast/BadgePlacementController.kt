@@ -9,7 +9,7 @@ import com.byd.clusternav.Lang
 import com.byd.clusternav.NavigationSpeedSignOwner
 import com.byd.clusternav.Prefs
 import com.byd.clusternav.R
-import com.byd.clusternav.VietMapAutostart
+import com.byd.clusternav.VietMapAutostartService
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastRuntime
 import com.byd.clusternav.modules.clustercast.simplified.SimpleCastState
 import com.byd.clusternav.speedbadge.BadgeLayout
@@ -47,8 +47,9 @@ internal class BadgePlacementController(private val activity: Activity) {
             setOnCheckedChangeListener { _, checked ->
                 Prefs.setBadgeEnabled(activity, checked)
                 // Giống toggle bong bóng VietMap: bật badge ⇒ auto-start VietMap MỘT LẦN (dedup pidof) để widget
-                // có nguồn tốc-độ ngay, không đợi lần mở app kế tiếp. Chỉ khi bật (checked) — tắt không đụng gì.
-                if (checked) VietMapAutostart.ensureRunning(activity, activity.packageName)
+                // có nguồn tốc-độ ngay, không đợi lần mở app kế tiếp. Chạy trong FGS riêng (VietMapAutostartService,
+                // độc lập + không block). Chỉ khi bật (checked) — tắt không đụng gì.
+                if (checked) VietMapAutostartService.startForAppOpen(activity)
                 NavigationSpeedSignOwner.get(activity.applicationContext).onBadgeEnabledChanged()
             }
         }

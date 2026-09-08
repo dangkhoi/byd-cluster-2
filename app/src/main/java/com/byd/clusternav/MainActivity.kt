@@ -1089,7 +1089,7 @@ class MainActivity : Activity() {
             isChecked = Prefs.vmBubbleEnabled(this@MainActivity)
             setOnCheckedChangeListener { _, checked ->
                 Prefs.setVmBubbleEnabled(this@MainActivity, checked)
-                if (checked) VietMapAutostart.ensureRunning(this@MainActivity, this@MainActivity.packageName)
+                if (checked) VietMapAutostartService.startForAppOpen(this@MainActivity)
                 refreshVmOverlayPanel()
             }
         }
@@ -1367,8 +1367,9 @@ class MainActivity : Activity() {
     private fun maybeAutoStartVietMap() {
         // Autostart VietMap là thao tác NỀN (ClusterNav vốn chạy headless — headlessAutostart/BootSetupService).
         // dadb là cách DUY NHẤT launch app khác từ nền (startActivity-từ-nền bị Android 10 chặn BAL). Phân biệt
-        // cast-active vs silent-bg + gate (cast-default / badge / bóng) nằm trong VietMapAutostart.runNow. Case MỞ
-        // APP: returnToSelfPkg = ClusterNav (user đang xem) cho nhánh silent-bg.
-        VietMapAutostart.ensureRunning(this, returnToSelfPkg = packageName)
+        // cast-active vs silent-bg + gate (cast-default / badge / bóng) nằm trong VietMapAutostart.runNow. Chạy
+        // trong FGS RIÊNG ([VietMapAutostartService]) để độc lập với vòng đời Activity + không block; case MỞ APP
+        // → trả ClusterNav lên trước sau khi VietMap vào map.
+        VietMapAutostartService.startForAppOpen(this)
     }
 }

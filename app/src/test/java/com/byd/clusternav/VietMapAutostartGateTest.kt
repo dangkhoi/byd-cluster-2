@@ -89,4 +89,52 @@ class VietMapAutostartGateTest {
         assertTrue(VietMapAutostart.hasActivityRecord("ActivityRecord{x u0 ${VietMapAutostart.PKG}/.Main t1}"))
         assertFalse(VietMapAutostart.hasActivityRecord(""))
     }
+
+    // ── isResumedActivity (B3, on-car 2026-09-07): poll chờ VietMap thật sự VÀO MAP (resumed) trước khi hạ ──
+    // nền, thay Thread.sleep(1500) cứng. Foreground guard + vòng poll cùng dùng hàm PURE này.
+
+    @Test fun `isResumedActivity is false on blank input`() {
+        assertFalse(VietMapAutostart.isResumedActivity("", VietMapAutostart.PKG))
+        assertFalse(VietMapAutostart.isResumedActivity("   \n \n ", VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity is true for mResumedActivity of the package`() {
+        val dump = "  mResumedActivity: ActivityRecord{7f3a u0 vn.vietmap.live/.MainActivity t88}"
+        assertTrue(VietMapAutostart.isResumedActivity(dump, VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity is true for topResumedActivity of the package`() {
+        val dump = "    topResumedActivity=ActivityRecord{1a2b u0 vn.vietmap.live/.ui.MapActivity t12}"
+        assertTrue(VietMapAutostart.isResumedActivity(dump, VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity is false when a different app is resumed`() {
+        val dump = "  mResumedActivity: ActivityRecord{9c8d u0 com.byd.clusternav2/.MainActivity t3}"
+        assertFalse(VietMapAutostart.isResumedActivity(dump, VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity requires a resumed line — a plain activity mention does not count`() {
+        // A Hist/ActivityRecord line that references VietMap but is NOT a *ResumedActivity line (VietMap only
+        // in the back stack, another app resumed) must NOT count as foreground.
+        val dump = "    * Hist #1: ActivityRecord{5e6f u0 vn.vietmap.live/.MainActivity t88}"
+        assertFalse(VietMapAutostart.isResumedActivity(dump, VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity needs the package component, not a bare mention`() {
+        // "ResumedActivity: null" or a resumed line for another package must be false even if the string
+        // happens to mention the package elsewhere without a component slash.
+        assertFalse(VietMapAutostart.isResumedActivity("  mResumedActivity: null", VietMapAutostart.PKG))
+        assertFalse(VietMapAutostart.isResumedActivity("  note vn.vietmap.live is installed", VietMapAutostart.PKG))
+    }
+
+    @Test fun `isResumedActivity uses PKG by default`() {
+        assertTrue(VietMapAutostart.isResumedActivity("mResumedActivity: ActivityRecord{x u0 ${VietMapAutostart.PKG}/.Main t1}"))
+        assertFalse(VietMapAutostart.isResumedActivity("mResumedActivity: ActivityRecord{x u0 other.pkg/.Main t1}"))
+    }
+
+    @Test fun `poll constants are sane (settle within timeout, positive interval)`() {
+        assertTrue(VietMapAutostart.POLL_INTERVAL_MS > 0L)
+        assertTrue(VietMapAutostart.SETTLE_MS > 0L)
+        assertTrue(VietMapAutostart.POLL_TIMEOUT_MS > VietMapAutostart.SETTLE_MS, "timeout phải đủ chỗ cho ít nhất một lần settle")
+    }
 }

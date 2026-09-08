@@ -1,6 +1,6 @@
 # ClusterNav 2.0 — Project Backlog
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-08-28 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
+> **Trạng thái**: Current · **Cập nhật**: 2026-09-07 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
 
 > File quản lý công việc chung. **Tái cấu trúc 2026-08-25** (owner: "tách off-car/on-car, đánh lại status"): §0 DASHBOARD dưới đây là **VIEW CHÍNH** (tách theo NƠI LÀM + status 2 TRỤC, đọc 10 giây); **chi tiết + bằng chứng [ĐO] đầy đủ giữ nguyên ở mục A–F** bên dưới (không xoá — đó là ký ức/bằng chứng dự án).
 >
@@ -12,6 +12,16 @@
 ---
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
+
+### 🚀 SHIP 2026-09-08 v1.37 (versionCode 38) — sửa auto-start VietMap silent (bóng KHÔNG lên) + tách FGS riêng, push OTA, CHỜ TEST XE
+Owner báo on-car v1.36: bật bóng VietMap chạy silent thì bóng KHÔNG lên — phải mở VietMap tay, đợi boot **VÀO MAP**, hạ xuống mới lên. [SUY] gốc: nhánh silent-bg cũ = `launch → Thread.sleep(1500) CỨNG → hạ nền`; 1.5s quá ngắn cho cold start Flutter + map SDK + `VMBluetoothService` (service dựng bóng, runbook §10) — mạng chậm càng hụt (owner: "tuỳ network"). Hạ nền TRƯỚC khi vào map ⇒ chưa dựng bóng.
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| V1 | **Poll động** `VietMapAutostart.pollUntilInMap(sh)` — poll `dumpsys …ResumedActivity` mỗi `POLL_INTERVAL_MS`=500ms tới khi VietMap resumed **liên tục ≥ `SETTLE_MS`=2500ms** (đã vào map ổn định) rồi mới hạ nền; `POLL_TIMEOUT_MS`=25000ms chặn trên (thoát sớm khi mạng nhanh). PURE `isResumedActivity()` test off-car | ✅ | 🚗 |
+| V2 | **Tách FGS riêng** `VietMapAutostartService` (owner: "tách riêng cái vietmap ra, không liên quan app chung") — boot-setup (ghế/lọc bụi/nav/voice-key) KHÔNG còn đợi VietMap. BootSetupService: bỏ `runNow` đồng bộ → `startForBoot`; single-worker guard chống race FGS teardown giữa poll. MainActivity toggle bóng + mở app + BadgePlacementController → `startForAppOpen` | ✅ | 🚗 |
+| V3 | Xoá `ensureRunning` (dead sau đổi call site). GIỮ NGUYÊN chống-loop (in-flight + cooldown 30s) + guard foreground + guard hasActivityRecord + nhánh cast-default + badge-only | ✅ | — |
+
+[ĐO] full suite **1981/0** (5 module, `--rerun-tasks`), `:app:assembleRelease` SẠCH. Senior review APPROVED — 1 [P2] race vòng đời FGS đã patch (nhả `workerActive` TRƯỚC `finish()` để start trùng không xé teardown). KHÔNG đụng layout (seal không ảnh hưởng). **SHIP v1.37 (versionCode 38)**: `apk/ClusterNav-1.37-release.apk` (sha256 `bfd23877…`, bỏ 1.36 giữ 1.0), aapt2 xác minh (versionCode 38, không debuggable, không bề mặt test), commit author `Đăng Khôi <dangkhoi@…>` → push feat + fast-forward main → OTA. Files: `VietMapAutostart.kt` · `VietMapAutostartService.kt`(mới) · `AndroidManifest.xml` · `BootSetupService.kt` · `MainActivity.kt` · `BadgePlacementController.kt` · `VietMapAutostartGateTest.kt` · `VietMapAutostartServiceWiringTest.kt`(mới). **Xe cần test:** bật bóng (silent, KHÔNG mở tay) → VietMap tự vào map rồi lùi nền → bóng LÊN cụm; boot không bị chậm/treo vì VietMap.
 
 ### 🐞 ON-CAR 2026-09-06 (v1.32, xe BYD AUTO) — findings A–E → **ĐÃ SỬA/IMPLEMENT + SHIP v1.33** (chờ test xe lại) (chi tiết: `docs/diagnostics/seat-vietmaploop-oncar-2026-09-06.md` + `bodywork-window-trunk-RE-2026-09-06.md`)
 - **A · Ghế mát/sưởi KHÔNG chạy:** [ĐO] `SeatComfort: ghi ghế=0 … featureId=0x43101010 value=3 rc=-2147482648` = **NOT_PROVISIONED**. Ghi qua `BYDAutoAcDevice` bị HAL từ chối (ghế trước, RE-proven id, cấu hình đúng). Fix off-car: ghi qua **deviceType 1023 tường minh** như app tham chiếu (không dùng device AC) / hoặc method `setAcVentilationState`+`setAcWarmState` / thử value 2·3→1·2.
