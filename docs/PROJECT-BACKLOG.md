@@ -1,6 +1,6 @@
 # ClusterNav 2.0 — Project Backlog
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-09-07 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
+> **Trạng thái**: Current · **Cập nhật**: 2026-09-10 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
 
 > File quản lý công việc chung. **Tái cấu trúc 2026-08-25** (owner: "tách off-car/on-car, đánh lại status"): §0 DASHBOARD dưới đây là **VIEW CHÍNH** (tách theo NƠI LÀM + status 2 TRỤC, đọc 10 giây); **chi tiết + bằng chứng [ĐO] đầy đủ giữ nguyên ở mục A–F** bên dưới (không xoá — đó là ký ức/bằng chứng dự án).
 >
@@ -12,6 +12,23 @@
 ---
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
+
+### 🚀 SHIP 2026-09-10 v1.39 (versionCode 40) — KIỂM TRA QUYỀN tự động (boot + mở app): đọc trước, tự vá, popup khi cần owner — vá "bóng VietMap vẫn dính IVI không hỗ trợ" trên v1.38, CHỜ TEST XE
+
+Owner báo on-car v1.38: bật bóng, mở ClusterNav → autostart VietMap chạy nhưng **vẫn bị toast "Hệ thống IVI không hỗ trợ hoạt động này"**, bóng không lên. **[ĐO]** bản mod dùng ĐÚNG gói bản zin (`aapt2 dump badging VietMap-3.4.0-mod-cluster.apk` → `package name='vn.vietmap.live' versionName='3.4.0'`) ⇒ whitelist v1.35 nhắm đúng gói, lỗi ở chỗ khác. **[SUY] 3 lỗ:** (L1) công thức v1.35 bị gate bởi cờ prefs một-lần `vm_float_whitelist_applied` — cài lại bản mod (khác chữ ký ⇒ gỡ+cài ⇒ **appop `SYSTEM_ALERT_WINDOW` bị XOÁ**) thì cờ vẫn true ⇒ không bao giờ áp lại; (L2) `sh("settings put …")` bị từ chối **KHÔNG ném** ⇒ cờ vẫn set dù lệnh trượt; (L3) vá xong không dựng lại VietMap, mà bản mod chỉ dựng bóng **lúc khởi động** ⇒ vá không hồi tố.
+
+Owner chốt hướng (nguyên văn): *"cần đọc trước, nếu đã cấp thì không cấp lại, cần phải làm 1 cái auto-boot kiểm tra toàn bộ quyền, nếu OK hết thì pass, không ok thì popup lên để xin quyền lại, chắc chắn vào app là xài ngon"*. Spec: `docs/specs/permission-health-audit.html`.
+
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| PA1 | **`:core PermissionAudit`** (thuần, 9 `Grant`): `requiredFor(features)` (tính năng TẮT ⇒ không đòi quyền của nó; VietMap chưa cài ⇒ bỏ hẳn 2 mục của nó) · `needsShellSession` · `missing` · parser `appopAllowed`/`dozeWhitelisted`/`flatHasComponent`/`serviceValuePointsTo` · `AuditReport` (+`nagSignature`). `FloatAppList.contains` cho cổng đọc-trước | ✅ | — |
+| PA2 | **`:app PermissionAuditRunner`**: đọc in-process 3 mục (miễn phí) → nếu đủ + không mục nào cần shell ⇒ **KHÔNG mở dadb, 0 lệnh** → còn lại đọc trong MỘT phiên dadb (float CSV · `appops get` VietMap · `dumpsys deviceidle whitelist` · 2 khoá trợ lý) → vá CHỈ mục thiếu → **đọc lại xác nhận** (`settings put`/`appops set` trượt vẫn im lặng!) → 3 mục nặng UỶ QUYỀN đường đã proven (`NavConnect.selfGrant` · `grantAccessibility` · `AssistantLauncher.setSystemAssistant`, đều có đọc-lại). Single-flight + cooldown 30s; boot `BACKGROUND_READ_CAP`, mở app `AWAIT_ADB_APPROVAL` | ✅ | 🚗 |
+| PA3 | **`:app PermissionPrompt`**: dialog dựng bằng CODE (không chạm layout ⇒ **không re-pin seal**, parity 88 giữ) liệt kê mục thiếu bằng tiếng người + nút "Cấp lại quyền"/"Để sau"; boot headless → notification "chạm để cấp lại", **chỉ báo khi KẾT LUẬN đổi** (`nagSignature` lưu ở `Prefs`) để không nhắc mỗi lần nổ máy | ✅ | 🚗 |
+| PA4 | **Vá xong dựng lại bóng**: vừa vá `VM_FLOAT_LIST`/`VM_OVERLAY_OP` (read-back xác nhận) + bóng bật ⇒ `am force-stop vn.vietmap.live` (nếu đang chạy) → `VietMapAutostartService.startForPermissionFix` **force** (bỏ cooldown, giữ single-flight); force-start đến lúc worker đang chạy thì **HOÃN rồi chạy nối tiếp**, không bị bỏ | ✅ | 🚗 |
+| PA5 | **Gỡ cờ một-lần** `vm_float_whitelist_applied` khỏi `Prefs` + gỡ công thức whitelist khỏi `VietMapAutostart` (một chủ duy nhất = audit). Boot: audit chạy trước a11y-grant + autostart VietMap, SAU ghế/PM2.5 (2 cái đó không cần quyền, không để dadb câm 30s đẩy chúng trễ) | ✅ | 🚗 |
+| PA6 | Mở rộng **OQ4**: doze whitelist thêm CHÍNH ClusterNav (`DOZE_SELF`), không đụng hệ Cast | ✅ | 🚗 |
+
+[ĐO] full suite **2082/0** (6 task test, `--rerun-tasks`). **Red-team** (test phải ĐỎ khi gỡ bản vá): gỡ cổng "đủ ⇒ không ghi" → `du het thi RETURN truoc moi lenh ghi` ĐỎ; đổi `appopAllowed("")` → true → `appop output rong … CHUA CAP` ĐỎ; khôi phục → XANH. Senior review + verify độc lập: 4 [P1]/[P2] đã patch (force-start bị bỏ · notification nhắc mỗi lần nổ máy · `Lang.load` cho boot headless · **read-back cho mục trợ lý**) + 1 [P3] (trả cờ force khi trượt CAS). `apk/ClusterNav-1.39-release.apk` (sha256 `98057f3c…`, bỏ 1.38 giữ 1.0), aapt2: versionCode **40**, versionName **1.39**, không debuggable, **0 bề mặt test**. **CHỜ TEST XE:** (a) mở app khi bóng bật → hết toast IVI + bóng LÊN cụm (kể cả sau khi cài lại bản mod); (b) mở app lần 2 khi đã đủ quyền → log `đủ hết … không cấp lại gì`, KHÔNG force-stop VietMap (không giật), KHÔNG popup; (c) gỡ tay quyền đọc thông báo → mở app → popup đúng mục đó; (d) nổ máy → log audit ở boot. **CHƯA BIẾT (cần xe):** BYD có cache `byd_float_app_list` lúc boot không (nếu có thì lần vá đầu chỉ ăn sau khi khởi động lại xe — audit sẽ log `listed=true allowed=true` mà bóng chưa lên).
 
 ### 🚀 SHIP 2026-09-08 v1.38 (versionCode 39) — PM2.5: nút "Lọc ngay" + vòng poll tự-lọc (vá "popup hiện mà không auto-lọc"), CHỜ TEST XE
 

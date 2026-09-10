@@ -51,7 +51,10 @@ object AssistantLauncher {
     const val TARGET_GEMINI_KEY = Prefs.VK_TARGET_GEMINI_KEY
 
     private const val PKG_BARD = "com.google.android.apps.bard"                 // app Gemini
-    private const val PKG_GSA  = "com.google.android.googlequicksearchbox"      // app Google (host voice service)
+    /** App Google (host của voice service). `internal` vì [com.byd.clusternav.permissions.PermissionAuditRunner]
+     *  đọc `secure assistant`/`voice_interaction_service` để kiểm trợ lý hệ thống có đang trỏ đúng gói này —
+     *  một nguồn sự thật, KHÔNG chép lại tên gói ở chỗ khác (§7). */
+    internal const val PKG_GSA  = "com.google.android.googlequicksearchbox"     // app Google (host voice service)
     private const val GSA_ASSIST = "$PKG_GSA/com.google.android.voiceinteraction.GsaVoiceInteractionService"
     private const val GSA_RECOG  = "$PKG_GSA/com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
 

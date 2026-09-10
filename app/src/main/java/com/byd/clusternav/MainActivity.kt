@@ -324,6 +324,18 @@ class MainActivity : Activity() {
         // Cooldown + in-flight trong VietMapAutostart là lớp chặn thứ hai; đây chặn ngay tại nguồn recreate.
         if (savedInstanceState == null) maybeAutoStartVietMap()
 
+        // KIỂM TRA QUYỀN khi MỞ APP (v1.39, spec permission-health-audit) — owner: "chắc chắn vào app là xài
+        // ngon". Đọc trạng thái thật của mọi quyền mà tính năng ĐANG BẬT cần: đủ ⇒ im lặng (KHÔNG cấp lại,
+        // không popup); thiếu ⇒ tự vá qua dadb rồi đọc lại; còn thiếu ⇒ popup liệt kê + nút "Cấp lại quyền"
+        // (retry AWAIT_ADB_APPROVAL để owner bấm được "Cho phép gỡ lỗi USB" — owner đang nhìn màn hình).
+        // Gate savedInstanceState==null: recreate lúc đổi ngôn ngữ/giao diện KHÔNG chạy lại (cùng lý do B2 ở
+        // trên); cooldown 30 s trong runner là lớp chặn thứ hai. Chạy NỀN, callback trên main thread.
+        if (savedInstanceState == null) {
+            com.byd.clusternav.permissions.PermissionAuditRunner.runForAppOpen(applicationContext) { report ->
+                com.byd.clusternav.permissions.PermissionPrompt.show(this, report)
+            }
+        }
+
         // Ghế: nếu công tắc BẬT → áp mức làm-mát/sưởi lên HAL ~5 s sau khi mở app (degrade-safe, no-op off-car).
         SeatComfortApplier.applyOnStart(this)
 
@@ -1046,22 +1058,20 @@ class MainActivity : Activity() {
     private fun tryStartActivity(intent: Intent): Boolean =
         runCatching { startActivity(intent); true }.getOrDefault(false)
 
-    private fun notificationAccessGranted(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
-        val expected = ComponentName(this, NavNotificationListener::class.java)
-        return flat.split(':').any { ComponentName.unflattenFromString(it.trim()) == expected }
-    }
+    private fun notificationAccessGranted(): Boolean =
+        // MỘT nguồn sự thật cho phép đọc-in-process này: [PermissionAuditRunner] (bộ kiểm-tra-quyền v1.39) —
+        // cùng hàm mà audit dùng, nên UI và audit không bao giờ nói hai kết quả khác nhau. Nó chấp cả dạng
+        // component viết gọn `pkg/.Class` mà một số ROM ghi vào setting.
+        com.byd.clusternav.permissions.PermissionAuditRunner.notificationListenerGranted(this)
 
     /**
      * Accessibility booster (đọc màn GMaps → screenRead ground-truth) đã được bật chưa. Đọc THẲNG secure
-     * setting (mọi app đọc được — KHÔNG cần dadb), y như [notificationAccessGranted]. Chỉ khi thiếu mới gọi
-     * [NavConnect.grantAccessibility] (dadb) để append → tránh mở phiên dadb thừa mỗi lần bật Nav+HUD / mở app.
+     * setting (mọi app đọc được — KHÔNG cần dadb). Chỉ khi thiếu mới gọi [NavConnect.grantAccessibility]
+     * (dadb) để append → tránh mở phiên dadb thừa mỗi lần bật Nav+HUD / mở app. Uỷ quyền cho
+     * [PermissionAuditRunner] để UI và bộ kiểm-tra-quyền dùng CHUNG một phép đọc.
      */
-    private fun accessibilityBoosterGranted(): Boolean {
-        val flat = Settings.Secure.getString(contentResolver, "enabled_accessibility_services") ?: return false
-        val expected = ComponentName(this, com.byd.clusternav.modules.navaccess.NavAccessibilityService::class.java)
-        return flat.split(':').any { ComponentName.unflattenFromString(it.trim()) == expected }
-    }
+    private fun accessibilityBoosterGranted(): Boolean =
+        com.byd.clusternav.permissions.PermissionAuditRunner.accessibilityServiceGranted(this)
 
     /**
      * B1 (owner 2026-08-19, SỬA 2026-08-21 sau test on-car): "badge bật → VietMap tự chạy để widget có nguồn speed-limit".

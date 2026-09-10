@@ -301,17 +301,22 @@ object Prefs {
     fun vmBubbleEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_VM_BUBBLE_ENABLED, false)
     fun setVmBubbleEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_VM_BUBBLE_ENABLED, v).apply()
 
-    // One-time guard: the modded VietMap draws the cluster bubble, and the BYD IVI refuses an overlay from
-    // any package NOT in the global CSV `byd_float_app_list` (the "Hệ thống IVI không hỗ trợ hoạt động này"
-    // toast). [VietMapAutostart] appends VietMap to that list + grants SYSTEM_ALERT_WINDOW over the dadb
-    // uid-shell ONCE — the same proven recipe [AssistantLauncher] uses for Google/Gemini (see
-    // com.byd.clusternav.core.FloatAppList). This flag pins that it ran so the recipe is not re-applied every
-    // autostart; it is set ONLY on success, so a failed attempt (e.g. no dadb loopback yet) retries next time.
-    // Mirrors the doze one-time guard (SimpleCastRuntime.doze_whitelist_applied). MẶC ĐỊNH FALSE.
-    private const val K_VM_FLOAT_WHITELIST_APPLIED = "vm_float_whitelist_applied"
-    fun vmFloatWhitelistApplied(ctx: Context): Boolean = sp(ctx).getBoolean(K_VM_FLOAT_WHITELIST_APPLIED, false)
-    fun setVmFloatWhitelistApplied(ctx: Context, v: Boolean) =
-        sp(ctx).edit().putBoolean(K_VM_FLOAT_WHITELIST_APPLIED, v).apply()
+    // GỠ ở v1.39: cờ một-lần `vm_float_whitelist_applied` (whitelist float/overlay cho bản mod VietMap).
+    // Vì sao gỡ: cờ chỉ nói "app đã TỪNG chạy lệnh", KHÔNG nói "quyền còn hay không". Cài lại bản mod VietMap
+    // (khác chữ ký ⇒ gỡ+cài) XOÁ appop SYSTEM_ALERT_WINDOW của gói đó nhưng cờ vẫn true ⇒ công thức không bao
+    // giờ áp lại ⇒ bóng vẫn dính toast "Hệ thống IVI không hỗ trợ hoạt động này" (bug on-car v1.38). Thay bằng
+    // ĐỌC-TRƯỚC mỗi lượt ở [com.byd.clusternav.permissions.PermissionAuditRunner] (spec permission-health-audit):
+    // đọc `byd_float_app_list` + `appops get`, ghi CHỈ khi thiếu, ghi rồi đọc lại xác nhận. Khoá cũ nếu còn sót
+    // trong SharedPreferences thì vô hại (không ai đọc nữa).
+
+    // Chữ ký KẾT LUẬN của lượt kiểm-tra-quyền đã báo cho owner ở nhánh BOOT (headless notification).
+    // ⚠ Đây KHÔNG phải cờ "đã cấp quyền" kiểu cũ (thứ vừa bị gỡ ở trên) — nó không quyết định có cấp hay không;
+    // quyền vẫn được ĐỌC LẠI từ thiết bị mỗi lượt. Nó chỉ chặn việc báo LẠI y nguyên một kết luận: boot chạy
+    // retry BACKGROUND_READ_CAP nên xe chưa cấp khoá adb sẽ "còn thiếu" ở MỌI lần nổ máy, và một notification
+    // giống hệt mỗi lần nổ máy là quấy rầy (R8), không phải thông tin. Rỗng = chưa báo gì / xe đang lành.
+    private const val K_PERM_NAG_SIG = "perm_audit_nag_signature"
+    fun permNagSignature(ctx: Context): String = sp(ctx).getString(K_PERM_NAG_SIG, "") ?: ""
+    fun setPermNagSignature(ctx: Context, v: String) = sp(ctx).edit().putString(K_PERM_NAG_SIG, v).apply()
     // Legacy keys (4-corner model) — read once by [migrateBadgeIfNeeded] to seed the centre, never written.
     private const val K_BADGE_CORNER = "badge_corner"
     private const val K_BADGE_DX = "badge_dx"

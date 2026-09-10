@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiểm tra quyền tự động (boot + mở app) — ClusterNav 2.0</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--card:#f5f5f7;--accent:#0071e3;--warn:#bf5f00;--ok:#1a7f37;--code:#f2f2f7}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--fg:#f5f5f7;--muted:#98989d;--line:#2c2c2e;--card:#1c1c1e;--accent:#2997ff;--warn:#ff9f0a;--ok:#30d158;--code:#1c1c1e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:40px 24px 120px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:22px;font-weight:650;letter-spacing:-.01em;margin:44px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+h3{font-size:17px;font-weight:650;margin:24px 0 8px}
+p,li{font-size:15.5px}.muted{color:var(--muted)}
+code{background:var(--code);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,monospace;font-size:13.5px}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow:auto;font-family:"SF Mono",ui-monospace,monospace;font-size:13px;line-height:1.5}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--card);color:var(--muted);border:1px solid var(--line)}
+.pill.wait{background:rgba(191,95,0,.12);color:var(--warn);border-color:transparent}
+.pill.ok{background:rgba(26,127,55,.12);color:var(--ok);border-color:transparent}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+ul{padding-left:22px}li{margin:3px 0}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;background:var(--accent);color:#fff;margin-right:6px}
+.tag.p1{background:var(--warn)}.tag.p2{background:#8e8e93}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:16px 0}
+.fnode{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;text-align:center;font-size:13.5px;min-width:110px}
+.fnode b{display:block;font-size:14px}.fnode span{color:var(--muted);font-size:12px}
+.fnode.new{background:rgba(0,113,227,.12)}
+.flow .arrow{color:var(--accent);font-weight:700;font-size:18px;padding:0 2px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0;font-size:12.5px;color:var(--muted)}
+.legend .sw{display:inline-flex;align-items:center;gap:6px}
+.legend .box{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);display:inline-block}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Kiểm tra quyền tự động — boot + mở app</h1>
+<p class="muted">Slug: <code>permission-health-audit</code> · Branch <code>feat/speed-limit-badge-hal-hud</code> · <span class="pill ok">Trạng thái: Đã duyệt (owner 2026-09-10) · đã ship v1.39 (versionCode 40) · CHỜ TEST XE</span></p>
+<p class="muted">Tuân thủ <code>.kiro/steering/{workflow,product-team-workflow,trace-den-tan-cung,documentation-and-backlog,verify-state-before-claim}.md</code>. Không thêm thư viện mới (chỉ Android SDK + khối đã có trong repo) ⇒ không cần Context7 (workflow §1.1).</p>
+
+<h2>1. Changelog</h2>
+<ul>
+<li><b>Pass 0 — 2026-09-10</b>: Khởi tạo. Owner báo on-car v1.38: bật bóng VietMap, mở ClusterNav → auto-start VietMap nhưng <b>vẫn dính toast "Hệ thống IVI không hỗ trợ hoạt động này"</b>. Owner chốt hướng: <i>"cần đọc trước, nếu đã cấp thì không cấp lại, cần phải làm 1 cái auto-boot kiểm tra toàn bộ quyền, nếu OK hết thì pass, không ok thì popup lên để xin quyền lại, chắc chắn vào app là xài ngon"</i>.</li>
+<li><b>Pass 1 — 2026-09-10</b>: Implement T1–T5 + senior review (§10). 2 finding P1 (force-start bị bỏ ⇒ R7 trượt ngay lần mở app đầu; notification "thiếu quyền" bung mỗi lần nổ máy), 4 P2, 3 P3 — đã vá hết. Full suite <b>2078/0</b>. §9 ghi 5 chỗ code lệch spec có chủ ý.</li>
+</ul>
+
+<h2>2. Context</h2>
+<p><b>Triệu chứng (owner, on-car v1.38):</b> bóng VietMap trên cụm vẫn bị IVI từ chối dù v1.35 đã có công thức whitelist.</p>
+<p><b>[ĐO] Bản mod dùng ĐÚNG gói bản zin</b> — <code>aapt2 dump badging ~/Desktop/ClusterNav-oncar-test/VietMap-3.4.0-mod-cluster.apk</code> → <code>package: name='vn.vietmap.live' versionName='3.4.0'</code>, có <code>uses-permission SYSTEM_ALERT_WINDOW</code>. Mod chỉ ký lại bằng <code>mod2.keystore</code>, KHÔNG đổi package như WazeMod. ⇒ whitelist đang nhắm đúng gói, không phải lỗi sai tên.</p>
+<p><b>[SUY] Ba lỗ trong đường hiện tại</b> (<code>app/.../VietMapAutostart.kt:166-183</code>):</p>
+<ul>
+<li><b>L1 — cờ một-lần khoá chết công thức.</b> <code>Prefs.vmFloatWhitelistApplied</code> (<code>Prefs.kt:311-314</code>) chỉ cho chạy MỘT lần mỗi lần cài ClusterNav. Cài (hoặc cài lại) bản mod VietMap sau đó ⇒ mod khác chữ ký nên phải gỡ+cài ⇒ <b>appop <code>SYSTEM_ALERT_WINDOW</code> của gói đó bị xoá</b>, còn <code>byd_float_app_list</code> (global) thì vẫn còn ⇒ overlay bị từ chối lại, mà ClusterNav <b>không bao giờ áp lại</b>.</li>
+<li><b>L2 — không có read-back, cờ set mù.</b> <code>sh("settings put …")</code> / <code>sh("appops set …")</code> bị từ chối thì in lỗi ra stdout chứ <b>không ném</b> ⇒ <code>runCatching</code> coi là thành công ⇒ set cờ. Không đọc lại để biết lệnh có "landed" hay không.</li>
+<li><b>L3 — vá xong không dựng lại bóng.</b> Mod dựng bóng lúc VietMap khởi động; vá list/appop SAU đó KHÔNG hồi tố. Code hiện tại thấy VietMap đã có activity record thì <b>bỏ launch</b> (<code>VietMapAutostart.kt:203-206</code>, đúng cho v1.34 anti-flash) ⇒ owner phải tự kill VietMap mới thấy bóng.</li>
+</ul>
+<p><b>Vấn đề rộng hơn (owner chốt):</b> ClusterNav phụ thuộc <b>8 quyền/cấu hình</b> nằm ngoài app (đều là quyền ADB / global settings), mỗi cái được cấp bởi một đường riêng, cấp rời rạc theo tính năng, và không nơi nào <b>đọc lại toàn bộ</b>. Sau reboot / cài lại app / cài lại VietMap / ROM reset là mất lẻ một cái ⇒ một tính năng chết câm mà không có ai báo. Cần một bộ <b>kiểm tra sức khoẻ quyền</b> chạy ở boot + mở app: đọc trước, đủ thì im lặng, thiếu thì tự vá, vá không được thì popup xin owner.</p>
+<div class="card"><b>Cổng / phụ thuộc:</b> không có cổng chặn. Toàn bộ nằm ở đường ADB nội bộ (dadb loopback <code>localhost:5555</code>) đã proven từ 1.13. Không đụng feed cụm (Nav/HAL), không đụng layout ⇒ <b>không phải re-pin T11 seal</b>.</div>
+
+<h2>3. Requirements</h2>
+<h3>Chức năng</h3>
+<ul>
+<li><b>R1 — Đọc trước, đã cấp thì KHÔNG cấp lại.</b> Mỗi mục quyền phải được ĐỌC trạng thái thật trước khi quyết định. Đủ ⇒ <b>không phát một lệnh ghi nào</b> (đo bằng test: shell log không có <code>settings put</code>/<code>appops set</code>).</li>
+<li><b>R2 — Kiểm TOÀN BỘ, nhưng chỉ những gì tính năng ĐANG BẬT cần.</b> Tính năng tắt ⇒ quyền của nó KHÔNG bị coi là thiếu, KHÔNG xin, KHÔNG vá (không quấy owner vì thứ họ không dùng).</li>
+<li><b>R3 — Thiếu ⇒ tự vá trong cùng phiên dadb, rồi đọc lại xác nhận.</b> Vá xong đọc lại; vẫn thiếu ⇒ xếp vào nhóm "cần owner".</li>
+<li><b>R4 — Vá không được ⇒ POPUP xin quyền.</b> Khi app ở foreground: dialog liệt kê từng mục còn thiếu bằng tiếng người + nút <b>"Cấp lại quyền"</b> (chạy lại vòng vá với <code>AWAIT_ADB_APPROVAL</code> để owner bấm được "Cho phép gỡ lỗi USB") + <b>"Để sau"</b>. Đủ hết ⇒ <b>không popup gì</b> (pass im lặng, chỉ log).</li>
+<li><b>R5 — Chạy 2 điểm.</b> (a) <b>boot nền</b> (<code>BootSetupService</code>): audit + tự vá, retry <code>NONE</code> (owner không ở màn hình); còn thiếu ⇒ <b>notification</b> "Thiếu quyền — chạm để cấp lại" (không dialog vì headless). (b) <b>mở app</b> (<code>MainActivity</code>): audit + tự vá với <code>AWAIT_ADB_APPROVAL</code>; còn thiếu ⇒ dialog. ⇒ "vào app là xài ngon".</li>
+<li><b>R6 — Bỏ cờ một-lần <code>vm_float_whitelist_applied</code></b> (đóng L1/L2). Trạng thái thật đọc từ thiết bị, không tin cờ trong prefs.</li>
+<li><b>R7 — Vừa vá quyền overlay của VietMap mà VietMap đang chạy ⇒ <code>am force-stop vn.vietmap.live</code> MỘT lần</b>, để nhánh silent phía dưới launch lại + <code>pollUntilInMap</code> + hạ nền ⇒ mod dựng lại bóng với quyền đã có (đóng L3). CHỈ khi vừa phải vá — không có chuyện force-stop ở lần mở app bình thường.</li>
+<li><b>R8 — Chống quấy rầy.</b> Audit có cooldown (dùng chung mô hình <code>VietMapAutostart.COOLDOWN_MS</code>) + single-flight; dialog tối đa 1 lần cho mỗi lần app vào foreground; "Để sau" ⇒ im tới lần mở app kế.</li>
+</ul>
+<h3>Phi chức năng</h3>
+<ul>
+<li><b>R-nf1 — Một phiên dadb, ít lệnh.</b> Đọc in-process (Settings.Secure / <code>canDrawOverlays</code>) thì KHÔNG mở dadb. Chỉ mở dadb khi có mục cần lệnh shell; điển hình <b>2–4 lệnh đọc</b>.</li>
+<li><b>R-nf2 — Degrade-safe.</b> Audit KHÔNG BAO GIỜ chặn boot / chặn mở app / ném ra ngoài: chạy thread nền, bọc <code>runCatching</code>, dadb hỏng ⇒ log + coi như "cần owner", không crash.</li>
+<li><b>R-nf3 — Quyết định thuần ở <code>:core</code></b> (không Android) ⇒ test off-car; phần đọc/ghi thiết bị ở <code>:app</code>.</li>
+<li><b>R-nf4 — Không đụng <code>res/layout/*</code> và <code>strings.xml</code></b> (dialog dựng bằng code, chữ qua <code>Lang.t</code>) ⇒ giữ nguyên T11 seal + parity 88 id.</li>
+<li><b>R-nf5 — File &lt; 500 LOC</b> (steering §4.1); tách <code>:core</code> quyết định / <code>:app</code> runner / <code>:app</code> UI prompt.</li>
+</ul>
+
+<h2>4. Design</h2>
+<h3>4.1 Luồng</h3>
+<div class="flow">
+  <div class="fnode"><b>Boot / mở app</b><span>BootSetupService · MainActivity</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>PermissionAuditRunner</b><span>:app — đọc in-process + 1 phiên dadb</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>PermissionAudit</b><span>:core — thuần: cần gì / thiếu gì</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>Vá + đọc lại</b><span>chỉ mục thiếu</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>Đủ ⇒ im lặng<br>Thiếu ⇒ popup</b><span>dialog (app) · notification (boot)</span></div>
+</div>
+<div class="legend">
+  <span class="sw"><span class="box" style="background:var(--card)"></span> khối hiện có</span>
+  <span class="sw"><span class="box" style="background:rgba(0,113,227,.15)"></span> khối mới</span>
+</div>
+
+<h3>4.2 Bảng 8 mục kiểm tra (canonical)</h3>
+<p class="muted">"Cần khi" = cổng theo tính năng đang bật; tính năng tắt ⇒ bỏ qua mục đó hoàn toàn.</p>
+<table>
+<tr><th>#</th><th>Mục</th><th>Cần khi</th><th>Đọc bằng</th><th>Đạt khi</th><th>Vá bằng</th></tr>
+<tr><td>1</td><td><b>ADB loopback</b> (phương tiện của mọi mục còn lại)</td><td>có ≥1 mục cần shell</td><td><code>LocalDeviceShell.sessionResult</code> → <code>Ok</code> / <code>Failed(reason)</code></td><td>mở được phiên</td><td>owner bấm <b>"Cho phép gỡ lỗi USB"</b> (chỉ popup xin được, app không tự cấp)</td></tr>
+<tr><td>2</td><td><b>Quyền đọc thông báo</b> (listener)</td><td>Nav+HUD bật</td><td>in-process <code>Settings.Secure enabled_notification_listeners</code></td><td>chứa <code>NavNotificationListener</code></td><td><code>NavConnect.selfGrant</code> → <code>cmd notification allow_listener</code></td></tr>
+<tr><td>3</td><td><b>Accessibility service</b> (booster GMaps + phím-thoại)</td><td>Nav+HUD <b>hoặc</b> voice-key bật</td><td>in-process <code>enabled_accessibility_services</code> + <code>NavAccessibilitySource.connected</code></td><td>enabled <b>và</b> bound</td><td><code>NavConnect.grantAccessibility</code> (đã có verify dumpsys + force-rebind)</td></tr>
+<tr><td>4</td><td><b>Overlay của ClusterNav</b></td><td>badge / bóng-placement / Cast bật</td><td>in-process <code>Settings.canDrawOverlays</code></td><td><code>true</code></td><td><code>appops set com.byd.clusternav2 SYSTEM_ALERT_WINDOW allow</code></td></tr>
+<tr><td>5</td><td><b>ClusterNav trong <code>byd_float_app_list</code></b></td><td>như #4</td><td><code>settings get global byd_float_app_list</code></td><td>CSV chứa <code>com.byd.clusternav2</code></td><td><code>FloatAppList.merge</code> + <code>settings put global …</code></td></tr>
+<tr><td>6</td><td><b>VietMap: list + appop</b> <span class="tag p1">gốc bug</span></td><td>bóng VietMap bật</td><td>cùng lệnh #5 + <code>appops get vn.vietmap.live SYSTEM_ALERT_WINDOW</code></td><td>CSV chứa <code>vn.vietmap.live</code> <b>và</b> appop = <code>allow</code></td><td>merge+put / <code>appops set … allow</code>; nếu vừa vá &amp; đang chạy ⇒ <code>am force-stop</code> (R7)</td></tr>
+<tr><td>7</td><td><b>Trợ lý hệ thống = Google/Gemini</b></td><td>có binding voice-key trỏ Gemini (<code>hasGeminiBinding</code>)</td><td><code>settings get secure assistant</code> + <code>voice_interaction_service</code></td><td>cả hai trỏ GSA</td><td><code>AssistantLauncher.setSystemAssistant</code> (recipe 8hare — cũng tự lo GSA/bard trong list + appop)</td></tr>
+<tr><td>8</td><td><b>Doze whitelist VietMap</b></td><td>Cast bật (đường <code>openProjection</code>)</td><td><code>dumpsys deviceidle whitelist</code></td><td>chứa <code>vn.vietmap.live</code></td><td><code>cmd deviceidle whitelist +vn.vietmap.live</code> (đã có, đang bị gate bởi cờ <code>doze_whitelist_applied</code> — chuyển sang đọc-trước như R1)</td></tr>
+</table>
+<p class="muted">Mục 2/3/4 đọc <b>in-process, miễn phí</b> (không dadb). Mục 5/6/7/8 cần shell; #5 và #6 dùng CHUNG một lần đọc CSV.</p>
+
+<h3>4.3 Khối mới</h3>
+<table>
+<tr><th>File</th><th>Vai trò</th></tr>
+<tr><td><code>core/…/permissions/PermissionAudit.kt</code> (mới)</td><td><b>Thuần</b>. <code>enum Grant</code> (8 mục) · <code>requiredFor(features): Set&lt;Grant&gt;</code> · <code>evaluate(required, readings): Report(missing, ownerActionOnly)</code> · parser <code>appopAllowed(text)</code>, <code>csvContains(csv,pkg)</code>, <code>flatContains(flat,comp)</code>. Không Android, test off-car.</td></tr>
+<tr><td><code>app/…/permissions/PermissionAuditRunner.kt</code> (mới)</td><td>Đọc in-process → dựng <code>readings</code> → mở MỘT phiên dadb (chỉ khi cần) đọc phần còn lại → <code>evaluate</code> → vá mục thiếu → đọc lại → trả <code>Report</code>. Single-flight + cooldown. <code>runForBoot</code> (<code>LocalShellRetry.NONE</code>) / <code>runForAppOpen</code> (<code>AWAIT_ADB_APPROVAL</code>).</td></tr>
+<tr><td><code>app/…/permissions/PermissionPrompt.kt</code> (mới)</td><td><code>AlertDialog</code> dựng bằng code (framework, không AppCompat — theo tiền lệ <code>CastDeepRescueAction</code>), song ngữ qua <code>Lang.t</code>: liệt kê mục thiếu + <b>"Cấp lại quyền"</b> / <b>"Để sau"</b>. Nhánh boot: notification (channel riêng, tap → mở MainActivity).</td></tr>
+</table>
+<h3>4.4 Khối sửa</h3>
+<ul>
+<li><code>VietMapAutostart.kt</code> — bỏ block whitelist tự-làm (166-183) → gọi mục #6 của audit; bỏ dùng cờ; thêm force-stop-khi-vừa-vá (R7) TRƯỚC chỗ đọc <code>hasActivityRecord</code> để nhánh launch tự chạy.</li>
+<li><code>Prefs.kt</code> — xoá <code>vmFloatWhitelistApplied</code>/<code>setVmFloatWhitelistApplied</code> (R6).</li>
+<li><code>BootSetupService.kt</code> — chèn audit làm bước ĐẦU (trước accessibility grant hiện có; grant đó trở thành "cách vá mục #3" nên không chạy hai lần).</li>
+<li><code>MainActivity.kt</code> — gọi <code>runForAppOpen</code> ở <code>onCreate</code> (chỉ khi <code>savedInstanceState==null</code>, theo tiền lệ v1.33 chống chạy lại lúc recreate đổi ngôn ngữ/giao diện) → callback main thread → popup nếu còn thiếu.</li>
+<li><code>SimpleCastRuntime</code>/<code>SimpleCastCoordinator</code> — mục #8 chuyển từ cờ <code>doze_whitelist_applied</code> sang đọc-trước (giữ nguyên lệnh vá).</li>
+</ul>
+<h3>4.5 Quyết định thiết kế</h3>
+<ul>
+<li><b>Đọc-trước thay cờ prefs</b> — cờ chỉ nói "app đã từng chạy lệnh", không nói "quyền còn không". Sự thật nằm ở thiết bị (<code>verify-state-before-claim.md</code>).</li>
+<li><b>Auto-vá trước, popup sau</b> — popup chỉ cho phần app KHÔNG tự làm được (thực tế: chỉ mục #1, và các mục phụ thuộc nó). Owner không bị hỏi thứ máy tự lo được.</li>
+<li><b>Không thêm nút trong UI</b> — mọi nút mới đụng <code>res/layout</code> ⇒ re-pin seal + đổi parity. Audit chạy tự động là đủ theo yêu cầu owner. (Xem OQ3.)</li>
+<li><b>Context7</b>: không dùng thư viện mới — chỉ <code>AlertDialog</code>/<code>Notification.Builder</code>/<code>Settings.Secure</code> của Android SDK + <code>dadb</code> đã có trong repo ⇒ không cần verify version (workflow §1.1 chỉ áp cho tech mới).</li>
+</ul>
+
+<h2>5. Tasks (DAG)</h2>
+<table>
+<tr><th>#</th><th>Task</th><th>File</th></tr>
+<tr><td>T1</td><td><code>:core</code> <code>PermissionAudit</code> thuần: 8 <code>Grant</code>, <code>requiredFor</code>, <code>evaluate</code>, 3 parser + unit test (bảng cần-gì theo từng tổ hợp tính năng · parse <code>appops get</code> allow/deny/default · CSV chứa/không · "đủ hết ⇒ missing rỗng")</td><td><code>core/…/permissions/PermissionAudit.kt</code> + <code>PermissionAuditTest.kt</code></td></tr>
+<tr><td>T2</td><td><code>:app</code> <code>PermissionAuditRunner</code>: đọc in-process + 1 phiên dadb, vá, đọc lại, single-flight + cooldown, 2 entry (<code>runForBoot</code>/<code>runForAppOpen</code>)</td><td><code>app/…/permissions/PermissionAuditRunner.kt</code></td></tr>
+<tr><td>T3</td><td><code>:app</code> <code>PermissionPrompt</code>: dialog song ngữ + notification nhánh boot</td><td><code>app/…/permissions/PermissionPrompt.kt</code></td></tr>
+<tr><td>T4</td><td>Wire: <code>BootSetupService</code> · <code>MainActivity.onCreate</code> · <code>VietMapAutostart</code> (bỏ block cũ + force-stop R7) · <code>Prefs</code> (xoá cờ) · doze mục #8</td><td>5 file đã có</td></tr>
+<tr><td>T5</td><td>Test wiring kiểu grep-source (theo tiền lệ <code>VmFloatWhitelistWiringTest</code>): "đủ ⇒ 0 lệnh ghi" · "force-stop CHỈ khi vừa vá" · "cờ đã bị xoá khỏi Prefs" · boot+app-open đều gọi audit · dialog chỉ hiện khi còn thiếu</td><td><code>app/src/test/…/PermissionAuditWiringTest.kt</code> (+ sửa <code>VmFloatWhitelistWiringTest</code>)</td></tr>
+<tr><td>T6</td><td>Full suite 5 module <code>--rerun-tasks</code> · senior review (review loop tới 0 finding) · security scan · bump <b>1.39 / versionCode 40</b> · <code>:app:assembleRelease</code> · <code>aapt2</code> xác minh không bề mặt test · APK vào <code>apk/</code> · doc+INDEX+BACKLOG+project-context (R2.1) · commit <code>Đăng Khôi</code> → OTA</td><td>—</td></tr>
+</table>
+
+<h2>6. Verification</h2>
+<ul>
+<li><b>V-unit</b>: 5 module xanh, 0 fail mới (<code>./gradlew test --rerun-tasks --continue</code>). Case khoá: (a) mọi quyền đủ ⇒ <code>missing</code> rỗng ⇒ runner không phát lệnh ghi; (b) appop <code>default</code>/<code>ignore</code> ⇒ coi là thiếu; (c) tính năng tắt ⇒ quyền của nó không trong <code>required</code>; (d) vá xong đọc lại vẫn thiếu ⇒ <code>ownerActionOnly</code>.</li>
+<li><b>V-redteam</b>: thử làm test ĐỎ (gỡ dòng vá → test đỏ → khôi phục → xanh) cho case (a) và (b) — test chưa từng đỏ là test mù (<code>conversation-protocol.md</code> P5.3).</li>
+<li><b>V-emulator</b>: emulator-5554 — gỡ appop overlay của <code>vn.vietmap.live</code> (<code>appops set … default</code>) → mở app → log audit phải in <code>thiếu: VM_OVERLAY_OP</code> → tự vá → đọc lại <code>allow</code>. (Phần dadb loopback không có trên emulator ⇒ nhánh #1 chỉ verify được bằng log "cần owner".)</li>
+<li><b>V-oncar</b> (owner, sau khi có APK): (1) bật bóng VietMap → mở ClusterNav → <b>không còn toast "IVI không hỗ trợ"</b> + bóng lên cụm; (2) log <code>PermissionAudit</code> in <code>listed=… allowed=…</code>; (3) mở app lần 2 khi đã đủ ⇒ log "đủ hết, pass" và <b>không</b> force-stop VietMap (không giật); (4) gỡ quyền notification bằng tay → mở app ⇒ popup hiện đúng mục đó.</li>
+<li><b>V-lifecycle</b>: reboot (nút nguồn vật lý) → boot nền tự audit; cài lại bản mod VietMap → mở app ⇒ tự phát hiện appop mất + vá + force-stop 1 lần; "Để sau" ⇒ không popup lại trong phiên đó.</li>
+</ul>
+
+<h2>7. Open Questions</h2>
+<ul>
+<li><b>OQ1.</b> BYD có <b>cache <code>byd_float_app_list</code> lúc boot</b> không? Nếu có thì lần vá đầu chỉ có tác dụng sau reboot — audit sẽ log <code>listed=true allowed=true</code> mà bóng vẫn chưa lên. <span class="muted">[CHƯA BIẾT] — chốt bằng V-oncar (3); nếu đúng thì thêm nhắc "cần khởi động lại xe" vào popup.</span></li>
+<li><b>OQ2.</b> Có được popup khi <b>đang lái</b> (app foreground trên màn chính) không, hay chỉ popup khi xe đứng? <span class="muted">Đề xuất: cứ popup (dialog không che cụm, không chặn dẫn đường) — chờ owner chốt.</span></li>
+<li><b>OQ3.</b> Có cần thêm nút <b>"Kiểm tra quyền"</b> trong mục Nâng cao (chạm layout ⇒ re-pin seal + parity 88→89)? <span class="muted">Đề xuất: KHÔNG ở bản này; audit tự động là đủ.</span></li>
+<li><b>OQ4.</b> Mục #8 (doze) hiện chỉ whitelist <code>vn.vietmap.live</code>, KHÔNG whitelist chính ClusterNav — có muốn thêm ClusterNav vào doze whitelist luôn không (app chạy nền dài)? <span class="muted">Đề xuất: thêm, cùng công thức, nhưng ghi rõ đây là mở rộng ngoài scope bug gốc.</span></li>
+</ul>
+
+<h2>8. References</h2>
+<ul>
+<li><code>app/…/VietMapAutostart.kt:166-183</code> (block whitelist v1.35) · <code>:203-206</code> (bỏ launch khi đã có activity, v1.34).</li>
+<li><code>app/…/Prefs.kt:305-314</code> (cờ một-lần) · <code>core/…/FloatAppList.kt</code> (merge CSV) · <code>app/…/modules/voicekey/AssistantLauncher.kt:254-265</code> (recipe 8hare).</li>
+<li><code>app/…/MainActivity.kt:1048-1064</code> (2 checker in-process đã có) · <code>app/…/NavConnect.kt:65-113</code> (selfGrant / grantAccessibility) · <code>app/…/BootSetupService.kt:49-100</code> (chuỗi boot).</li>
+<li><code>core/…/simplified/SimpleCastCoordinator.kt:94-97</code> (doze whitelist) · <code>SimpleCastRuntime.kt:228-231</code> (cờ doze).</li>
+<li><code>docs/_handoff/vm-float-whitelist-done.md</code> (v1.35) · <code>docs/runbook-mod-vietmap-cluster.md:113</code> (lệnh thủ công) · <code>docs/specs/notif-grant-docs-voicekey-1.13.html</code> (vì sao toast IVI ≠ chuỗi của app).</li>
+</ul>
+
+<h2>9. Nhật ký triển khai (Implementation Log)</h2>
+<p class="muted">Ghi trong lúc code + bổ sung ở Pass 1 review (R2.6): mọi chỗ code THỰC TẾ lệch khỏi §3/§4, và vì sao.</p>
+
+<h3>9.1 Lệch khỏi bảng §4.2 / §4.4 (có chủ ý)</h3>
+<table>
+<tr><th>#</th><th>Spec nói</th><th>Code làm</th><th>Vì sao</th></tr>
+<tr><td>D1</td><td>8 mục</td><td><b>9 <code>Grant</code></b>: mục #6 tách thành <code>VM_FLOAT_LIST</code> + <code>VM_OVERLAY_OP</code>; mục #1 (ADB loopback) KHÔNG là <code>Grant</code> mà là <code>AuditReport.shellBlocked</code>; thêm <code>DOZE_SELF</code></td><td>Hai điều kiện của mục #6 mất/được cấp ĐỘC LẬP (cài lại mod xoá appop nhưng list vẫn còn) ⇒ phải vá riêng. Mục #1 là <i>phương tiện</i> của mọi mục khác, không phải một mục ngang hàng. <code>DOZE_SELF</code> = nhận đề xuất <b>OQ4</b> (mở rộng ngoài bug gốc, ghi rõ ở đây).</td></tr>
+<tr><td>D2</td><td>Mục #3 đạt khi <b>enabled VÀ bound</b></td><td>Chỉ xét <b>enabled</b></td><td>Bind là VÒNG ĐỜI (chạy sau vài giây, do <code>NavConnect.ensureConnected</code> lo). Trộn vào cổng "đủ chưa" sẽ báo THIẾU oan ngay sau khi vừa cấp xong ⇒ popup sai + force-rebind vô ích. Trạng thái bound vẫn được <code>BootSetupService</code> dùng để quyết định escalate như trước.</td></tr>
+<tr><td>D3</td><td>R5(a): boot dùng retry <code>NONE</code></td><td><code>BACKGROUND_READ_CAP</code></td><td><code>NONE</code> = hạn đọc VÔ HẠN ⇒ adbd im lặng chờ owner bấm là treo FGS boot vĩnh viễn (đúng ca F6 đã sửa cho <code>VietMapAutostart</code>). Vẫn 1 lần thử, không chờ, chỉ thêm chụp-mũ 30 s.</td></tr>
+<tr><td>D4</td><td>§4.4: <code>SimpleCastRuntime</code>/<code>SimpleCastCoordinator</code> chuyển cờ <code>doze_whitelist_applied</code> sang đọc-trước</td><td><b>KHÔNG đụng</b> hệ Cast; thay vào đó <code>requiredFor</code> gộp cổng <code>cast</code> vào <code>DOZE_VIETMAP</code> nên đường đọc-trước phủ đúng ca đó (patch Pass 1, xem R-P3)</td><td>Sửa trong Cast = mở một hệ có journal/fence riêng cho một nhu cầu không liên quan. Cờ cũ còn lại là VÔ HẠI (lệnh <code>+pkg</code> idempotent) và từ nay không còn là đường duy nhất.</td></tr>
+<tr><td>D5</td><td>OQ3: nút "Kiểm tra quyền" trong Nâng cao</td><td>KHÔNG thêm</td><td>Theo đề xuất trong OQ3: chạm <code>res/layout</code> ⇒ re-pin byte-seal T11 + đổi parity 88. Audit tự động ở boot + mở app là đủ.</td></tr>
+</table>
+
+<h3>9.2 Quyết định khác</h3>
+<ul>
+<li><b>Đường dẫn file <code>:core</code></b>: <code>core/…/core/PermissionAudit.kt</code> (package <code>com.byd.clusternav.core</code>) chứ không phải <code>core/…/permissions/</code> — ở cạnh <code>FloatAppList</code>, là thứ nó dùng chung.</li>
+<li><b>Ba mục "nặng" UỶ QUYỀN, không chép công thức</b>: <code>NOTIF_LISTENER</code>→<code>NavConnect.selfGrant</code> · <code>A11Y_SERVICE</code>→<code>NavConnect.grantAccessibility</code> · <code>ASSISTANT</code>→<code>AssistantLauncher.setSystemAssistant</code>. Ba đường này TỰ mở phiên dadb riêng ⇒ gọi SAU khi phiên của audit đã đóng (không lồng phiên), mỗi lần chờ có hạn (15 s / 12 s / retry của chính nó) để boot không đứng vô hạn.</li>
+<li><b><code>am force-stop</code> gate trên <code>fixed</code>, KHÔNG trên <code>missingBefore</code></b>: chỉ khi read-back xác nhận quyền ĐÃ landed mới restart VietMap. Nhờ vậy một xe TỪ CHỐI lệnh ghi không bao giờ rơi vào vòng "vá trượt → restart → vá trượt".</li>
+<li><b>Không truyền state qua Intent của notification</b>: chạm ⇒ chỉ mở <code>MainActivity</code>, lượt audit lúc mở app đọc LẠI. State cũ luôn có thể đã sai.</li>
+<li><b>Bump version + APK</b>: <code>versionCode</code> 39→<b>40</b>, <code>versionName</code> 1.38→<b>1.39</b>; <code>apk/ClusterNav-1.39-release.apk</code> sha256 <code>98057f3c63cd083e0614208e1acfe6f7ac17fd8db523e8ef8ca4a2748c3b25dd</code> (bỏ 1.38, giữ 1.0). <code>aapt2 dump badging</code>: <code>versionCode='40' versionName='1.39'</code>, không debuggable, không bề mặt test nào trong manifest release.</li>
+</ul>
+
+<h3>9.3 Bù đắp sau Pass 1 review (chi tiết ở §10)</h3>
+<ul>
+<li><b>Force-start không được BỎ.</b> <code>VietMapAutostartService</code> nay HOÃN rồi chạy nối tiếp một force-start đến trong lúc worker đang chạy — không còn bị bỏ như start trùng thường.</li>
+<li><b>Notification boot chỉ báo khi KẾT LUẬN đổi</b> (<code>AuditReport.nagSignature</code> + <code>Prefs.perm_audit_nag_signature</code>).</li>
+<li><b>VietMap chưa cài ⇒ không đòi quyền của nó</b> (<code>AuditFeatures.vmInstalled</code>, đọc <code>PackageManager</code>).</li>
+<li><b>Tiện nghi cabin (ghế · lọc bụi) chạy TRƯỚC audit</b> trong <code>BootSetupService</code> — chúng không cần quyền nào.</li>
+<li><b><code>AuditReport.skipped</code></b> — toast nút "Cấp lại quyền" không còn nói "đã cấp đủ quyền" khi lượt bị single-flight bỏ.</li>
+<li><b>Merge float-list trên bản đọc SÁT LÚC GHI</b> — thu cửa sổ lost-update với <code>AssistantLauncher</code>.</li>
+</ul>
+
+<h2>10. Reviewer Log</h2>
+
+<h3>Pass 1 — 2026-09-10</h3>
+<p><b>Phạm vi</b>: đọc toàn bộ 12 file thay đổi + spec; đối chiếu R1–R8 / R-nf1–R-nf5 / T1–T6; săn lỗi lệnh-shell &amp; parser ở uid shell API 29; săn BÁO ĐỘNG GIẢ; soi race (single-flight/cooldown/force/phiên dadb song song/vòng đời FGS boot); soi ranh giới hình-dạng (§5.3 rule global).</p>
+<p><b>Chứng cứ đo được</b>: <code>:core</code> <code>PermissionAuditTest</code> <b>41/0</b> · <code>:app</code> <code>PermissionAuditWiringTest</code> <b>31/0</b> · full suite <code>./gradlew test --rerun-tasks --continue</code> = <b>2078 tests / 0 fail / 0 error</b> (core 859 · app-debug 521 · app-vehicleTest 533 · car-integration 44 · offcar-planner 99 · vehicle-contracts 22) · <code>:app:compileReleaseKotlin</code> sạch. Red-team: gỡ từng cổng mới (hoãn-force · chữ-ký-nag · <code>vmInstalled</code>) ⇒ test tương ứng ĐỎ, khôi phục ⇒ XANH (test không mù).</p>
+
+<h4>Findings + patch</h4>
+<table>
+<tr><th>ID</th><th>Mức</th><th>Vấn đề</th><th>Đã vá</th></tr>
+<tr><td>R-P1a</td><td><span class="tag">P1</span></td><td><b>R7 trượt ngay ở lần mở app ĐẦU TIÊN.</b> <code>MainActivity.onCreate</code> start autostart NGAY (worker vào <code>pollUntilInMap</code>, tới 25 s); vài giây sau audit vá appop, <code>am force-stop</code> VietMap rồi force-start — nhưng service BỎ start đó vì <code>workerActive</code> còn true ⇒ VietMap nằm chết, bóng KHÔNG lên, việc dựng lại bị đẩy sang lần mở app sau (cooldown 30 s) = đúng triệu chứng v1.38 đang sửa.</td><td><code>VietMapAutostartService</code>: <code>pendingForce</code> — start force trượt CAS thì HOÃN, worker khi xong nối tiếp một lượt force (nhả cờ TRƯỚC, chỉ <code>finish()</code> khi không nối ⇒ không xé FGS giữa lượt). Vòng nối hữu hạn (mỗi mắt cần một force-start mới).</td></tr>
+<tr><td>R-P1b</td><td><span class="tag">P1</span></td><td><b>Notification "thiếu quyền" bung ra MỖI LẦN NỔ MÁY.</b> Boot chạy <code>BACKGROUND_READ_CAP</code> ⇒ xe chưa/không cấp được khoá adb ⇒ <code>shellBlocked</code> ⇒ <code>missingAfter</code> gom HẾT mục cần shell ⇒ báo vô điều kiện, mãi mãi, dù không có gì mới (vi phạm R8).</td><td><code>AuditReport.nagSignature()</code> + <code>Prefs.perm_audit_nag_signature</code>: chỉ báo khi KẾT LUẬN đổi; xe lành ⇒ xoá chữ ký (sự cố cũ quay lại vẫn được báo tiếp một lần).</td></tr>
+<tr><td>R-P2a</td><td><span class="tag p1">P2</span></td><td><b>VietMap bị GỠ ⇒ popup vĩnh viễn.</b> Cờ badge/bóng là opt-in và VẪN BẬT sau khi gỡ VietMap; <code>appops set</code>/<code>deviceidle +</code> trên gói không tồn tại luôn trượt ⇒ 3 mục của nó "còn thiếu" mãi mà owner không làm gì được (vi phạm tinh thần R2).</td><td><code>AuditFeatures.vmInstalled</code> (đọc <code>PackageManager.getLaunchIntentForPackage</code> — CÙNG phép thử <code>VietMapAutostart</code> dùng) gate <code>VM_FLOAT_LIST</code>/<code>VM_OVERLAY_OP</code>/<code>DOZE_VIETMAP</code>.</td></tr>
+<tr><td>R-P2b</td><td><span class="tag p1">P2</span></td><td><b>Ghế + lọc bụi PM2.5 bị audit chặn tới ~35 s sau khi nổ máy</b> khi phiên dadb câm (hạn đọc 30 s). Hai tính năng này chỉ dùng HAL trong tiến trình, KHÔNG cần quyền nào — trái tinh thần quyết định 1.37 của owner ("tách riêng, đừng để chờ nhau").</td><td><code>BootSetupService</code>: gọi hai applier TRƯỚC audit (mỗi hàm chỉ bung thread rồi trả về ngay). Audit vẫn đứng TRƯỚC accessibility grant + autostart VietMap — hai thứ DUY NHẤT phụ thuộc nó.</td></tr>
+<tr><td>R-P2c</td><td><span class="tag p1">P2</span></td><td><b>Toast báo sai:</b> "Đã cấp đủ quyền" hiện lên khi lượt retry bị single-flight BỎ (chưa chạy lệnh nào) — <code>AuditReport()</code> rỗng có <code>allOk == true</code>.</td><td>Thêm <code>AuditReport.skipped</code>; toast xét nhánh <code>skipped</code> TRƯỚC <code>allOk</code>.</td></tr>
+<tr><td>R-P2d</td><td><span class="tag p1">P2</span></td><td><b>Lost update trên <code>byd_float_app_list</code></b>: audit merge trên bản đọc từ ĐẦU phiên, trong khi <code>AssistantLauncher.setSystemAssistant</code> (chạy song song mỗi lần mở app khi có binding Gemini) cũng read-modify-write cùng khoá ⇒ có thể xoá mục Google/Gemini vừa thêm.</td><td>Đọc lại NGAY trước khi ghi (<code>val fresh = …</code>) ⇒ cửa sổ tranh chấp từ vài giây xuống ~1 ms. Tồn dư: tự lành ở lần mở app sau.</td></tr>
+<tr><td>R-P3</td><td><span class="tag p2">P3</span></td><td><b>Cổng <code>DOZE_VIETMAP</code> lệch spec §4.2 mục 8</b>: spec ghi "Cần khi Cast bật", code lại gate <code>badge || vmBubble</code> ⇒ ca CHỈ-Cast không được đường đọc-trước phủ (vẫn phụ thuộc cờ một-lần cũ trong Cast).</td><td><code>requiredFor</code>: <code>badge || vmBubble || cast</code> (gộp cả spec lẫn ý code) — không đụng file nào của hệ Cast.</td></tr>
+<tr><td>R-P3b</td><td><span class="tag p2">P3</span></td><td><b>Notification boot ra tiếng Việt dù owner chọn EN</b>: tiến trình boot headless chưa Activity nào gọi <code>Lang.load</code> ⇒ cache rỗng ⇒ <code>Lang.t</code> rơi về VI.</td><td><code>Lang.load(app)</code> trước khi dựng chữ trong <code>postBootNotification</code>.</td></tr>
+<tr><td>R-P3c</td><td><span class="tag p2">P3</span></td><td><b>Ranh giới chuỗi hở</b>: <code>shellReason</code> = <code>LocalShellFailure.name</code> nhưng <code>shellHint</code> so bằng literal ⇒ đổi tên hằng enum thì lời khuyên âm thầm rơi về câu chung chung, không test nào đỏ.</td><td>Thêm test đối chiếu literal với <code>LocalShellFailure.entries</code> thật.</td></tr>
+</table>
+
+<h4>Đã soi và KHÔNG sửa (có lý do)</h4>
+<ul>
+<li><b>Lệnh shell ở uid shell / API 29 — không tìm thấy lệnh nào sai.</b> <code>settings get/put global</code> (WRITE_SECURE_SETTINGS của shell) · <code>appops get/set</code> (định dạng khớp ĐÚNG fixture on-car <code>docs/refactor-car-execution/fixtures/appops-get-clusternav.txt</code>: <code>SYSTEM_ALERT_WINDOW: allow; time=…</code>) · <code>dumpsys deviceidle whitelist</code> (Android 10 chuyển thẳng vào <code>Shell</code> của <code>DeviceIdleController</code>, in <code>&lt;nguồn&gt;,&lt;pkg&gt;,&lt;uid&gt;</code> — đúng cái parser tách theo dấu phẩy) · <code>cmd deviceidle whitelist +pkg</code> · <code>pidof</code> · <code>am force-stop</code> (đều đã dùng ở đường proven khác trong repo). Parser đọc mode NGAY SAU tên op nên một op khác đang <code>allow</code> không lừa được; <code>No operations.</code> / rỗng / <code>default</code> / <code>ignore</code> ⇒ CHƯA cấp (đúng: <code>MODE_DEFAULT</code> không cho app thường vẽ overlay).</li>
+<li><b>Giá trị <code>settings put</code> KHÔNG bọc dấu nháy</b> — giữ nguyên công thức đã proven của <code>AssistantLauncher</code>; CSV chỉ gồm tên gói nên không có khoảng trắng. Đổi = đụng đường đang chạy tốt vì một suy luận.</li>
+<li><b>Boot vẫn gọi <code>setSystemAssistant</code> lần nữa sau audit</b> (khi có binding Gemini): công thức 8hare làm NHIỀU hơn hai khoá secure mà audit kiểm (nó còn whitelist GSA/bard + appops), nên bỏ bước đó có thể làm hỏng đường Gemini. Cái giá là một phiên dadb thừa mỗi lần boot — chấp nhận, ghi lại.</li>
+<li><b><code>BootSetupService</code> gọi <code>setSystemAssistant(…, NONE)</code> = hạn đọc VÔ HẠN</b> ⇒ vẫn có thể treo FGS boot. LỖI CÓ TRƯỚC đợt này (không do audit), ngoài scope; đề xuất chuyển sang <code>BACKGROUND_READ_CAP</code> ở một task riêng.</li>
+<li><b>Trần thời gian audit ở boot</b> (đọc code, không đo trên xe): phiên riêng ≤ ~30 s (một lần đọc câm là phiên hỏng và thoát sớm) + <code>selfGrant</code> ≤ 15 s + <code>grantAccessibility</code> ≤ 12 s + <code>setSystemAssistant</code> ≤ ~30 s ⇒ <b>≈ 87 s</b> ca xấu nhất, và chỉ khi xe đang hỏng nhiều thứ cùng lúc. Ca thường: 6–12 lệnh đọc, &lt; 2 s. Sau R-P2b thì ghế/lọc bụi không còn nằm sau nó ⇒ chấp nhận được.</li>
+<li><b><code>MainActivity.kt</code> 1396 LOC</b> vượt ngưỡng 500 của steering §4.1 — vi phạm CÓ TRƯỚC; đợt này chỉ thêm ~15 dòng. Tách <code>MainActivity</code> là refactor lớn, phải là task riêng.</li>
+</ul>
+
+<h4>Còn phải đo TRÊN XE (off-car không kết luận được)</h4>
+<ul>
+<li><b>Xe có TỪ CHỐI lệnh ghi nào không</b> (<code>settings put global byd_float_app_list</code> / <code>appops set</code> / <code>cmd deviceidle whitelist +</code>). Nếu có: read-back sẽ báo "còn thiếu" ⇒ dialog hiện lại mỗi lần MỞ APP (nhánh boot đã được chữ-ký-nag chặn). Đúng theo R8 như spec viết, nhưng nếu thực tế xảy ra thì nên hạ mục đó xuống "chỉ log".</li>
+<li><b>OQ1</b> — BYD có cache <code>byd_float_app_list</code> lúc boot không (vá xong <code>listed=true allowed=true</code> mà bóng vẫn chưa lên ⇒ cần thêm câu "khởi động lại xe" vào popup).</li>
+<li><b>Lần chạy v1.39 đầu tiên gần như chắc chắn sẽ restart VietMap MỘT lần</b> ngay cả trên xe đang chạy tốt: <code>appops get</code> của bản mod hiện <code>No operations.</code>/<code>default</code> (overlay đang chạy nhờ <code>MODE_DEFAULT</code> + quyền cài sẵn) ⇒ audit coi là thiếu ⇒ ghi <code>allow</code> ⇒ read-back OK ⇒ <code>fixed</code> ⇒ force-stop + mở lại. Từ lần sau đọc ra <code>allow</code> ⇒ im lặng. Cần xác nhận owner thấy đúng MỘT lần giật, không lặp.</li>
+</ul>
+
+<p><b>Verdict Pass 1: APPROVED</b> cho phần T1–T5 (0 finding còn lại). T6 CHƯA xong: chưa bump <code>1.39</code>/<code>versionCode 40</code>, chưa <code>assembleRelease</code>+<code>aapt2</code>, chưa APK vào <code>apk/</code>, chưa security scan, chưa commit/OTA.</p>
+
+
+</div></body>
+</html>

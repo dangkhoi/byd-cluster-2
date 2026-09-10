@@ -49,6 +49,29 @@ class BootSetupService : Service() {
         if (!startForegroundOnce()) { stopSelf(startId); return START_NOT_STICKY }
         Thread({
             runCatching {
+                // Tiện nghi cabin ĐI TRƯỚC (ghế + lọc bụi): cả hai chỉ dùng HAL reflection trong tiến trình,
+                // KHÔNG cần một quyền nào của bộ kiểm-tra-quyền, và mỗi hàm chỉ bung thread riêng rồi trả về
+                // NGAY (đồng hồ "~5 s" của chúng bắt đầu từ lúc gọi). Đặt sau audit thì một phiên dadb câm
+                // (retry BACKGROUND_READ_CAP = hạn đọc 30 s, ca xe chưa/không cấp được khoá adb) sẽ đẩy ghế +
+                // lọc bụi trễ tới ~35 s sau khi nổ máy — thứ owner CẢM THẤY ngay. Không có ràng buộc thứ tự nào
+                // giữa chúng và audit, nên đưa lên đầu.
+                // Ghế: áp mức làm-mát/sưởi lên HAL ~5s sau boot nếu công tắc BẬT (headless boot cũng tự áp,
+                // giống app tham chiếu). Gate seatComfortEnabled + degrade-safe nằm trong applyOnStart.
+                com.byd.clusternav.comfort.SeatComfortApplier.applyOnStart(applicationContext)
+                // Lọc bụi mịn PM2.5: bật lọc-liên-tục (không popup) ~5s sau boot nếu công tắc BẬT. Gate
+                // pm25FilterEnabled + degrade-safe nằm trong applyOnStart.
+                com.byd.clusternav.comfort.Pm25FilterApplier.applyOnStart(applicationContext)
+                // KIỂM TRA QUYỀN (v1.39, spec permission-health-audit) — chạy TRƯỚC mọi bước CẦN quyền: đọc trạng
+                // thái thật của mọi quyền mà tính năng ĐANG BẬT cần, đủ ⇒ im lặng (không phát lệnh nào), thiếu ⇒
+                // tự vá + đọc lại, còn thiếu ⇒ notification "chạm để cấp lại" (boot headless KHÔNG dựng được
+                // dialog; chỉ báo khi KẾT LUẬN đổi — xem PermissionPrompt.postBootNotification).
+                // ĐỒNG BỘ ở đây là CỐ Ý: FGS này giữ tiến trình sống, và hai bước NGAY DƯỚI phụ thuộc kết quả —
+                // accessibility grant (audit có thể đã cấp ⇒ khỏi làm hai lần) và autostart VietMap (bóng chỉ
+                // dựng lúc khởi động nên quyền phải có TRƯỚC khi launch). Degrade-safe: audit tự bọc lỗi.
+                val audit = com.byd.clusternav.permissions.PermissionAuditRunner.runForBoot(applicationContext)
+                if (audit.needsOwner) {
+                    com.byd.clusternav.permissions.PermissionPrompt.postBootNotification(applicationContext, audit)
+                }
                 // Accessibility grant + 1.20 force-bind: cần khi Nav+HUD (booster đọc GMaps) HOẶC voice-key
                 // (nút vật lý → trợ lý) bật. Voice-key KHÔNG phụ thuộc Nav+HUD (owner 2026-09-01: hai tính năng
                 // RIÊNG — trước gate chung Nav+HUD nên phím-thoại chết sau boot khi Nav+HUD tắt). Chỉ escalate khi
@@ -73,12 +96,6 @@ class BootSetupService : Service() {
                 // bóng poll tới khi VietMap vào map (tuỳ network) nên tách ra service riêng; boot → về HOME sau.
                 // Gate (badge / bóng / cast) + chống-loop nằm trong runNow của service.
                 VietMapAutostartService.startForBoot(applicationContext)
-                // Ghế: áp mức làm-mát/sưởi lên HAL ~5s sau boot nếu công tắc BẬT (headless boot cũng tự áp,
-                // giống app tham chiếu). Gate seatComfortEnabled + degrade-safe nằm trong applyOnStart.
-                com.byd.clusternav.comfort.SeatComfortApplier.applyOnStart(applicationContext)
-                // Lọc bụi mịn PM2.5: bật lọc-liên-tục (không popup) ~5s sau boot nếu công tắc BẬT. Gate
-                // pm25FilterEnabled + degrade-safe nằm trong applyOnStart.
-                com.byd.clusternav.comfort.Pm25FilterApplier.applyOnStart(applicationContext)
                 // F4e boot (owner 08-25): boot headless KHÔNG mở MainActivity ⇒ onCreate không chạy ⇒ trợ lý
                 // hệ thống chưa được đặt = Gemini ⇒ hold-mic → keyevent 231 route sai. Đặt luôn ở đây NẾU có
                 // binding Gemini, để hold-mic → Gemini ready NGAY sau nổ máy mà KHÔNG cần mở app (owner

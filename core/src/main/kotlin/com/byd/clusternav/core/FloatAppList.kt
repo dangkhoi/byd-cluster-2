@@ -25,7 +25,18 @@ object FloatAppList {
      * is already present a no-op, so re-running is idempotent.
      */
     fun merge(current: String, add: List<String>): String =
-        (current.split(',').map { it.trim() }.filter { it.isNotEmpty() && it != "null" } + add)
+        (entries(current) + add)
             .distinct()
             .joinToString(",")
+
+    /**
+     * Gói [pkg] ĐÃ có trong danh sách [current] chưa — cổng "đọc trước, đã cấp thì không cấp lại"
+     * ([com.byd.clusternav.core.PermissionAudit]). So khớp CHÍNH XÁC từng phần tử sau khi trim (không
+     * `contains`), nên `com.foo.bar` không khớp nhầm `com.foo.barbaz`. `"null"` (khoá chưa đặt) / rỗng ⇒ false.
+     */
+    fun contains(current: String, pkg: String): Boolean = entries(current).any { it == pkg }
+
+    /** Tách CSV thành các phần tử sạch: trim, bỏ rỗng và literal `"null"` (`settings get` in ra khi khoá chưa đặt). */
+    private fun entries(current: String): List<String> =
+        current.split(',').map { it.trim() }.filter { it.isNotEmpty() && it != "null" }
 }

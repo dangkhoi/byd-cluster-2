@@ -6,7 +6,6 @@ import com.byd.clusternav.carexec.LocalDeviceShell
 import com.byd.clusternav.carexec.LocalShellResult
 import com.byd.clusternav.carexec.LocalShellRetry
 import com.byd.clusternav.carexec.LocalShellText
-import com.byd.clusternav.core.FloatAppList
 import com.byd.clusternav.navigation.NavApps
 
 /**
@@ -96,10 +95,15 @@ object VietMapAutostart {
      * Giành 1 suất chạy: trả `true` nếu được phép tiếp tục (đánh dấu in-flight + đóng dấu thời gian). Trả
      * `false` nếu ĐANG có phiên chạy (in-flight) HOẶC còn trong [COOLDOWN_MS]. Thành công ⇒ caller PHẢI gọi
      * [finishRun] khi xong (dùng `try/finally`). `internal` để test off-car lái được trọn vòng gate.
+     *
+     * @param force bỏ qua CHỈ cooldown (vẫn giữ single-flight). Dùng cho đường "vừa vá quyền bóng VietMap"
+     *   ([com.byd.clusternav.permissions.PermissionAuditRunner]): lúc đó VietMap vừa bị force-stop nên PHẢI mở
+     *   lại NGAY, không được để cooldown của lượt autostart vài giây trước chặn — nếu chặn thì bóng chỉ lên ở
+     *   lần mở app sau, đúng cái bug đang sửa.
      */
-    internal fun tryBeginRun(nowMs: Long = System.currentTimeMillis()): Boolean {
+    internal fun tryBeginRun(nowMs: Long = System.currentTimeMillis(), force: Boolean = false): Boolean {
         if (!inFlight.compareAndSet(false, true)) return false      // đã có phiên đang chạy
-        if (!outsideCooldown(nowMs, lastRunAtMs)) {                  // còn trong cooldown
+        if (!force && !outsideCooldown(nowMs, lastRunAtMs)) {       // còn trong cooldown
             inFlight.set(false)
             return false
         }
@@ -125,8 +129,10 @@ object VietMapAutostart {
      * không phải cast-default) / VietMap chưa cài. Chống-loop (in-flight + cooldown) nằm ngay trong hàm.
      *
      * @param returnToSelfPkg  package đưa lại foreground sau khi VietMap vào map; null = về HOME (boot headless).
+     * @param force  bỏ qua cooldown (giữ single-flight) — đường "vừa vá quyền bóng" của
+     *   [com.byd.clusternav.permissions.PermissionAuditRunner], xem [tryBeginRun].
      */
-    fun runNow(ctx: Context, returnToSelfPkg: String?) {
+    fun runNow(ctx: Context, returnToSelfPkg: String?, force: Boolean = false) {
         val app = ctx.applicationContext
         // Tín hiệu CAST-MẶC-ĐỊNH: VietMap có phải app tự-chiếu-lên-cụm không. Đọc THẲNG pref "clustercast/autoCast"
         // (KHÔNG phụ thuộc singleton ClusterCast đã load chưa — runNow chạy từ boot/nền). Cặp file/khoá PHẢI khớp
@@ -143,8 +149,8 @@ object VietMapAutostart {
         // (a) CHỐNG LOOP (B2, on-car 2026-09-06): chỉ MỘT phiên chạy tại một thời điểm + cooldown giữa hai lần.
         // onCreate/recreate(đổi ngôn ngữ/giao diện)/boot bắn dồn ⇒ chỉ lần đầu đi qua; các lần trong COOLDOWN_MS bị
         // bỏ (khỏi lặp "launch → sleep 1500 → trả foreground" = flash loop owner thấy). finishRun() ở finally.
-        if (!tryBeginRun()) {
-            Log.i(TAG, "autostart: bỏ qua (đang chạy hoặc trong cooldown ${COOLDOWN_MS}ms) — chống loop onCreate/recreate/boot")
+        if (!tryBeginRun(force = force)) {
+            Log.i(TAG, "autostart: bỏ qua (đang chạy hoặc trong cooldown ${COOLDOWN_MS}ms, force=$force) — chống loop onCreate/recreate/boot")
             return
         }
         try {
@@ -157,27 +163,14 @@ object VietMapAutostart {
             // IO_ERROR…). KHÔNG đổi hành vi thực thi: session() vốn gọi cùng sessionResult() rồi vứt Failed.
             val result = LocalDeviceShell.sessionResult(keys, LocalShellRetry.BACKGROUND_READ_CAP) { sh ->
                 val running = sh("pidof $PKG").output.trim().isNotEmpty()
-                // FLOAT/OVERLAY WHITELIST (một lần): bản mod VietMap vẽ BÓNG lên cụm, nhưng BYD IVI TỪ CHỐI
-                // overlay của gói KHÔNG có trong CSV toàn cục `byd_float_app_list` (toast "Hệ thống IVI không hỗ
-                // trợ hoạt động này"). Thêm VietMap vào list đó + cấp SYSTEM_ALERT_WINDOW — CÙNG công thức đã
-                // proven mà AssistantLauncher dùng cho Google/Gemini (merge dùng chung com.byd.clusternav.core.
-                // FloatAppList, KHÔNG clobber gói khác). Cổng: bóng BẬT + cờ một-lần chưa set. Degrade-safe: bọc
-                // runCatching để hỏng (vd dadb rớt giữa chừng) KHÔNG chặn launch phía dưới; và cờ chỉ set khi
-                // THÀNH CÔNG (nằm cuối runCatching) ⇒ hỏng thì lần autostart sau thử lại. Chạy trên dadb uid-shell
-                // (cùng phiên) nên có quyền ghi Settings.Global + appops.
-                if (Prefs.vmBubbleEnabled(app) && !Prefs.vmFloatWhitelistApplied(app)) {
-                    runCatching {
-                        val curFloat = sh("settings get global byd_float_app_list").output.trim()
-                        val mergedFloat = FloatAppList.merge(curFloat, listOf(PKG))
-                        sh("settings put global byd_float_app_list $mergedFloat")
-                        sh("appops set $PKG SYSTEM_ALERT_WINDOW allow")
-                        Prefs.setVmFloatWhitelistApplied(app, true)   // CHỈ set khi cả 2 lệnh trên không ném
-                        Log.i(TAG, "float-whitelist: thêm VietMap vào byd_float_app_list + SYSTEM_ALERT_WINDOW allow (list=$mergedFloat)")
-                    }.onFailure {
-                        // KHÔNG set cờ ⇒ lần autostart kế thử lại; KHÔNG rethrow ⇒ launch phía dưới vẫn chạy.
-                        Log.w(TAG, "float-whitelist: áp dụng thất bại, sẽ thử lại lần sau: ${it.message}")
-                    }
-                }
+                // FLOAT/OVERLAY WHITELIST: KHÔNG còn ở đây từ v1.39 — đã chuyển sang
+                // [com.byd.clusternav.permissions.PermissionAuditRunner] (spec permission-health-audit).
+                // Vì sao chuyển: bản cũ gate bằng cờ prefs "đã áp một lần" (`vm_float_whitelist_applied`) nên khi
+                // owner cài lại bản mod VietMap (khác chữ ký ⇒ gỡ+cài ⇒ appop SYSTEM_ALERT_WINDOW bị XOÁ) thì công
+                // thức KHÔNG bao giờ áp lại ⇒ bóng vẫn dính toast "Hệ thống IVI không hỗ trợ hoạt động này" (bug
+                // on-car v1.38); và `settings put` bị từ chối thì không ném nên cờ vẫn được set dù lệnh trượt. Bộ
+                // audit ĐỌC trạng thái thật mỗi lượt, chỉ ghi khi thiếu, ghi rồi đọc lại, và force-stop VietMap khi
+                // vừa vá (bóng của mod chỉ dựng lúc khởi động ⇒ vá xong không hồi tố) rồi gọi lại autostart này.
                 // (b) VietMap ĐÃ ở foreground rồi → launch lại chỉ gây "giật" (flash), không cần. Đọc activity
                 // đang resumed/focus; degrade-safe (đọc lỗi / grep vắng ⇒ coi như KHÔNG-foreground ⇒ giữ hành vi
                 // cũ = vẫn launch). Chỉ có ý nghĩa khi process đang sống (running).
