@@ -21,10 +21,48 @@ package com.byd.clusternav.modules.navaccess
  * `com.byd.clusternav.NavConnect.doGrantAccessibility` in `:app` (which owns the Android + dadb transport).
  */
 object AccessibilityRebind {
-    /** ClusterNav's accessibility-service component, exactly as it appears in enabled_accessibility_services. */
-    const val ACC_COMP = "com.byd.clusternav/com.byd.clusternav.modules.navaccess.NavAccessibilityService"
+    /**
+     * Tên CLASS của accessibility service — độc lập với `applicationId`.
+     *
+     * ⚠ KHÔNG hardcode component đầy đủ ở đây nữa: bản 2.0 đổi `applicationId` sang `com.byd.clusternav2`
+     * trong khi Kotlin package vẫn là `com.byd.clusternav`, nên một hằng số "pkg/class" viết tay ở `:core` là
+     * bẫy ngủ — nó sai ngay khi ai đó dùng giá trị mặc định (bản cũ để `com.byd.clusternav/...`). Caller ở
+     * `:app` truyền `applicationId` thật vào [component].
+     */
+    const val ACC_SERVICE_CLASS = "com.byd.clusternav.modules.navaccess.NavAccessibilityService"
+
+    /** Component đúng dạng nằm trong `enabled_accessibility_services`, dựng từ `applicationId` của bản build. */
+    fun component(applicationId: String): String = "$applicationId/$ACC_SERVICE_CLASS"
 
     private const val KEY = "enabled_accessibility_services"
+
+    /**
+     * Việc CẦN LÀM để service sống lại, quyết từ hai điều đọc được trong `dumpsys accessibility`.
+     *
+     * Sinh ra 2026-09-11 sau phép đo trên xe owner: service ENABLED, `Bound services` KHÔNG có ClusterNav,
+     * `Binding services` CÓ ClusterNav ⇒ AMS đã gọi bind và **kẹt vĩnh viễn** ở đó (còn đọng cả
+     * `ConnectionRecord … DEAD` của các tiến trình cũ). Ở trạng thái đó, toggle danh sách setting KHÔNG cứu
+     * được — [ĐO] gỡ hẳn component khỏi `enabled_accessibility_services` mà `Binding services` vẫn còn nó, và
+     * `force-rebind xong: bound=false`. Chỉ khi **tiến trình app chết** thì AMS mới nhả (`Binding services:{}`),
+     * sau đó bind lại thành công.
+     */
+    enum class RebindStep {
+        /** Đã bound — không làm gì (tránh flicker). */
+        NONE,
+
+        /** Chưa bound và KHÔNG kẹt ⇒ toggle remove→re-add ép bind (đường proven từ 2026-08-14). */
+        TOGGLE,
+
+        /** Chưa bound và AMS đang kẹt ở "Binding services" ⇒ toggle vô ích, phải KHỞI ĐỘNG LẠI TIẾN TRÌNH. */
+        RESTART_PROCESS,
+    }
+
+    /** PURE: từ hai cờ đọc được → việc cần làm. Xem [RebindStep] cho bằng chứng đo trên xe. */
+    fun healStep(bound: Boolean, bindingStuck: Boolean): RebindStep = when {
+        bound -> RebindStep.NONE
+        bindingStuck -> RebindStep.RESTART_PROCESS
+        else -> RebindStep.TOGGLE
+    }
 
     /**
      * The ordered `settings put secure ...` commands that force a REBIND via a remove -> re-add toggle.
@@ -43,8 +81,12 @@ object AccessibilityRebind {
      * `null` are dropped, and every ClusterNav entry is removed before exactly one is re-appended — so the
      * output never contains a dangling/leading/trailing/double colon, and OEM services keep their exact
      * original strings and relative order. Values are quoted so an empty remove-list is written as `""`.
+     *
+     * [component] KHÔNG có giá trị mặc định (từ 2026-09-11): caller phải nói rõ component của bản build đang
+     * chạy — xem [component]/[ACC_SERVICE_CLASS].
      */
-    fun accessibilityRebindWrites(current: String?, boundContainsClusterNav: Boolean, component: String = ACC_COMP): List<String> {
+    fun accessibilityRebindWrites(current: String?, boundContainsClusterNav: Boolean, component: String): List<String> {
+
         if (boundContainsClusterNav) return emptyList()
         val entries = (current ?: "")
             .split(':')
@@ -75,26 +117,52 @@ object AccessibilityRebind {
      * on-car dump is readable by the uid=shell dadb session, so the heal path still triggers when needed.
      */
     fun isClusterNavBound(dumpsysAccessibility: String?): Boolean {
-        val dump = dumpsysAccessibility
-        if (dump.isNullOrBlank()) return true
-        val header = dump.indexOf("Bound services", ignoreCase = true, startIndex = 0)
-        if (header < 0) return true
-        val open = dump.indexOf('{', header)
-        if (open < 0) return true
+        val section = sectionAfter(dumpsysAccessibility, "Bound services") ?: return true
+        return section.contains("clusternav", ignoreCase = true)
+    }
+
+    /**
+     * ClusterNav có đang **KẸT** trong mục `Binding services` của `dumpsys accessibility` không.
+     *
+     * AMS đưa component vào `mBindingServices` khi gọi `bindService` và chỉ lấy ra khi `onServiceConnected`
+     * về. [ĐO on-car 2026-09-11] sau khi tiến trình app chết vài lần, component nằm lại đó **vĩnh viễn**:
+     * `Bound services` chỉ còn service của systemui, `Binding services:{com.byd.clusternav2/…}`, kèm hai
+     * `ConnectionRecord … FGSA DEAD` của chính service này. Ở trạng thái đó ghi setting bao nhiêu lần cũng vô
+     * ích (đã thử gỡ hẳn component: vẫn còn trong `Binding services`) — chỉ tiến trình chết mới nhả.
+     *
+     * Fail-safe NGƯỢC với [isClusterNavBound]: dump không đọc được / không có mục này ⇒ `false` (KHÔNG kết
+     * luận là kẹt), vì hành động tương ứng là khởi động lại tiến trình — nặng hơn nhiều một lần toggle, không
+     * được phép chạy vì một lần đọc lỗi.
+     */
+    fun isBindingStuck(dumpsysAccessibility: String?): Boolean {
+        val section = sectionAfter(dumpsysAccessibility, "Binding services") ?: return false
+        return section.contains("clusternav", ignoreCase = true)
+    }
+
+    /**
+     * Cắt đoạn `{...}` CÂN BẰNG NGOẶC ngay sau tiêu đề [header] trong dump (ngoặc lồng của `ComponentInfo{…}`
+     * được tính đúng), để một mục ở SECTION KHÁC không bị nhận nhầm. `null` khi dump rỗng/không tìm được mục —
+     * caller tự quyết fail-safe theo chiều an toàn của mình.
+     */
+    private fun sectionAfter(dump: String?, header: String): String? {
+        if (dump.isNullOrBlank()) return null
+        val at = dump.indexOf(header, ignoreCase = true, startIndex = 0)
+        if (at < 0) return null
+        val open = dump.indexOf('{', at)
+        if (open < 0) return null
         var depth = 0
-        var close = -1
         var i = open
         while (i < dump.length) {
             when (dump[i]) {
                 '{' -> depth++
                 '}' -> {
                     depth--
-                    if (depth == 0) { close = i; break }
+                    if (depth == 0) return dump.substring(open, i + 1)
                 }
             }
             i++
         }
-        val section = if (close > open) dump.substring(open, close + 1) else dump.substring(open)
-        return section.contains("clusternav", ignoreCase = true)
+        return dump.substring(open)
     }
 }
+

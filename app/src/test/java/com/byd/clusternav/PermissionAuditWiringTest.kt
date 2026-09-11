@@ -323,7 +323,7 @@ class PermissionAuditWiringTest {
             "audit phải chạy TRƯỚC autostart VietMap (vá quyền rồi mới dựng bóng)",
         )
         assertTrue(
-            audit < boot.indexOf("NavConnect.grantAccessibility(applicationContext)"),
+            audit < boot.indexOf("NavConnect.heal(applicationContext)"),
             "và trước accessibility grant (audit có thể đã cấp ⇒ khỏi làm hai lần)",
         )
         // NGƯỢC LẠI với tiện nghi cabin: ghế + lọc bụi chỉ dùng HAL trong tiến trình, KHÔNG cần quyền nào, và

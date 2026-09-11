@@ -4,6 +4,7 @@ import com.byd.clusternav.carexec.LocalDeviceShell
 import com.byd.clusternav.carexec.LocalShellRetry
 import com.byd.clusternav.carexec.LocalShellText
 import com.byd.clusternav.modules.navaccess.AccessibilityRebind
+import com.byd.clusternav.modules.navaccess.NavAccessibilitySource
 import dadb.AdbKeyPair
 import android.content.ComponentName
 import android.content.Context
@@ -27,7 +28,7 @@ object NavConnect {
     // internal namespace com.byd.clusternav.* (unchanged) → component = "<appId>/com.byd.clusternav.<Class>".
     // Fully isolated from the legacy com.byd.clusternav app.
     private val COMP = "${BuildConfig.APPLICATION_ID}/com.byd.clusternav.NavNotificationListener"
-    private val ACC_COMP = "${BuildConfig.APPLICATION_ID}/com.byd.clusternav.modules.navaccess.NavAccessibilityService"
+    private val ACC_COMP = AccessibilityRebind.component(BuildConfig.APPLICATION_ID)
     private val reconnecting = java.util.concurrent.atomic.AtomicBoolean(false)   // single-flight: tap dồn dập / ensure trùng → 1 chu kỳ disallow→allow
     private val grantingAcc = java.util.concurrent.atomic.AtomicBoolean(false)    // single-flight cho grantAccessibility (dadb read-modify-write)
 
@@ -37,12 +38,24 @@ object NavConnect {
     private const val REBIND_SETTLE_MS = 1200L
     private const val REBIND_TOGGLE_PAUSE_MS = 800L
 
+    // XÁC NHẬN HAI LẦN ĐỌC (v1.40 review): `onServiceConnected` là BẤT ĐỒNG BỘ và `Binding services` giữ
+    // component từ lúc `bindService` tới lúc bind xong ⇒ **một lần bind bình thường mà chậm trông y như trạng
+    // thái kẹt**, và đọc `dumpsys` ngay sau lệnh re-add thì thấy "chưa bound" cho ca đang bind. Vì kết luận bây
+    // giờ có thể dẫn tới KHỞI ĐỘNG LẠI TIẾN TRÌNH (hành động nặng nhất trong app), mọi kết luận "kẹt" phải qua
+    // HAI lần đọc cách nhau khoảng này — xem [awaitBoundThenDecide]. Chờ bằng cờ trong tiến trình nên ca thường
+    // thoát sau dưới một nhịp, KHÔNG tốn lệnh shell.
+    private const val REBIND_CONFIRM_MS = 2500L
+    private const val REBIND_CONFIRM_STEP_MS = 250L
+
     // TASK 3 (R2 · docs/specs/clusternav-closeout-1.28.html) — grant-body timeout. A HUNG dadb session (stuck
     // socket read/write during the accessibility read-modify-write or the force-rebind toggle) must NOT pin the
     // [grantingAcc] single-flight forever: if it did, every later grant (incl. re-toggling 'Nút vật lý') would
     // no-op until an app RESTART. On timeout we interrupt the worker and force-release the flag. One attempt per
-    // call — NO auto-loop/backoff. Kept comfortably above the ~2 s of settle+toggle sleeps in forceRebindIfNeeded.
-    private const val GRANT_TIMEOUT_MS = 9_000L
+    // call — NO auto-loop/backoff. Kept comfortably above the sleeps in forceRebindIfNeeded (settle 1.2 s +
+    // tối đa HAI cửa sổ xác nhận 2.5 s + toggle 0.8 s) PLUS dadb round-trips của ~7 lệnh shell trên head unit
+    // chậm. ⚠ Nâng 9 s → 20 s ở v1.40: hết giờ thì heal trả FAILED và đường boot KHÔNG còn biết ca kẹt (mất hẳn
+    // tính năng cứu), nên trần này phải rộng hơn tổng thời gian thân hàm. Ca thường (đã bound) vẫn về sau ~2 s.
+    private const val GRANT_TIMEOUT_MS = 20_000L
 
     /** Reconnect NGAY qua dadb (chạy nền). An toàn gọi nhiều lần. */
     fun reconnect(ctx: Context) {
@@ -110,17 +123,44 @@ object NavConnect {
      * @param onResult gọi trên MAIN thread: true nếu phiên dadb chạy được (đã append + bật accessibility).
      */
     fun grantAccessibility(ctx: Context, reset: Boolean = false, onResult: ((Boolean) -> Unit)? = null) {
+        heal(ctx, reset) { outcome -> onResult?.invoke(outcome == HealOutcome.BOUND) }
+    }
+
+    /**
+     * Kết quả một lượt chữa accessibility — cần cho nút "Kiểm tra / Sửa ngay" và đường boot, vì từ
+     * 2026-09-11 có một trạng thái mà **app không tự chữa được bằng cách ghi setting**.
+     */
+    enum class HealOutcome {
+        /** Service đã BOUND (đang chạy) — phím-thoại + booster sống. */
+        BOUND,
+
+        /**
+         * AMS kẹt component ở `Binding services` (hoặc toggle xong vẫn không bound) ⇒ cần **khởi động lại tiến
+         * trình** ([com.byd.clusternav.modules.navaccess.A11yProcessRestart]). Ghi setting thêm lần nữa vô ích.
+         */
+        NEEDS_PROCESS_RESTART,
+
+        /** Không chạy được đường dadb (chưa bấm "Cho phép gỡ lỗi USB"?) — chưa kết luận được gì. */
+        FAILED,
+    }
+
+    /**
+     * Như [grantAccessibility] nhưng trả **kết quả có phân loại** ([HealOutcome]) thay cho một chữ boolean, để
+     * caller biết khi nào phải escalate sang khởi động lại tiến trình.
+     *
+     * @param reset xem [grantAccessibility].
+     * @param onResult gọi trên MAIN thread.
+     */
+    fun heal(ctx: Context, reset: Boolean = false, onResult: ((HealOutcome) -> Unit)? = null) {
         val app = ctx.applicationContext
         val main = Handler(Looper.getMainLooper())
         Thread {
-            // RESET (toggle OFF→ON): clear a stuck single-flight left by a PRIOR HUNG grant BEFORE attempting, so
-            // a pinned grantingAcc can't turn this (and every later) call into a no-op that only an app restart
-            // could recover. The fresh grant + forceRebindIfNeeded then run inside doGrantAccessibility as usual.
             if (reset) grantingAcc.set(false)
-            val ok = doGrantAccessibilityWithTimeout(app)
-            onResult?.let { cb -> main.post { cb(ok) } }
+            val outcome = doGrantAccessibilityWithTimeout(app)
+            onResult?.let { cb -> main.post { cb(outcome) } }
         }.start()
     }
+
 
     /**
      * Chạy [doGrantAccessibility] trên worker thread rồi JOIN có TIMEOUT ([GRANT_TIMEOUT_MS]): một phiên dadb
@@ -128,8 +168,8 @@ object NavConnect {
      * `grantingAcc.set(false)` để lần grant sau (kể cả reset toggle) chạy được thay vì no-op tới khi restart app.
      * MỘT lần thử / lời gọi — KHÔNG loop/backoff. doGrantAccessibility vẫn tự nhả cờ trong finally khi chạy xong.
      */
-    private fun doGrantAccessibilityWithTimeout(app: Context): Boolean {
-        val result = java.util.concurrent.atomic.AtomicBoolean(false)
+    private fun doGrantAccessibilityWithTimeout(app: Context): HealOutcome {
+        val result = java.util.concurrent.atomic.AtomicReference(HealOutcome.FAILED)
         val worker = Thread { result.set(doGrantAccessibility(app)) }
         worker.start()
         worker.join(GRANT_TIMEOUT_MS)
@@ -137,13 +177,13 @@ object NavConnect {
             Log.e(TAG, "grantAccessibility TIMEOUT ${GRANT_TIMEOUT_MS}ms → interrupt + nhả single-flight")
             worker.interrupt()
             grantingAcc.set(false)   // never let a hung dadb session pin the single-flight forever
-            return false
+            return HealOutcome.FAILED
         }
         return result.get()
     }
 
-    private fun doGrantAccessibility(app: Context): Boolean {
-        if (!grantingAcc.compareAndSet(false, true)) { Log.i(TAG, "grantAccessibility đang chạy — bỏ lần trùng"); return false }
+    private fun doGrantAccessibility(app: Context): HealOutcome {
+        if (!grantingAcc.compareAndSet(false, true)) { Log.i(TAG, "grantAccessibility đang chạy — bỏ lần trùng"); return HealOutcome.FAILED }
         try {
             return runCatching {
                 val keyPair = AdbKeys.ensure(app)
@@ -159,9 +199,8 @@ object NavConnect {
                     // ENABLED ≠ BOUND: sau reboot service liệt kê trong enabled_accessibility_services nhưng
                     // KHÔNG chạy (không ở "Bound services") → onKeyEvent/booster chết. Ép rebind trên CÙNG phiên.
                     forceRebindIfNeeded(keyPair, sh)
-                    true
-                } ?: false
-            }.getOrElse { Log.e(TAG, "grantAccessibility qua dadb LỖI (popup Allow chưa bấm?)", it); false }
+                } ?: HealOutcome.FAILED
+            }.getOrElse { Log.e(TAG, "grantAccessibility qua dadb LỖI (popup Allow chưa bấm?)", it); HealOutcome.FAILED }
         } finally { grantingAcc.set(false) }
     }
 
@@ -180,13 +219,48 @@ object NavConnect {
      *    chết thì mở PHIÊN MỚI để re-add (adbd loopback vẫn sống, chỉ 1 kết nối rớt), nên setting không bao giờ
      *    kẹt ở trạng thái removed dù phiên đứt giữa toggle. Mọi lỗi được catch/log, không làm văng app.
      */
-    private fun forceRebindIfNeeded(keyPair: AdbKeyPair, sh: (String) -> LocalShellText) {
+    private fun forceRebindIfNeeded(keyPair: AdbKeyPair, sh: (String) -> LocalShellText): HealOutcome {
         // Let a fresh enable bind on its own first; only the post-reboot state needs the forced toggle.
-        runCatching { Thread.sleep(REBIND_SETTLE_MS) }.onFailure { Thread.currentThread().interrupt(); return }
+        runCatching { Thread.sleep(REBIND_SETTLE_MS) }.onFailure { Thread.currentThread().interrupt(); return HealOutcome.FAILED }
         val current = sh("settings get secure enabled_accessibility_services").output.trim()
-        val bound = AccessibilityRebind.isClusterNavBound(sh("dumpsys accessibility").output)
+        val dump = sh("dumpsys accessibility").output
+        val bound = AccessibilityRebind.isClusterNavBound(dump)
+        // ⚠ 2026-09-11 (đo trên xe owner): có một trạng thái mà TOGGLE VÔ ÍCH — AMS kẹt component trong
+        // `Binding services` (kèm ConnectionRecord DEAD của tiến trình cũ). Đã thử: toggle → bound=false; gỡ hẳn
+        // component khỏi setting → vẫn còn trong Binding. Chỉ tiến trình app CHẾT mới nhả. Nhận ra trạng thái đó
+        // ở đây để KHÔNG toggle mù (mỗi lần toggle là một lần rớt service của cả booster lẫn phím-thoại) mà báo
+        // caller escalate sang [A11yProcessRestart].
+        when (AccessibilityRebind.healStep(bound, AccessibilityRebind.isBindingStuck(dump))) {
+            AccessibilityRebind.RebindStep.NONE -> {
+                Log.i(TAG, "accessibility đã BOUND — không toggle (tránh flicker)")
+                return HealOutcome.BOUND
+            }
+            AccessibilityRebind.RebindStep.RESTART_PROCESS -> {
+                // ⚠ CHƯA được escalate từ MỘT lần đọc (sửa review v1.40): `Binding services` là nơi AMS giữ
+                // component từ lúc gọi `bindService` tới lúc `onServiceConnected` về, nên một lần bind ĐANG CHẠY
+                // BÌNH THƯỜNG trông GIỐNG HỆT trạng thái kẹt. Ca đó có thật và hay xảy ra ĐÚNG lúc boot: AMS bind
+                // service (chính nó dựng tiến trình mình), `BOOT_COMPLETED` tới gần như cùng lúc, nên
+                // BootSetupService chạy khi `connected` còn false và component còn nằm trong `Binding services`.
+                // Escalate mù ở đây = TỰ GIẾT APP ở mỗi lần nổ máy chậm. Chỉ THỜI GIAN phân biệt được hai thứ:
+                // chờ có hạn rồi đọc lại (xem [awaitBoundThenDecide]).
+                Log.w(TAG, "accessibility có dấu hiệu KẸT ở 'Binding services' — chờ xác nhận lần 2 trước khi kết luận")
+                when (awaitBoundThenDecide(sh)) {
+                    AccessibilityRebind.RebindStep.NONE -> {
+                        Log.i(TAG, "…hoá ra chỉ là bind CHẬM: đã BOUND — không làm gì")
+                        return HealOutcome.BOUND
+                    }
+                    AccessibilityRebind.RebindStep.RESTART_PROCESS -> {
+                        Log.w(TAG, "…xác nhận KẸT (2 lần đọc cách nhau ${REBIND_CONFIRM_MS}ms) — toggle vô ích, cần khởi động lại tiến trình")
+                        return HealOutcome.NEEDS_PROCESS_RESTART
+                    }
+                    // AMS đã nhả lần bind đó mà service vẫn chưa chạy ⇒ KHÔNG phải ca kẹt ⇒ đi đường proven: toggle.
+                    AccessibilityRebind.RebindStep.TOGGLE -> Log.i(TAG, "…AMS đã nhả 'Binding services' nhưng chưa bound ⇒ toggle")
+                }
+            }
+            AccessibilityRebind.RebindStep.TOGGLE -> Unit   // đường proven 2026-08-14, chạy tiếp bên dưới
+        }
         val writes = AccessibilityRebind.accessibilityRebindWrites(current, bound, ACC_COMP)
-        if (writes.isEmpty()) { Log.i(TAG, "accessibility đã BOUND — không toggle (tránh flicker)"); return }
+        if (writes.isEmpty()) { Log.i(TAG, "accessibility đã BOUND — không toggle (tránh flicker)"); return HealOutcome.BOUND }
 
         val remove = writes.first()
         val reAdd = writes.drop(1)   // [re-add danh sách đầy đủ, accessibility_enabled 1] = trạng thái AN TOÀN cuối
@@ -200,11 +274,27 @@ object NavConnect {
             sh(remove)
             Thread.sleep(REBIND_TOGGLE_PAUSE_MS)
             reAdd.forEach { sh(it) }; inRemovedState = false
-            val reboundOk = AccessibilityRebind.isClusterNavBound(sh("dumpsys accessibility").output)
-            Log.i(TAG, "accessibility force-rebind xong: bound=$reboundOk")
+            // Toggle xong KHÔNG kết luận ngay: bind là bất đồng bộ (xem [awaitBoundThenDecide]).
+            return when (awaitBoundThenDecide(sh)) {
+                AccessibilityRebind.RebindStep.NONE -> {
+                    Log.i(TAG, "accessibility force-rebind xong: BOUND")
+                    HealOutcome.BOUND
+                }
+                AccessibilityRebind.RebindStep.RESTART_PROCESS -> {
+                    Log.w(TAG, "accessibility toggle xong vẫn KẸT ở 'Binding services' — cần khởi động lại tiến trình")
+                    HealOutcome.NEEDS_PROCESS_RESTART
+                }
+                AccessibilityRebind.RebindStep.TOGGLE -> {
+                    // Đã toggle MỘT lần ở trên ⇒ không toggle nữa (mỗi lần toggle là một lần rớt service của cả
+                    // booster lẫn phím-thoại), và KHÔNG giết tiến trình: đây không phải chữ ký kẹt đã đo được.
+                    Log.w(TAG, "accessibility vẫn chưa bound nhưng KHÔNG kẹt ở 'Binding services' — không escalate")
+                    HealOutcome.FAILED
+                }
+            }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             Log.e(TAG, "accessibility rebind bị interrupt giữa toggle", e)
+            return HealOutcome.FAILED
         } finally {
             // NEVER leave enabled_accessibility_services in the REMOVED state — re-add on any partial failure.
             if (inRemovedState) {
@@ -222,6 +312,49 @@ object NavConnect {
                 }
             }
         }
+    }
+
+    /**
+     * CHỜ có hạn rồi ĐỌC LẠI `dumpsys` — trả về việc CẦN LÀM ([AccessibilityRebind.healStep]) theo trạng thái
+     * MỚI. Dùng ở CẢ HAI chỗ có thể kết luận "phải khởi động lại tiến trình", vì cả hai đều đứng trước cùng một
+     * mập mờ: `onServiceConnected` chạy BẤT ĐỒNG BỘ, và `Binding services` chứa component từ lúc `bindService`
+     * tới lúc bind xong — nên **một lần bind bình thường mà chậm trông y như trạng thái kẹt**. Chỉ khoảng cách
+     * thời gian giữa hai lần đọc phân biệt được.
+     *
+     * Cách chờ: bám cờ TRONG TIẾN TRÌNH [NavAccessibilitySource.connected] (service của mình tự bật trong
+     * `onServiceConnected`, tự tắt trong `onUnbind`, nên không thể là `true` cũ còn sót sau bước remove) — không
+     * tốn một lệnh shell nào và thoát NGAY khi bind xong (ca thường: dưới một nhịp). Hết hạn
+     * [REBIND_CONFIRM_MS] mới đọc `dumpsys` đúng MỘT lần nữa.
+     *
+     * Trả:
+     *  • [AccessibilityRebind.RebindStep.NONE] — đã bound (không làm gì nữa);
+     *  • [AccessibilityRebind.RebindStep.RESTART_PROCESS] — vẫn chưa bound và VẪN nằm trong `Binding services`
+     *    ⇒ đúng chữ ký đã đo trên xe, sau HAI lần đọc cách nhau [REBIND_CONFIRM_MS];
+     *  • [AccessibilityRebind.RebindStep.TOGGLE] — chưa bound nhưng `Binding services` KHÔNG còn nó ⇒ KHÔNG phải
+     *    ca kẹt (caller quyết: toggle nếu chưa toggle, còn nếu vừa toggle rồi thì dừng — KHÔNG giết tiến trình).
+     * Bị interrupt ⇒ [AccessibilityRebind.RebindStep.NONE] (hướng AN TOÀN: không làm gì thêm).
+     */
+    private fun awaitBoundThenDecide(sh: (String) -> LocalShellText): AccessibilityRebind.RebindStep {
+        var waited = 0L
+        while (waited < REBIND_CONFIRM_MS) {
+            if (NavAccessibilitySource.connected) {
+                Log.i(TAG, "accessibility BOUND sau ${waited}ms (onServiceConnected đã chạy)")
+                return AccessibilityRebind.RebindStep.NONE
+            }
+            try {
+                Thread.sleep(REBIND_CONFIRM_STEP_MS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Log.e(TAG, "accessibility: bị interrupt lúc chờ bind", e)
+                return AccessibilityRebind.RebindStep.NONE
+            }
+            waited += REBIND_CONFIRM_STEP_MS
+        }
+        val dump = sh("dumpsys accessibility").output
+        val bound = AccessibilityRebind.isClusterNavBound(dump)
+        val stuck = AccessibilityRebind.isBindingStuck(dump)
+        Log.i(TAG, "accessibility đọc lại sau ${waited}ms: bound=$bound kẹt=$stuck")
+        return AccessibilityRebind.healStep(bound, stuck)
     }
 
     /**

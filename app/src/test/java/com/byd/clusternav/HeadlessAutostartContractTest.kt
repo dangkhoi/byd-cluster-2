@@ -107,7 +107,9 @@ class HeadlessAutostartContractTest {
             "startForeground happens BEFORE the background work (5 s startForegroundService budget)",
         )
         assertTrue(onStart.contains("Prefs.enabled(applicationContext)"), "setup gated on Nav+HUD being enabled")
-        assertTrue(onStart.contains("NavConnect.grantAccessibility(applicationContext)"), "relocated accessibility grant + force-bind")
+        // v1.40: đổi sang NavConnect.heal (kết quả CÓ PHÂN LOẠI) để boot biết ca AMS kẹt và escalate sang
+        // khởi động lại tiến trình; vẫn là ĐÚNG một lời gọi grant+force-bind như trước.
+        assertTrue(onStart.contains("NavConnect.heal(applicationContext)"), "relocated accessibility grant + force-bind")
         assertTrue(onStart.contains("NavigationOutputTarget.CLUSTER_LANE"), "re-asserts the cluster-lane output")
         assertTrue(onStart.contains("runCatching"), "wrapped so it never crashes the process")
     }
@@ -171,7 +173,18 @@ class HeadlessAutostartContractTest {
     @Test
     fun `main activity boot setup stays additive`() {
         // Relocating to BootSetupService must NOT remove the user-opens-app setup in MainActivity.onCreate.
-        assertTrue(mainActivity.contains("NavConnect.grantAccessibility("), "onCreate path still self-grants accessibility")
+        // SCOPED to the onCreate BOOT-SETUP block (v1.40): neither a whole-file nor a whole-onCreate `contains`
+        // is enough — the Nav+HUD switch listener (also declared inside onCreate) has its own
+        // grantAccessibility call, so a broader check keeps passing after the boot-setup one is deleted, i.e.
+        // the guard silently stops guarding. Key off the unique boot-setup guard instead. Either entry point
+        // counts: `grantAccessibility` (boolean) or `heal` (classified outcome, v1.40) — same grant + force-bind.
+        val bootSetupBlock = mainActivity
+            .substringAfter("if (Prefs.enabled(this) || Prefs.voiceKeyEnabled(this)) {")
+            .substringBefore("\n        }")
+        assertTrue(
+            bootSetupBlock.contains("NavConnect.grantAccessibility(") || bootSetupBlock.contains("NavConnect.heal("),
+            "onCreate path still self-grants accessibility",
+        )
         assertTrue(mainActivity.contains("NavigationOutputTarget.CLUSTER_LANE"), "onCreate path still re-asserts cluster-lane")
     }
 }

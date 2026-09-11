@@ -1,6 +1,6 @@
 # ClusterNav 2.0 — Project Backlog
 
-> **Trạng thái**: Current · **Cập nhật**: 2026-09-10 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
+> **Trạng thái**: Current · **Cập nhật**: 2026-09-11 · **Mục đích**: Nguồn DUY NHẤT cho task (ID · việc · trạng thái · ngày bắt đầu/kết thúc).
 
 > File quản lý công việc chung. **Tái cấu trúc 2026-08-25** (owner: "tách off-car/on-car, đánh lại status"): §0 DASHBOARD dưới đây là **VIEW CHÍNH** (tách theo NƠI LÀM + status 2 TRỤC, đọc 10 giây); **chi tiết + bằng chứng [ĐO] đầy đủ giữ nguyên ở mục A–F** bên dưới (không xoá — đó là ký ức/bằng chứng dự án).
 >
@@ -12,6 +12,21 @@
 ---
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
+
+### 🚀 SHIP 2026-09-11 v1.40 (versionCode 41) — PHÍM-THOẠI: cứu kết nối trợ năng khi AMS kẹt (toggle vô ích) + nút "Kiểm tra / Sửa ngay" đi tới bước cuối, CHỜ TEST XE
+
+Owner báo 15:41 *"xem thử sao mất kết nối phím thoại vậy"* → chẩn đoán trực tiếp qua adb vào xe. **[ĐO] `dumpsys accessibility`:** service ở `Enabled services`, **vắng** `Bound services`, **nằm trong `Binding services`**, kèm 2 `ConnectionRecord … CR FGSA DEAD` của chính nó; app KHÔNG treo (main thread `state=S`, UI vẽ đều, vòng dadb `exit=0`). Đường tự-chữa cũ **đã chạy mà thua**: `toggle ép rebind` → `force-rebind xong: bound=false`. **[ĐO] chuỗi loại trừ:** (1) toggle → thua; (2) **gỡ HẲN** component khỏi `enabled_accessibility_services` → `Binding services` **vẫn còn** nó ⇒ state kẹt nằm trong `system_server`, KHÔNG ở setting ⇒ ghi setting kiểu gì cũng vô ích; (3) `am force-stop` → `Binding services:{}`; (4) mở lại app → `Bound services` có `ClusterNav — booster đọ…` + log `accessibility booster connected`. Tác nhân: tiến trình chết trong lúc đang bound (ROM giết / force-stop) ⇒ **tái diễn được**.
+
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| VK1 | `:core` nhận ra trạng thái kẹt: `isBindingStuck` (cắt ngoặc cân bằng sau `Binding services`, **fail-safe = false** — ngược chiều `isClusterNavBound` vì hành động là giết tiến trình) + `healStep(bound, stuck)` → `NONE`/`TOGGLE`/`RESTART_PROCESS`. Test bằng **dump THẬT** của xe | ✅ | 🚗 |
+| VK2 | `A11yProcessRestart` — lệnh **tách rời** qua dadb: `nohup sh -c 'sleep 1; am force-stop <pkg>; sleep 3; am start -n <pkg>/<Launcher>; sleep 2; pidof \|\| monkey; sleep 2; pidof \|\| am start' &`. **force-stop chỉ 1 lần** trong cả chuỗi + mỗi lượt mở lại gated `pidof` ⇒ không có đường vào vòng giết-mở-giết. KHÔNG dùng mẹo `AlarmManager` của OTA (force-stop huỷ alarm của gói) | ✅ | 🚗 |
+| VK3 | Cổng an toàn: một lần/tiến trình (`AtomicBoolean`) + cooldown bền `Prefs.a11yRestartAtMs` 10 phút, ghi `commit()` **TRƯỚC** khi phát lệnh (app chết ngay sau) | ✅ | 🚗 |
+| VK4 | `NavConnect`: `HealOutcome{BOUND, NEEDS_PROCESS_RESTART, FAILED}` + `heal()`; **bỏ toggle mù** khi kẹt (mỗi toggle là một lần rớt cả booster lẫn phím-thoại); `awaitBoundThenDecide` chờ-rồi-đọc-lại để **không giết oan** khi bind chỉ chậm; `grantAccessibility` giữ nguyên chữ ký (map `BOUND→true`) nên 0 call site bị phá | ✅ | 🚗 |
+| VK5 | Nút **"Kiểm tra / Sửa ngay"** → dialog **xin phép** rồi khởi động lại (dựng bằng code, không chạm layout seal); **mở app** cũng tự phát hiện + hỏi (một lần/Activity); **boot nền** tự làm KHÔNG hỏi nhưng ở **BƯỚC CUỐI** (sau ghế · lọc bụi · audit quyền · cluster-lane · autostart VietMap · trợ lý Gemini) để lệnh giết không cắt chuỗi boot | ✅ | 🚗 |
+| VK6 | [P2] Gỡ hằng số `ACC_COMP` viết tay ở `:core` — nó còn ghi **package cũ** `com.byd.clusternav` (bản 2.0 là `com.byd.clusternav2`); thay bằng `ACC_SERVICE_CLASS` + `component(applicationId)`, `accessibilityRebindWrites` bỏ default. Bẫy ngủ, chưa gây lỗi (call site `:app` vốn truyền đúng từ `BuildConfig`) | ✅ | — |
+
+[ĐO] full suite **2140/0** (`--rerun-tasks`). **Red-team**: gỡ nhánh `bindingStuck → RESTART_PROCESS` ⇒ 2 test ĐỎ, khôi phục ⇒ XANH; reviewer mutation-test 4 hợp đồng cũ để chắc không thành tautology sau rename `grantAccessibility → heal`. Senior review + verify độc lập **PASS**, 4 patch ([P1] relaunch một-lượt dễ hụt → 3 lượt gated `pidof` · [P1] `apply()` mất mốc cooldown khi tiến trình chết → `commit()` · [P1] escalate quá sớm khi bind chậm → `awaitBoundThenDecide` · [P2] assertion thành tautology). `:app:assembleRelease` sạch, KHÔNG file layout/strings/Cast nào bị chạm. **CHỜ TEST XE:** (a) lúc mất kết nối → mở app hiện dialog, bấm Khởi động lại → app tự mở lại, trạng thái về **ĐANG HOẠT ĐỘNG ✓**, nút mic gọi được trợ lý; (b) nổ máy khi đang kẹt → tự lành không cần bấm; (c) trạng thái bình thường → KHÔNG dialog, KHÔNG restart. **CHƯA ĐO (OQ1):** `nohup … &` có sống sau khi adbd đóng socket trên ROM này — nếu app không tự mở lại thì phải đổi cách mở lại.
 
 ### 🚀 SHIP 2026-09-10 v1.39 (versionCode 40) — KIỂM TRA QUYỀN tự động (boot + mở app): đọc trước, tự vá, popup khi cần owner — vá "bóng VietMap vẫn dính IVI không hỗ trợ" trên v1.38, CHỜ TEST XE
 

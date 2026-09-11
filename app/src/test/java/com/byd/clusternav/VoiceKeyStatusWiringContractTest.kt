@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test
  *    (grey off / green ACTIVE / red DISCONNECTED), with bilingual labels via [Lang.t] (NOT sealed
  *    `strings.xml`), and is null-safe on a missing view.
  *  • NO-REGRESSION — the recheck button REUSES the aggressive-reset heal
- *    `NavConnect.grantAccessibility(applicationContext, reset = true)` (same entry as the OFF→ON toggle),
+ *    `NavConnect.heal(applicationContext, reset = true)` (v1.40 — trước là grantAccessibility) (same entry as the OFF→ON toggle),
  *    while onResume's existing grant stays `reset = false` (the documented double-dadb-session avoidance).
  *  • LIFECYCLE — the delayed recheck is `postDelayed` guarded by `!isFinishing && !isDestroyed`, and the
  *    button's async result posts back via `runOnUiThread` before touching views.
@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test
  *    ([NavAccessibilityService.onServiceConnected] sets true / `onUnbind` sets false) writes.
  *  • PARITY — both layout variants declare the two new ids right after `switch_voicekey_enabled`.
  *
- * ── LÀM-ĐỎ (P5.3): xoá `NavConnect.grantAccessibility(applicationContext, reset = true)` khỏi nút, hoặc đổi
+ * ── LÀM-ĐỎ (P5.3): xoá `NavConnect.heal(applicationContext, reset = true)` (v1.40 — trước là grantAccessibility) khỏi nút, hoặc đổi
  * onResume sang `reset = true`, hoặc bỏ một trong ba màu ⇒ test tương ứng ĐỎ.
  */
 class VoiceKeyStatusWiringContractTest {
@@ -83,7 +83,7 @@ class VoiceKeyStatusWiringContractTest {
         val b = body(mainActivity, "private fun setupVoiceKeyControls()")
         assertTrue(b.contains("R.id.btn_voicekey_recheck"), "wires the recheck button")
         assertTrue(
-            b.contains("NavConnect.grantAccessibility(applicationContext, reset = true)"),
+            b.contains("NavConnect.heal(applicationContext, reset = true)"),
             "REUSES the established aggressive-reset heal (same as OFF→ON toggle), not a new grant path",
         )
         assertTrue(b.contains("runOnUiThread"), "posts the async result back to the UI thread before touching views")
@@ -96,11 +96,11 @@ class VoiceKeyStatusWiringContractTest {
         assertTrue(b.contains("refreshVoiceKeyStatus()"), "onResume refreshes the status immediately")
         assertTrue(b.contains("scheduleVoiceKeyStatusRecheck()"), "onResume reschedules the delayed re-read")
         assertTrue(
-            b.contains("NavConnect.grantAccessibility(applicationContext, reset = false)"),
+            b.contains("NavConnect.heal(applicationContext, reset = false)"),
             "onResume's existing voice-key grant stays reset=false (documented double-dadb-session avoidance)",
         )
         assertTrue(
-            !b.contains("NavConnect.grantAccessibility(applicationContext, reset = true)"),
+            !b.contains("NavConnect.heal(applicationContext, reset = true)"),
             "onResume must NOT use the aggressive reset (that belongs to the toggle / button only)",
         )
     }

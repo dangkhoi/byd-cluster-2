@@ -64,6 +64,9 @@ class MainActivity : Activity() {
         super.attachBaseContext(ThemeMode.wrap(newBase))
     }
 
+    /** Dialog "cần khởi động lại app" chỉ hiện MỘT lần cho mỗi Activity — xem [promptA11yProcessRestart]. */
+    private val a11yRestartPromptShown = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -298,7 +301,16 @@ class MainActivity : Activity() {
         // Reboot để service ENABLED-nhưng-CHƯA-bound → onKeyEvent chết; grantAccessibility verify dumpsys trước khi
         // toggle (không flicker nếu đã bound). Escalate khi thiếu setting HOẶC enabled-nhưng-chưa-bound.
         if (Prefs.enabled(this) || Prefs.voiceKeyEnabled(this)) {
-            if (!accessibilityBoosterGranted() || !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) NavConnect.grantAccessibility(applicationContext)
+            // v1.40 (sửa review): dùng [NavConnect.heal] ở ĐÂY nữa, không chỉ ở onResume. Lý do là một cuộc ĐUA
+            // thật: onCreate chạy trước onResume vài ms, cả hai đều gọi cùng đường heal, và single-flight
+            // `grantingAcc` cho lần SAU trả FAILED ngay ⇒ nhánh onResume (nơi có dialog) LUÔN là lần thua trong
+            // ca MỞ APP LẦN ĐẦU — đúng ca quan trọng nhất (mở app sau khi nổ máy / sau khi app tự khởi động lại).
+            // Để lần THẮNG cũng biết mở dialog thì ca kẹt mới được nhìn thấy. Dialog tự chốt một-lần/Activity.
+            if (!accessibilityBoosterGranted() || !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) {
+                NavConnect.heal(applicationContext) { outcome ->
+                    if (outcome == NavConnect.HealOutcome.NEEDS_PROCESS_RESTART) promptA11yProcessRestart()
+                }
+            }
         }
         runCatching { RebindReceiver.scheduleWatchdog(applicationContext) }
         // Nút nổi + chiếu cụm chỉ khởi động khi master switch "Cluster Cast" đang BẬT (MẶC ĐỊNH TẮT —
@@ -365,7 +377,12 @@ class MainActivity : Activity() {
         // KHÔNG kẹt cờ vĩnh viễn — doGrantAccessibilityWithTimeout ép nhả sau GRANT_TIMEOUT_MS (9s). Toggle tay
         // OFF→ON vẫn giữ reset=true (đó là nơi cần xoá cờ kẹt aggressive theo yêu cầu tường minh của owner).
         if (Prefs.voiceKeyEnabled(this) && !com.byd.clusternav.modules.navaccess.NavAccessibilitySource.connected) {
-            NavConnect.grantAccessibility(applicationContext, reset = false)
+            // v1.40: kết quả CÓ PHÂN LOẠI — nếu AMS đang kẹt (toggle vô ích, đo on-car 2026-09-11) thì hỏi owner
+            // cho khởi động lại tiến trình NGAY khi mở app, thay vì để dòng trạng thái đứng "MẤT KẾT NỐI" và chờ
+            // owner tự mò nút. Bound/failed thì im lặng như trước (chỉ cập nhật dòng trạng thái ở dưới).
+            NavConnect.heal(applicationContext, reset = false) { outcome ->
+                if (outcome == NavConnect.HealOutcome.NEEDS_PROCESS_RESTART) promptA11yProcessRestart()
+            }
         }
         // (4b/4c) Cập nhật DÒNG TRẠNG THÁI phím-thoại NGAY (theo cờ connected hiện tại) rồi đọc lại TRỄ +2s/+5s:
         // onServiceConnected chạy bất đồng bộ vài giây sau grant/force-rebind ở trên, đọc tức thì có thể còn "mất kết nối".
@@ -856,14 +873,25 @@ class MainActivity : Activity() {
             // only when actually enabled-but-not-bound (no flicker if already bound). No auto-loop/backoff.
             if (on) {
                 Toast.makeText(this, Lang.t("Đang bật dịch vụ Hỗ trợ…", "Enabling accessibility service…"), Toast.LENGTH_SHORT).show()
-                NavConnect.grantAccessibility(applicationContext, reset = true) { ok ->
-                    if (isFinishing) return@grantAccessibility
-                    Toast.makeText(
-                        this,
-                        if (ok) Lang.t("Đã bật. Bấm nút đã gán để mở app.", "Enabled. Press the mapped button to open the app.")
-                        else Lang.t("Chưa bật được Hỗ trợ — bấm Allow USB debugging trên xe rồi thử lại, hoặc bật tay ở Cài đặt > Hỗ trợ.", "Couldn't enable accessibility — tap Allow USB debugging on the car and retry, or enable it in Settings > Accessibility."),
-                        Toast.LENGTH_LONG,
-                    ).show()
+                // v1.40: kết quả CÓ PHÂN LOẠI ở đây nữa. Vì sao: OFF→ON là NGHI THỨC cứu mà changelog 1.30 dạy
+                // owner ("phím-thoại chết sau reboot thì gạt TẮT rồi BẬT"). Ở trạng thái AMS kẹt thì nó KHÔNG
+                // cứu được, mà toast cũ lại chỉ SAI đường ("bấm Allow USB debugging") — owner sẽ đi làm đúng một
+                // việc vô ích. Nay ca kẹt mở dialog xin khởi động lại (cùng dialog của nút "Kiểm tra / Sửa ngay").
+                NavConnect.heal(applicationContext, reset = true) { outcome ->
+                    if (isFinishing || isDestroyed) return@heal
+                    when (outcome) {
+                        NavConnect.HealOutcome.BOUND -> Toast.makeText(
+                            this,
+                            Lang.t("Đã bật. Bấm nút đã gán để mở app.", "Enabled. Press the mapped button to open the app."),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        NavConnect.HealOutcome.NEEDS_PROCESS_RESTART -> promptA11yProcessRestart()
+                        NavConnect.HealOutcome.FAILED -> Toast.makeText(
+                            this,
+                            Lang.t("Chưa bật được Hỗ trợ — bấm Allow USB debugging trên xe rồi thử lại, hoặc bật tay ở Cài đặt > Hỗ trợ.", "Couldn't enable accessibility — tap Allow USB debugging on the car and retry, or enable it in Settings > Accessibility."),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }
             }
         }
@@ -876,16 +904,25 @@ class MainActivity : Activity() {
             text = Lang.t("Kiểm tra / Sửa ngay", "Check / Fix now")
             setOnClickListener {
                 Toast.makeText(this@MainActivity, Lang.t("Đang kiểm tra…", "Checking…"), Toast.LENGTH_SHORT).show()
-                NavConnect.grantAccessibility(applicationContext, reset = true) { ok ->
+                // v1.40: dùng [NavConnect.heal] (kết quả CÓ PHÂN LOẠI) thay cho boolean. Lý do: đo trên xe
+                // 2026-09-11 có trạng thái AMS kẹt component ở "Binding services" — ghi setting bao nhiêu lần
+                // cũng vô ích, CHỈ tiến trình app chết mới nhả. Nút này là nơi owner chủ động sửa, nên nó phải
+                // đi được tới bước cuối đó (có xin phép, vì app sẽ tắt rồi tự mở lại).
+                NavConnect.heal(applicationContext, reset = true) { outcome ->
                     runOnUiThread {
                         if (isFinishing || isDestroyed) return@runOnUiThread
                         refreshVoiceKeyStatus()
-                        Toast.makeText(
-                            this@MainActivity,
-                            if (ok) Lang.t("Phím-thoại đã sẵn sàng.", "Voice key ready.")
-                            else Lang.t("Chưa bật được Hỗ trợ — bấm Allow USB debugging trên xe rồi thử lại, hoặc bật tay ở Cài đặt > Hỗ trợ.", "Couldn't enable accessibility — tap Allow USB debugging on the car and retry, or enable it in Settings > Accessibility."),
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        when (outcome) {
+                            NavConnect.HealOutcome.BOUND ->
+                                Toast.makeText(this@MainActivity, Lang.t("Phím-thoại đã sẵn sàng.", "Voice key ready."), Toast.LENGTH_LONG).show()
+                            NavConnect.HealOutcome.NEEDS_PROCESS_RESTART -> promptA11yProcessRestart()
+                            NavConnect.HealOutcome.FAILED ->
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    Lang.t("Chưa bật được Hỗ trợ — bấm Allow USB debugging trên xe rồi thử lại, hoặc bật tay ở Cài đặt > Hỗ trợ.", "Couldn't enable accessibility — tap Allow USB debugging on the car and retry, or enable it in Settings > Accessibility."),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                        }
                     }
                 }
                 scheduleVoiceKeyStatusRecheck()   // (4c) onServiceConnected bất đồng bộ → đọc lại +2s/+5s sau khi bấm.
@@ -1025,6 +1062,53 @@ class MainActivity : Activity() {
                 tv.setTextColor(0xFFC62828.toInt())
             }
         }
+    }
+
+    /**
+     * Hỏi owner trước khi dùng đường CỨU CUỐI của phím-thoại: khởi động lại tiến trình app.
+     *
+     * Vì sao phải hỏi: đây là hành động owner THẤY (app tắt rồi tự mở lại sau ~4 giây). Vì sao vẫn cần: đo trên
+     * xe 2026-09-11 — khi AMS kẹt component ở `Binding services` thì mọi cách ghi setting đều vô ích, chỉ tiến
+     * trình chết mới nhả (chi tiết trong [com.byd.clusternav.modules.navaccess.A11yProcessRestart]). Dialog dựng
+     * BẰNG CODE nên không chạm layout đang byte-seal.
+     */
+    private fun promptA11yProcessRestart() {
+        if (isFinishing || isDestroyed) return
+        // onResume chạy mỗi lần quay lại app (và heal là bất đồng bộ) ⇒ chốt MỘT lần cho mỗi Activity, không
+        // để dialog xếp chồng hoặc bung lại mỗi lần owner rời/vào app.
+        if (!a11yRestartPromptShown.compareAndSet(false, true)) return
+        runCatching {
+            android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t("Cần khởi động lại app", "App restart needed"))
+                .setMessage(
+                    Lang.t(
+                        "Hệ thống xe đang giữ kết nối cũ của dịch vụ Hỗ trợ nên bật/tắt không cứu được. " +
+                            "Khởi động lại ClusterNav là cách duy nhất nối lại phím-thoại. App sẽ tự mở lại sau vài giây.",
+                        "The car's system is holding a stale accessibility connection, so toggling cannot fix it. " +
+                            "Restarting ClusterNav is the only way to get the voice key back. The app reopens by itself in a few seconds.",
+                    ),
+                )
+                .setPositiveButton(Lang.t("Khởi động lại", "Restart")) { _, _ ->
+                    Toast.makeText(this, Lang.t("Đang khởi động lại…", "Restarting…"), Toast.LENGTH_SHORT).show()
+                    Thread {
+                        val ok = com.byd.clusternav.modules.navaccess.A11yProcessRestart
+                            .restart(applicationContext, reason = "owner bấm Sửa ngay")
+                        if (!ok) runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            Toast.makeText(
+                                this,
+                                Lang.t(
+                                    "Chưa khởi động lại được — thử lại sau ít phút, hoặc tắt/mở máy xe.",
+                                    "Couldn't restart — try again in a few minutes, or power-cycle the car.",
+                                ),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }.start()
+                }
+                .setNegativeButton(Lang.t("Để sau", "Later"), null)
+                .show()
+        }.onFailure { android.util.Log.w("MainActivity", "không hiện được dialog khởi động lại: ${it.message}") }
     }
 
     /**

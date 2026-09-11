@@ -136,9 +136,17 @@ class AccessibilityForceBindTest {
         // MainActivity wiring: turning 'Nút vật lý' OFF→ON must call the RESET entry (not the plain grant) so a
         // hung single-flight is cleared and the key bind is force-re-requested — recovering the post-reboot
         // enabled-but-not-bound state without an app restart.
+        // v1.40: the entry is now `NavConnect.heal(..., reset = true)` (was `grantAccessibility(..., reset = true)`
+        // — same body, classified outcome) so the toggle can also surface the AMS-stuck case instead of telling
+        // the owner to tap "Allow USB debugging", which does nothing for that state. SCOPED to the toggle
+        // listener so the recheck button's identical call can't satisfy this on its own.
+        val toggle = mainActivity
+            .substringAfter("Prefs.setVoiceKeyEnabled(this, on)")
+            .substringBefore("// Voice-key BINDING STATUS")
         assertTrue(
-            mainActivity.contains("NavConnect.grantAccessibility(applicationContext, reset = true)"),
-            "the voice-key switch OFF→ON calls grantAccessibility(reset = true) to reset + force-rebind",
+            toggle.contains("NavConnect.heal(applicationContext, reset = true)") ||
+                toggle.contains("NavConnect.grantAccessibility(applicationContext, reset = true)"),
+            "the voice-key switch OFF→ON calls the reset entry (reset = true) to reset + force-rebind",
         )
         assertTrue(
             mainActivity.contains("Prefs.setVoiceKeyEnabled(this, on)"),

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phím-thoại: cứu kết nối trợ năng khi AMS kẹt — ClusterNav 2.0</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--card:#f5f5f7;--accent:#0071e3;--warn:#bf5f00;--ok:#1a7f37;--code:#f2f2f7}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--fg:#f5f5f7;--muted:#98989d;--line:#2c2c2e;--card:#1c1c1e;--accent:#2997ff;--warn:#ff9f0a;--ok:#30d158;--code:#1c1c1e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:40px 24px 120px}
+h1{font-size:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:22px;font-weight:650;letter-spacing:-.01em;margin:44px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+h3{font-size:17px;font-weight:650;margin:24px 0 8px}
+p,li{font-size:15.5px}.muted{color:var(--muted)}
+code{background:var(--code);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,monospace;font-size:13.5px}
+pre{background:var(--code);padding:14px 16px;border-radius:10px;overflow:auto;font-family:"SF Mono",ui-monospace,monospace;font-size:13px;line-height:1.5}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--card);color:var(--muted);border:1px solid var(--line)}
+.pill.ok{background:rgba(26,127,55,.12);color:var(--ok);border-color:transparent}
+.pill.wait{background:rgba(191,95,0,.12);color:var(--warn);border-color:transparent}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+ul{padding-left:22px}li{margin:3px 0}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;background:var(--accent);color:#fff;margin-right:6px}
+.tag.p1{background:var(--warn)}.tag.p2{background:#8e8e93}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:16px 0}
+.fnode{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;text-align:center;font-size:13.5px;min-width:110px}
+.fnode b{display:block;font-size:14px}.fnode span{color:var(--muted);font-size:12px}
+.fnode.new{background:rgba(0,113,227,.12)}
+.fnode.bad{background:rgba(191,95,0,.12)}
+.flow .arrow{color:var(--accent);font-weight:700;font-size:18px;padding:0 2px}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Phím-thoại: cứu kết nối trợ năng khi AMS kẹt</h1>
+<p class="muted">Slug: <code>voicekey-a11y-bind-recovery</code> · Branch <code>feat/speed-limit-badge-hal-hud</code> · <span class="pill ok">Đã duyệt (owner 2026-09-11) · đã ship v1.40 (versionCode 41) · CHỜ TEST XE</span></p>
+<p class="muted">Chỉ dùng Android SDK + dadb đã có trong repo ⇒ không cần Context7. Không chạm <code>res/layout</code>/<code>strings.xml</code> (byte-seal) và không chạm hệ Cast.</p>
+
+<h2>1. Changelog</h2>
+<ul>
+<li><b>Pass 1 — 2026-09-11</b>: Senior review + verify độc lập PASS (2140 test / 0 fail). Patch: relaunch 3 lượt gated <code>pidof</code> · chờ-rồi-đọc-lại trước khi escalate · <code>commit()</code> cho mốc cooldown · sửa một assertion thành tautology.</li>
+<li><b>Pass 0 — 2026-09-11</b>: Khởi tạo từ sự cố thật owner báo lúc 15:41 (*"xem thử sao mất kết nối phím thoại vậy"*), chẩn đoán trực tiếp qua adb vào xe.</li>
+</ul>
+
+<h2>2. Context — đo được gì trên xe</h2>
+<p>Owner báo phím-thoại (nút mic vô lăng → trợ lý) mất kết nối. Đọc <code>dumpsys accessibility</code> trên xe:</p>
+<pre><code>Bound services:{Service[label=.custom.StatusBarAcces…]}            ← KHÔNG có ClusterNav
+Enabled services:{… com.byd.clusternav2/…NavAccessibilityService …} ← vẫn được bật
+Binding services:{{com.byd.clusternav2/…NavAccessibilityService}}   ← KẸT ở đây
+ConnectionRecord{… CR FGSA DEAD com.byd.clusternav2/…NavAccessibilityService}   (×2)</code></pre>
+<p>App thì <b>không</b> treo: main thread <code>state=S</code>, UI vẽ đều mỗi giây, vòng dadb của nó <code>shell OK: exit=0</code>. Và đường tự-chữa cũ <b>đã chạy mà thua</b>: <code>NavConnect: accessibility ENABLED nhưng CHƯA BOUND → toggle ép rebind</code> rồi <code>force-rebind xong: bound=false</code>.</p>
+<p><b>Chuỗi loại trừ, từng bước có bằng chứng:</b></p>
+<table>
+<tr><th>#</th><th>Thử</th><th>Kết quả</th><th>Kết luận</th></tr>
+<tr><td>1</td><td>Toggle danh sách <code>enabled_accessibility_services</code> (đường proven 2026-08-14)</td><td><code>bound=false</code></td><td>không cứu được</td></tr>
+<tr><td>2</td><td><b>Gỡ HẲN</b> component khỏi setting</td><td><code>Binding services</code> <b>vẫn còn</b> nó</td><td>state kẹt nằm trong <code>system_server</code>, KHÔNG nằm ở setting ⇒ mọi cách ghi setting đều vô ích</td></tr>
+<tr><td>3</td><td><code>am force-stop com.byd.clusternav2</code></td><td><code>Binding services:{}</code></td><td><b>chỉ tiến trình app chết thì AMS mới nhả</b></td></tr>
+<tr><td>4</td><td>Mở lại app</td><td><code>Bound services</code> có <code>ClusterNav — booster đọ…</code>; log <code>accessibility booster connected</code></td><td>cứu xong</td></tr>
+</table>
+<div class="card"><b>Tác nhân:</b> tiến trình app chết trong lúc đang bound (ROM giết vì thiếu bộ nhớ, hoặc một lần <code>am force-stop</code> — trong đó có lần tôi test lúc 13:37 cùng ngày). Nên <b>nó tái diễn được</b>, và cách chữa duy nhất đo được là (3)+(4).</div>
+
+<h2>3. Requirements</h2>
+<ul>
+<li><b>R1</b> — Nhận ra trạng thái kẹt (<code>Binding services</code> có mình mà <code>Bound services</code> không có) và <b>KHÔNG toggle mù</b>: mỗi lần toggle là một lần rớt service của cả booster lẫn phím-thoại, mà ở ca này toggle chắc chắn vô ích.</li>
+<li><b>R2</b> — Escalate đúng cách chữa đã đo: khởi động lại tiến trình app rồi <b>tự mở lại</b>.</li>
+<li><b>R3</b> — Nút <b>"Kiểm tra / Sửa ngay"</b> phải đi được tới bước cuối đó, có <b>xin phép</b> owner (app tắt rồi tự mở lại là việc owner THẤY).</li>
+<li><b>R4</b> — Boot nền: tự làm, không hỏi (owner không ở màn hình), và <b>không cắt chuỗi boot</b>.</li>
+<li><b>R5</b> — Không bao giờ thành vòng lặp giết-mở-giết, và không giết oan khi bind chỉ đang chậm.</li>
+<li><b>R-nf1</b> — Quyết định thuần ở <code>:core</code>, test off-car bằng <b>dump thật</b> của xe.</li>
+<li><b>R-nf2</b> — Degrade-safe: không ném vào boot / <code>onResume</code>; không dadb (emulator) thì im lặng.</li>
+</ul>
+
+<h2>4. Design</h2>
+<div class="flow">
+  <div class="fnode"><b>đọc dumpsys</b><span>1 lần / lượt</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode new"><b>healStep()</b><span>:core thuần</span></div>
+  <div class="arrow">▶</div>
+  <div class="fnode"><b>NONE</b><span>đã bound ⇒ im</span></div>
+  <div class="fnode"><b>TOGGLE</b><span>đường 2026-08-14</span></div>
+  <div class="fnode bad"><b>RESTART_PROCESS</b><span>kẹt ⇒ chữa nặng</span></div>
+</div>
+<h3>4.1 <code>:core</code> — quyết định thuần</h3>
+<ul>
+<li><code>isBindingStuck(dump)</code>: cắt đoạn ngoặc cân bằng sau <code>Binding services</code> (dùng chung helper với <code>Bound services</code> nên một mục ở section khác không bị nhận nhầm). <b>Fail-safe = false</b> — ngược chiều với <code>isClusterNavBound</code> (fail-safe = true), vì hành động tương ứng ở đây là giết tiến trình, không được kích hoạt vì một lần đọc lỗi.</li>
+<li><code>healStep(bound, stuck)</code> → <code>NONE</code> / <code>TOGGLE</code> / <code>RESTART_PROCESS</code>.</li>
+<li><span class="tag p2">P2</span> Gỡ hằng số <code>ACC_COMP</code> viết tay — nó còn ghi <b>package cũ</b> <code>com.byd.clusternav</code> trong khi bản 2.0 là <code>com.byd.clusternav2</code>. Thay bằng <code>ACC_SERVICE_CLASS</code> + <code>component(applicationId)</code>; <code>accessibilityRebindWrites</code> bỏ giá trị mặc định để không ai dùng nhầm. Đây là bẫy ngủ, chưa gây lỗi (mọi call site ở <code>:app</code> đều truyền component đúng từ <code>BuildConfig.APPLICATION_ID</code>).</li>
+</ul>
+<h3>4.2 <code>:app A11yProcessRestart</code> — đường cứu cuối</h3>
+<p>Một lệnh <b>tách rời</b> qua dadb (uid shell), vì <code>am force-stop</code> giết chính tiến trình phát lệnh:</p>
+<pre><code>nohup sh -c 'sleep 1; am force-stop &lt;pkg&gt;; sleep 3;
+  am start -a android.intent.action.MAIN -c …LAUNCHER -n &lt;pkg&gt;/&lt;LauncherActivity&gt;;
+  sleep 2; pidof &lt;pkg&gt; &gt;/dev/null 2&gt;&amp;1 || monkey -p &lt;pkg&gt; -c …LAUNCHER 1;
+  sleep 2; pidof &lt;pkg&gt; &gt;/dev/null 2&gt;&amp;1 || am start …' &gt;/dev/null 2&gt;&amp;1 &amp;</code></pre>
+<ul>
+<li>Ba lượt mở lại, mỗi lượt sau <b>gated bằng <code>pidof</code></b> (đã sống thì bỏ qua) — và <b>force-stop chỉ xuất hiện một lần</b> trong cả chuỗi, nên không có đường nào rơi vào vòng giết-mở-giết.</li>
+<li>Tên class launcher đọc từ <code>PackageManager</code>, không hardcode; không resolve được thì chỉ dùng <code>monkey</code>.</li>
+<li><b>KHÔNG</b> dùng mẹo <code>AlarmManager</code> của OTA: <code>am force-stop</code> huỷ mọi alarm/PendingIntent của gói.</li>
+<li>Cổng: một lần / tiến trình (<code>AtomicBoolean</code>) + cooldown bền <code>Prefs.a11yRestartAtMs</code> 10 phút, ghi bằng <code>commit()</code> <b>TRƯỚC</b> khi phát lệnh (sau đó app chết, không còn cơ hội ghi).</li>
+</ul>
+<h3>4.3 Chờ-rồi-đọc-lại trước khi escalate</h3>
+<p><code>onServiceConnected</code> là bất đồng bộ, nên "chưa bound" ngay sau khi ghi setting có thể chỉ là chậm. <code>awaitBoundThenDecide</code> đọc lại có hạn trước khi kết luận <code>RESTART_PROCESS</code> ⇒ không giết app oan trên ROM chậm.</p>
+<h3>4.4 Ba điểm chạy</h3>
+<table>
+<tr><th>Nơi</th><th>Hành vi khi kẹt</th><th>Vì sao</th></tr>
+<tr><td>Nút <b>"Kiểm tra / Sửa ngay"</b></td><td>Dialog xin phép → owner bấm <b>Khởi động lại</b></td><td>owner chủ động sửa, và đây là việc họ thấy</td></tr>
+<tr><td><b>Mở app</b> (<code>onResume</code>, phím-thoại bật mà chưa bound)</td><td>Tự phát hiện → cùng dialog đó (một lần mỗi Activity)</td><td>không để dòng trạng thái đứng "MẤT KẾT NỐI" chờ owner tự mò nút</td></tr>
+<tr><td><b>Boot nền</b></td><td>Tự khởi động lại, KHÔNG hỏi — nhưng ở <b>BƯỚC CUỐI</b> của chuỗi boot</td><td>owner không ở màn hình; đặt cuối để lệnh giết không cắt ghế · lọc bụi · audit quyền · cluster-lane · autostart VietMap · trợ lý Gemini</td></tr>
+</table>
+<p>Dialog dựng <b>bằng code</b> (<code>AlertDialog</code> framework, song ngữ <code>Lang.t</code>) ⇒ không chạm layout đang byte-seal.</p>
+
+<h2>5. Tasks</h2>
+<table>
+<tr><th>#</th><th>Task</th><th>File</th></tr>
+<tr><td>T1</td><td><code>:core</code>: <code>isBindingStuck</code> · <code>healStep</code> · <code>component(applicationId)</code> · gỡ hằng số sai package + test bằng dump THẬT</td><td><code>AccessibilityRebind.kt</code> · <code>AccessibilityStuckBindTest.kt</code>(mới) · <code>AccessibilityRebindTest.kt</code></td></tr>
+<tr><td>T2</td><td><code>:app</code>: <code>A11yProcessRestart</code> (lệnh tách rời + 2 cổng an toàn)</td><td><code>modules/navaccess/A11yProcessRestart.kt</code>(mới) · <code>Prefs.kt</code></td></tr>
+<tr><td>T3</td><td><code>NavConnect</code>: <code>HealOutcome</code> + <code>heal()</code> + bỏ toggle mù + chờ-đọc-lại; <code>grantAccessibility</code> giữ nguyên chữ ký</td><td><code>NavConnect.kt</code></td></tr>
+<tr><td>T4</td><td>Wire 3 điểm: nút · mở app · boot (bước cuối)</td><td><code>MainActivity.kt</code> · <code>BootSetupService.kt</code></td></tr>
+<tr><td>T5</td><td>Test wiring + cập nhật 4 hợp đồng cũ theo tên hàm mới</td><td><code>A11yProcessRestartWiringTest.kt</code>(mới) + 4 file test</td></tr>
+<tr><td>T6</td><td>Full suite · red-team · senior review · bump 1.40/41 · APK · doc · scan · push OTA</td><td>—</td></tr>
+</table>
+
+<h2>6. Verification</h2>
+<ul>
+<li><b>V-unit</b> [ĐO]: full suite <b>2140 / 0 fail</b> (<code>--rerun-tasks</code>, 5 module + biến thể vehicleTest).</li>
+<li><b>V-redteam</b> [ĐO]: gỡ nhánh <code>bindingStuck -&gt; RESTART_PROCESS</code> ⇒ 2 test ĐỎ (<code>chua bound va KET thi RESTART_PROCESS</code>, <code>chuoi quyet dinh doc TRUC TIEP tu 3 dump that</code>); khôi phục ⇒ XANH. Reviewer còn mutation-test 4 hợp đồng cũ để chắc chúng không thành tautology.</li>
+<li><b>V-build</b> [ĐO]: <code>:app:assembleRelease</code> sạch.</li>
+<li><b>V-oncar</b> (owner) — <span class="pill wait">chưa chạy</span>: (a) khi phím-thoại mất kết nối, mở app ⇒ hiện dialog, bấm Khởi động lại ⇒ app tự mở lại và dòng trạng thái về <b>ĐANG HOẠT ĐỘNG ✓</b>, nút mic gọi được trợ lý; (b) nổ máy trong trạng thái kẹt ⇒ tự lành, không cần bấm gì; (c) trạng thái bình thường ⇒ KHÔNG có dialog, KHÔNG restart (kiểm bằng log <code>accessibility đã BOUND — không toggle</code>).</li>
+</ul>
+
+<h2>7. Open Questions</h2>
+<ul>
+<li><b>OQ1</b> — <code>nohup … &amp;</code> có thật sự sống sau khi adbd đóng socket trên ROM này? <span class="muted">[CHƯA ĐO] Chốt bằng V-oncar (a): nếu app không tự mở lại thì chuyển sang cách khác (vd hẹn qua một app khác / để owner bấm icon). Ba lượt thử gated <code>pidof</code> làm giảm rủi ro, không loại bỏ.</span></li>
+<li><b>OQ2</b> — Boot: lệnh giết có thể rơi vào lúc <code>VietMapAutostartService</code> (cùng tiến trình) đang poll chờ VietMap vào map. <span class="muted">Sau khi app tự mở lại, đường mở-app sẽ gọi autostart lần nữa nên bóng vẫn lên — nhưng trễ. Chưa đo trên xe.</span></li>
+<li><b>OQ3</b> — Có nên cho phép lần restart thứ hai nếu lần đầu không cứu được? <span class="muted">Hiện KHÔNG (một lần/tiến trình + 10 phút). Ưu tiên an toàn; cách cuối vẫn là tắt/mở máy xe.</span></li>
+</ul>
+
+<h2>8. References</h2>
+<ul>
+<li>Chẩn đoán gốc: <code>docs/diagnostics/oncar-handoff-voicekey-2026-08-14.md</code> §8 (ca enabled-nhưng-chưa-bound, đường toggle).</li>
+<li><code>core/…/navaccess/AccessibilityRebind.kt</code> · <code>app/…/navaccess/A11yProcessRestart.kt</code> · <code>app/…/NavConnect.kt</code> (<code>forceRebindIfNeeded</code>, <code>awaitBoundThenDecide</code>).</li>
+<li><code>app/…/UpdateRelaunch.kt</code> — mẹo alarm của OTA và lý do KHÔNG dùng lại được ở đây.</li>
+<li>Spec liền trước: <code>docs/specs/permission-health-audit.html</code> (v1.39) — bộ audit chỉ xét quyền ĐƯỢC BẬT, cố ý không xét trạng thái bound; ca này là lý do vì sao phần bound phải do <code>NavConnect</code> lo.</li>
+</ul>
+
+<h2>9. Nhật ký triển khai</h2>
+<ul>
+<li><b>Sai lệch đã đính chính trong lúc chẩn đoán</b> — ban đầu tôi nghi hằng số <code>ACC_COMP</code> sai package là nguyên nhân; đọc kỹ thì <code>NavConnect</code> tự dựng component đúng từ <code>BuildConfig.APPLICATION_ID</code> và truyền vào, nên đó chỉ là bẫy ngủ. Nguyên nhân thật vẫn là AMS kẹt (bằng chứng ở §2 bước 2).</li>
+<li><b>Trade-off</b> — chọn "giết tiến trình" là hành động nặng nhất trong app, đổi lấy việc phím-thoại tự lành. Bù bằng 2 cổng (một lần/tiến trình + cooldown bền), chờ-đọc-lại chống giết oan, và hỏi owner khi họ đang xem màn hình.</li>
+<li><b>Vì sao không tái dùng <code>UpdateRelaunch</code></b> — <code>am force-stop</code> huỷ alarm của gói, khác với <code>pm install -r</code> của OTA. Phát hiện lúc thiết kế, ghi vào KDoc để lần sau không ai "tối giản" ngược lại.</li>
+<li><b>Patch từ review</b> — thêm 3 lượt relaunch gated <code>pidof</code> (trước đó chỉ <code>monkey</code> một lần), <code>commit()</code> thay <code>apply()</code> cho mốc cooldown (tiến trình chết ngay sau đó), <code>awaitBoundThenDecide</code>, và sửa một assertion đã thành tautology sau khi đổi tên hàm.</li>
+</ul>
+
+<h2>10. Reviewer Log</h2>
+<ul>
+<li><b>Pass 1 — 2026-09-11</b> — senior review + verify độc lập. Findings đã patch: relaunch một-lượt dễ hụt · <code>apply()</code> mất mốc cooldown khi tiến trình chết · escalate quá sớm khi bind chỉ chậm · một assertion thành tautology sau rename. Verdict: <b>APPROVED</b> / <b>VERIFY: PASS</b> — 2140 test, 0 fail; release APK build sạch; không file layout/strings/Cast nào bị chạm.</li>
+</ul>
+
+</div></body>
+</html>

@@ -16,7 +16,9 @@ import org.junit.jupiter.api.Test
  */
 class AccessibilityRebindTest {
 
-    private val acc = AccessibilityRebind.ACC_COMP
+    // v1.40: hằng số "pkg/class" viết tay đã bị gỡ khỏi :core (nó còn ghi package CŨ com.byd.clusternav trong khi
+    // bản 2.0 dùng applicationId com.byd.clusternav2). Component dựng từ applicationId THẬT, đúng như :app làm.
+    private val acc = AccessibilityRebind.component("com.byd.clusternav2")
     // The two OEM accessibility services that MUST never be clobbered (from §8's proven live fix).
     private val vr = "com.byd.vrassistant.xf/com.iflytek.autofly.access.service.AccessibilityServices"
     private val sysui = "com.android.systemui/com.android.systemui.custom.StatusBarAccessibilityService"
@@ -32,13 +34,13 @@ class AccessibilityRebindTest {
     // ── accessibilityRebindWrites ────────────────────────────────────────────
     @Test
     fun `already bound produces no writes (no flicker)`() {
-        assertTrue(AccessibilityRebind.accessibilityRebindWrites("$vr:$sysui:$acc", true).isEmpty())
-        assertTrue(AccessibilityRebind.accessibilityRebindWrites(null, true).isEmpty())
+        assertTrue(AccessibilityRebind.accessibilityRebindWrites("$vr:$sysui:$acc", true, acc).isEmpty())
+        assertTrue(AccessibilityRebind.accessibilityRebindWrites(null, true, acc).isEmpty())
     }
 
     @Test
     fun `enabled but not bound toggles remove then re-add then accessibility_enabled`() {
-        val w = AccessibilityRebind.accessibilityRebindWrites("$vr:$sysui:$acc", false)
+        val w = AccessibilityRebind.accessibilityRebindWrites("$vr:$sysui:$acc", false, acc)
         assertEquals(3, w.size)
         // [0] remove ClusterNav — OEM services preserved, clusternav gone
         val removed = quotedValue(w[0])
@@ -57,7 +59,7 @@ class AccessibilityRebindTest {
     @Test
     fun `oem services are never clobbered and keep their relative order`() {
         // clusternav in the MIDDLE — the two OEM services must survive with their original strings + order.
-        val w = AccessibilityRebind.accessibilityRebindWrites("$vr:$acc:$sysui", false)
+        val w = AccessibilityRebind.accessibilityRebindWrites("$vr:$acc:$sysui", false, acc)
         assertEquals("$vr:$sysui", quotedValue(w[0]))
         assertEquals("$vr:$sysui:$acc", quotedValue(w[1]))
     }
@@ -65,7 +67,7 @@ class AccessibilityRebindTest {
     @Test
     fun `empty or null or literal-null current handled`() {
         for (cur in listOf(null, "", "null", "   ")) {
-            val w = AccessibilityRebind.accessibilityRebindWrites(cur, false)
+            val w = AccessibilityRebind.accessibilityRebindWrites(cur, false, acc)
             assertEquals(3, w.size, "cur=$cur")
             assertEquals("", quotedValue(w[0]), "remove is an empty quoted value for cur=$cur")
             assertEquals(acc, quotedValue(w[1]), "re-add is just clusternav for cur=$cur")
@@ -76,7 +78,7 @@ class AccessibilityRebindTest {
     @Test
     fun `no dangling leading trailing or double colons`() {
         val messy = ":$vr::$acc:$sysui:"
-        val w = AccessibilityRebind.accessibilityRebindWrites(messy, false)
+        val w = AccessibilityRebind.accessibilityRebindWrites(messy, false, acc)
         for (v in listOf(quotedValue(w[0]), quotedValue(w[1]))) {
             assertFalse(v.contains("::"), "no double colon in [$v]")
             assertFalse(v.startsWith(":"), "no leading colon in [$v]")
@@ -88,7 +90,7 @@ class AccessibilityRebindTest {
 
     @Test
     fun `duplicate clusternav entries collapse to one on re-add`() {
-        val w = AccessibilityRebind.accessibilityRebindWrites("$acc:$sysui:$acc", false)
+        val w = AccessibilityRebind.accessibilityRebindWrites("$acc:$sysui:$acc", false, acc)
         assertEquals(sysui, quotedValue(w[0]))
         assertEquals("$sysui:$acc", quotedValue(w[1]))
     }
@@ -98,7 +100,7 @@ class AccessibilityRebindTest {
         // Edge: ClusterNav is the ONLY enabled service. The remove phase writes an EMPTY quoted value
         // (settings put ... "") and the re-add restores just ClusterNav. This is the case that exercises the
         // empty-string write on-device, so lock it explicitly.
-        val w = AccessibilityRebind.accessibilityRebindWrites(acc, false)
+        val w = AccessibilityRebind.accessibilityRebindWrites(acc, false, acc)
         assertEquals(3, w.size)
         assertEquals("", quotedValue(w[0]), "remove is an empty quoted value when clusternav was the only entry")
         assertEquals("settings put secure enabled_accessibility_services \"\"", w[0], "remove is a well-formed empty write")
@@ -113,7 +115,7 @@ class AccessibilityRebindTest {
         // three quoted `settings put secure ...` commands with OTHERS = vr:sysui. Lock the full command
         // strings so any drift in key name, quoting, separator or ordering is caught off-car.
         val others = "$vr:$sysui"
-        val w = AccessibilityRebind.accessibilityRebindWrites("$others:$acc", false)
+        val w = AccessibilityRebind.accessibilityRebindWrites("$others:$acc", false, acc)
         assertEquals(
             listOf(
                 "settings put secure enabled_accessibility_services \"$others\"",

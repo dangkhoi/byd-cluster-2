@@ -301,6 +301,22 @@ object Prefs {
     fun vmBubbleEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(K_VM_BUBBLE_ENABLED, false)
     fun setVmBubbleEnabled(ctx: Context, v: Boolean) = sp(ctx).edit().putBoolean(K_VM_BUBBLE_ENABLED, v).apply()
 
+    // Cooldown bền cho đường CỨU CUỐI của phím-thoại: [com.byd.clusternav.modules.navaccess.A11yProcessRestart]
+    // tự khởi động lại tiến trình khi AMS kẹt component ở "Binding services" (đo on-car 2026-09-11 — toggle
+    // setting KHÔNG chữa được, chỉ tiến trình chết mới nhả). Bền vì phải chặn vòng lặp giết-mở-giết QUA các lần
+    // chạy: cờ trong RAM chết theo tiến trình, còn cái phải chặn chính là tiến trình mới.
+    private const val K_A11Y_RESTART_AT = "a11y_restart_at_ms"
+    fun a11yRestartAtMs(ctx: Context): Long = sp(ctx).getLong(K_A11Y_RESTART_AT, 0L)
+
+    /**
+     * Ghi mốc **ĐỒNG BỘ** (`commit`) — khác mọi setter khác trong file này (đều `apply`) vì đây là mốc duy nhất
+     * phải sống sót một `SIGKILL` đến **~1 giây sau**: `apply()` chỉ xếp lịch ghi đĩa trên thread khác và
+     * `am force-stop` KHÔNG chờ hàng đợi đó. Mốc mất = mất lớp chặn vòng lặp giết-mở-giết qua các tiến trình.
+     * Chỉ gọi trên thread nền (chặn ~vài ms).
+     */
+    fun setA11yRestartAtMs(ctx: Context, v: Long): Boolean =
+        sp(ctx).edit().putLong(K_A11Y_RESTART_AT, v).commit()
+
     // GỠ ở v1.39: cờ một-lần `vm_float_whitelist_applied` (whitelist float/overlay cho bản mod VietMap).
     // Vì sao gỡ: cờ chỉ nói "app đã TỪNG chạy lệnh", KHÔNG nói "quyền còn hay không". Cài lại bản mod VietMap
     // (khác chữ ký ⇒ gỡ+cài) XOÁ appop SYSTEM_ALERT_WINDOW của gói đó nhưng cờ vẫn true ⇒ công thức không bao

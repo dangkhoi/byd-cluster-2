@@ -48,6 +48,13 @@ class BootSetupService : Service() {
         // before any (blocking) work; if the platform denies it, stop cleanly.
         if (!startForegroundOnce()) { stopSelf(startId); return START_NOT_STICKY }
         Thread({
+            // v1.40: ghi nhận "cần khởi động lại tiến trình để nối lại accessibility" rồi chạy ở BƯỚC CUỐI —
+            // KHÔNG chạy ngay lúc phát hiện, vì nó giết luôn service này giữa chuỗi (VietMap autostart + trợ lý
+            // Gemini phía dưới sẽ bị bỏ). Chi tiết trạng thái kẹt: [A11yProcessRestart].
+            // ATOMIC (không phải `var` thường): cờ được GHI trên main looper (callback của NavConnect.heal) và
+            // ĐỌC trên thread này — một biến thường không có rào bộ nhớ nào giữa hai thread đó. Cờ này quyết định
+            // có GIẾT tiến trình hay không, nên không để nó phụ thuộc vào may mắn về thứ tự nhìn thấy.
+            val needA11yProcessRestart = java.util.concurrent.atomic.AtomicBoolean(false)
             runCatching {
                 // Tiện nghi cabin ĐI TRƯỚC (ghế + lọc bụi): cả hai chỉ dùng HAL reflection trong tiến trình,
                 // KHÔNG cần một quyền nào của bộ kiểm-tra-quyền, và mỗi hàm chỉ bung thread riêng rồi trả về
@@ -81,7 +88,14 @@ class BootSetupService : Service() {
                 if (Prefs.enabled(applicationContext) || Prefs.voiceKeyEnabled(applicationContext)) {
                     if (!NavAccessibilitySource.connected) {
                         val latch = CountDownLatch(1)
-                        NavConnect.grantAccessibility(applicationContext) { latch.countDown() }
+                        // v1.40: đọc kết quả CÓ PHÂN LOẠI. Nếu AMS kẹt component ở "Binding services" thì toggle
+                        // vô ích (đo on-car 2026-09-11) — phải khởi động lại tiến trình. Boot headless là lúc TỐT
+                        // NHẤT để làm việc đó (owner không nhìn màn hình, app tự mở lại sau ~4 s), nhưng KHÔNG làm
+                        // ngay tại đây: nó giết luôn service này giữa chuỗi ⇒ ghi nhận rồi chạy ở BƯỚC CUỐI.
+                        NavConnect.heal(applicationContext) { outcome ->
+                            needA11yProcessRestart.set(outcome == NavConnect.HealOutcome.NEEDS_PROCESS_RESTART)
+                            latch.countDown()
+                        }
                         latch.await(GRANT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                     }
                 }
@@ -110,6 +124,31 @@ class BootSetupService : Service() {
                     if (err.isNotEmpty()) Log.i(TAG, "boot re-apply Gemini assistant: $err (owner mở app sẽ thử lại có chờ cấp quyền)")
                 }
             }.onFailure { Log.e(TAG, "headless boot setup failed", it) }
+            // BƯỚC CUỐI (v1.40): accessibility kẹt ⇒ khởi động lại tiến trình. Đặt ở đây để mọi bước trên đã chạy
+            // xong (ghế · lọc bụi · audit quyền · cluster-lane · autostart VietMap · trợ lý Gemini) — lệnh
+            // force-stop giết chính tiến trình này sau ~1 giây. App tự mở lại sau ~4 giây và lần đó AMS đã nhả
+            // nên service bind được. Cổng cooldown/một-lần nằm trong A11yProcessRestart.
+            //
+            // HAI TÁC DỤNG PHỤ ĐÃ BIẾT (chấp nhận, [SUY] từ đọc code — chỉ test trên xe chốt được):
+            //  • [VietMapAutostartService] là FGS RIÊNG nhưng CÙNG TIẾN TRÌNH, và vừa được start ở trên: worker
+            //    của nó có thể đang `pollUntilInMap` (tới 25 s) khi lệnh giết rơi xuống ⇒ bị cắt giữa đường,
+            //    VietMap có thể còn nằm foreground vì bước "trả về nền" chưa chạy. Tự lành sau khi mở lại:
+            //    cooldown 30 s của autostart là biến TRONG BỘ NHỚ (`VietMapAutostart.lastRunAtMs`) nên chết theo
+            //    tiến trình ⇒ `MainActivity.onCreate` sau relaunch gọi `startForAppOpen` và chạy được NGAY
+            //    (không bị cooldown chặn); nếu VietMap đã dựng bóng thì nhánh `hasActivityRecord` bỏ relaunch
+            //    (không flash), và chính việc mở lại ClusterNav đưa app mình lên trước nên VietMap không đứng
+            //    trên màn hình.
+            //  • Mở lại bằng activity launcher ⇒ boot "headless" lần này KẾT THÚC bằng MainActivity hiện trên màn
+            //    chính. CỐ Ý: `am force-stop` đặt gói vào trạng thái stopped, và mở activity launcher là thao tác
+            //    xoá trạng thái đó (không thì lần nổ máy sau KHÔNG có BOOT_COMPLETED); ngoài ra activity ở
+            //    foreground giữ tiến trình sống chắc chắn trong lúc AMS bind lại service — thứ quan trọng hơn vẻ
+            //    ngoài, vì chính "tiến trình chết giữa lúc đang bind" là nguyên nhân sinh ra trạng thái kẹt này.
+            if (needA11yProcessRestart.get()) {
+                Log.w(TAG, "boot: accessibility kẹt ở 'Binding services' → khởi động lại tiến trình để nối lại phím-thoại")
+                runCatching {
+                    com.byd.clusternav.modules.navaccess.A11yProcessRestart.restart(applicationContext, reason = "boot")
+                }.onFailure { Log.e(TAG, "boot: khởi động lại tiến trình lỗi", it) }
+            }
             finish(startId)
         }, "boot-setup").start()
         return START_NOT_STICKY
@@ -151,7 +190,11 @@ class BootSetupService : Service() {
         private const val NOTIFICATION_ID = 1043
         private const val CHANNEL_ID = "clusternav_boot_setup"
         // Upper bound on how long the FGS lingers waiting for the async dadb accessibility grant to report
-        // back (settle 1.2 s + toggle 0.8 s + dumpsys/dadb round-trips ≈ 3–6 s). Bounded so we ALWAYS stop.
-        private const val GRANT_TIMEOUT_MS = 8_000L
+        // back (settle 1.2 s + tối đa HAI cửa sổ xác nhận 2.5 s + toggle 0.8 s + dumpsys/dadb round-trips).
+        // Bounded so we ALWAYS stop. ⚠ v1.40: PHẢI lớn hơn trần của chính NavConnect (20 s) — nếu hết giờ trước
+        // nó thì boot KHÔNG nhận được kết luận "AMS kẹt" và đường cứu (khởi động lại tiến trình) im lặng không
+        // bao giờ chạy, đúng cái mà bản này sinh ra để chữa. Chỉ ca CHƯA bound mới đi tới gần trần này — ca
+        // thường không gọi heal (gate `!NavAccessibilitySource.connected` ở trên).
+        private const val GRANT_TIMEOUT_MS = 22_000L
     }
 }
