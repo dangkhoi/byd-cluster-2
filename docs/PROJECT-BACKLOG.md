@@ -13,6 +13,23 @@
 
 ## §0. DASHBOARD (view chính — đọc 10 giây)
 
+### ⏸ ĐANG CHỜ ĐO TRÊN XE (owner chốt 2026-09-11 17:21: *"note lại việc này để đó, khi nào lên xe xem tiếp"*) — phím-thoại: vì sao tiến trình chết / có cần chặn tận gốc
+
+Doc đầy đủ: [`docs/diagnostics/voicekey-a11y-bind-stuck-2026-09-11.md`](diagnostics/voicekey-a11y-bind-stuck-2026-09-11.md) (bằng chứng · checklist đo dán-là-chạy · 5 hướng A–E).
+
+**Vì sao dừng ở đây:** tính năng này đã vá **5 lần** (1.18 · 1.20 · 1.30 · 1.32 · 1.40), mỗi lần một điểm hỏng khác của cùng một dây. v1.40 là **lưới an toàn** (đã đo: chỉ tiến trình chết mới nhả được state kẹt của AMS) — nhưng **tác nhân gốc chưa biết**. Dòng thời gian pid hôm nay **bác** giả thuyết "OTA là tác nhân": lần app chết lúc ~14:35 không phải OTA (OTA là 18:47 hôm trước) và không do agent; đồng thời hôm nay app chết nhiều lần mà phần lớn bind lại BÌNH THƯỜNG ⇒ "chết lúc đang bound ⇒ kẹt" không tất yếu.
+
+| ID | Việc | Làm | Xe |
+|----|------|-----|-----|
+| VK-Q1 | Vì sao tiến trình chết (ROM/LMK giết? crash? owner thao tác?) — `logcat -b events`, `am_kill`, tuổi tiến trình | 🔲 | 🚗 chờ đo |
+| VK-Q2 | Chế độ CHỈ-phím-thoại: app có FGS không, `oom_score_adj` bao nhiêu (cached ⇒ ROM dọn là chuyện thường) | 🔲 | 🚗 chờ đo |
+| VK-Q3 | Một lần OTA `pm install -r` có để lại trạng thái kẹt không (miễn phí: cài bản tới rồi mở app xem có dialog) | 🔲 | 🚗 chờ đo |
+| VK-Q4 | Tần suất: mấy lần chết ra một lần kẹt (quyết định mức đầu tư) | 🔲 | 🚗 chờ đo |
+| VK-Q5 | `nohup … &` của v1.40 có sống sau khi adbd đóng socket (app có TỰ mở lại không) | 🔲 | 🚗 chờ đo |
+| VK-B | [chỉ khi Q3=CÓ] Nhả bind TRƯỚC khi cài OTA rồi thêm lại sau (~15 dòng, tái dùng `accessibilityRebindWrites`) | 🔲 | — |
+| VK-C | [chỉ khi Q2=cached & Q1=ROM giết] Giữ tiến trình sống bằng một FGS tối thiểu khi phím-thoại bật | 🔲 | — |
+| VK-D | [chỉ khi B+C không đủ] Tách service trợ năng ra tiến trình riêng — **chi phí cao**: booster cự-ly GMaps đang ghi state trong CÙNG tiến trình ⇒ phải dựng IPC + prefs đa-tiến-trình | 🔲 | — |
+
 ### 🚀 SHIP 2026-09-11 v1.40 (versionCode 41) — PHÍM-THOẠI: cứu kết nối trợ năng khi AMS kẹt (toggle vô ích) + nút "Kiểm tra / Sửa ngay" đi tới bước cuối, CHỜ TEST XE
 
 Owner báo 15:41 *"xem thử sao mất kết nối phím thoại vậy"* → chẩn đoán trực tiếp qua adb vào xe. **[ĐO] `dumpsys accessibility`:** service ở `Enabled services`, **vắng** `Bound services`, **nằm trong `Binding services`**, kèm 2 `ConnectionRecord … CR FGSA DEAD` của chính nó; app KHÔNG treo (main thread `state=S`, UI vẽ đều, vòng dadb `exit=0`). Đường tự-chữa cũ **đã chạy mà thua**: `toggle ép rebind` → `force-rebind xong: bound=false`. **[ĐO] chuỗi loại trừ:** (1) toggle → thua; (2) **gỡ HẲN** component khỏi `enabled_accessibility_services` → `Binding services` **vẫn còn** nó ⇒ state kẹt nằm trong `system_server`, KHÔNG ở setting ⇒ ghi setting kiểu gì cũng vô ích; (3) `am force-stop` → `Binding services:{}`; (4) mở lại app → `Bound services` có `ClusterNav — booster đọ…` + log `accessibility booster connected`. Tác nhân: tiến trình chết trong lúc đang bound (ROM giết / force-stop) ⇒ **tái diễn được**.
